@@ -278,11 +278,11 @@ conformance-c: conformance-build gen
             set -e; \
             make -C runtime/pb/c clean >/dev/null; \
             make -C runtime/pb/c >/dev/null; \
+            rc=0; \
             conformance_test_runner --enforce_recommended \
                 --failure_list test/conformance/known_failures.txt \
                 --text_format_failure_list test/conformance/known_failures_text.txt \
-                /usr/bin/tarantool cmd/conformance-runner.lua; \
-            rc=$?; \
+                /usr/bin/tarantool cmd/conformance-runner.lua || rc=$?; \
             make -C runtime/pb/c clean >/dev/null; \
             exit $rc'
 
