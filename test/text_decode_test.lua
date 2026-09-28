@@ -245,4 +245,66 @@ for _, mode in ipairs(MODES) do
         t.assert_equals(pb.encode(hello.Person_descriptor, decoded),
                         pb.encode(hello.Person_descriptor, src))
     end
+
+    -- ---- Any: type URL inside brackets --------------------------------
+
+    local function decode_any(url)
+        pb.register(hello.Address_descriptor)
+        return pb.text.decode(hello.Event_descriptor,
+            'extension { [' .. url .. '] { zip: 7 } }\n')
+    end
+
+    local ADDRESS_ZIP_7 = '\x18\x07'
+
+    g.test_any_type_url_custom_prefix = function()
+        local m = decode_any('non.default.domain/hello.Address')
+        t.assert_equals(m.extension,
+            {type_url = 'non.default.domain/hello.Address', value = ADDRESS_ZIP_7})
+    end
+
+    g.test_any_type_url_special_characters_in_prefix = function()
+        local url = "non.default.domain/sub-path_0/~!$&()*+,;=/hello.Address"
+        t.assert_equals(decode_any(url).extension,
+            {type_url = url, value = ADDRESS_ZIP_7})
+    end
+
+    g.test_any_type_url_percent_escape_in_prefix = function()
+        local url = 'non.default.domain/%2F/hello.Address'
+        t.assert_equals(decode_any(url).extension,
+            {type_url = url, value = ADDRESS_ZIP_7})
+    end
+
+    g.test_any_type_url_whitespace_and_comments = function()
+        local m = decode_any('type.goo # comment\ngleapis.com/\n  hel\tlo.Address ')
+        t.assert_equals(m.extension,
+            {type_url = 'type.googleapis.com/hello.Address', value = ADDRESS_ZIP_7})
+    end
+
+    g.test_any_type_url_rejects_bad_percent_escape = function()
+        t.assert_error_msg_contains('invalid percent encoding',
+            decode_any, 'non.default.domain/%ZZ/hello.Address')
+        t.assert_error_msg_contains('invalid percent encoding',
+            decode_any, 'non.default.domain/%2/hello.Address')
+    end
+
+    g.test_any_type_url_rejects_bad_prefix = function()
+        t.assert_error_msg_contains('type URL prefix is empty',
+            decode_any, '/hello.Address')
+        t.assert_error_msg_contains('type URL starts with "/"',
+            decode_any, '/x/hello.Address')
+    end
+
+    g.test_any_type_url_rejects_bad_type_name = function()
+        t.assert_error_msg_contains('invalid identifier',
+            decode_any, 'type.googleapis.com/hello..Address')
+        t.assert_error_msg_contains('invalid identifier',
+            decode_any, 'type.googleapis.com/')
+        t.assert_error_msg_contains('invalid identifier',
+            decode_any, 'type.googleapis.com/hello.Addr-ess')
+    end
+
+    g.test_any_type_url_rejects_non_url_character = function()
+        t.assert_error_msg_contains('unexpected character "@"',
+            decode_any, 'type.googleapis.com@/hello.Address')
+    end
 end

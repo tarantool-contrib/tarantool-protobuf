@@ -1278,24 +1278,83 @@ end
 
 -- ---- Any inline form ------------------------------------------------------
 
+-- Characters allowed inside `[...]`: alphanumerics, `_`, and the URL path
+-- characters `-.~!$&()*+,;=%/`. Same set as protobuf's tokenizer uses in
+-- its URL-chars mode.
+local URL_CHAR = {}
+for c = 0x30, 0x39 do URL_CHAR[c] = true end
+for c = 0x41, 0x5a do URL_CHAR[c] = true end
+for c = 0x61, 0x7a do URL_CHAR[c] = true end
+for c in ('_-.~!$&()*+,;=%/'):gmatch('.') do URL_CHAR[c:byte()] = true end
+
+local function is_hex(c)
+    return c ~= nil and ((c >= 0x30 and c <= 0x39) or
+        (c >= 0x41 and c <= 0x46) or (c >= 0x61 and c <= 0x66))
+end
+
+-- Reads `[type.url]` / `[pkg.ext_name]` and returns the text between the
+-- brackets. The regular lexer can't do this: a type URL prefix may carry
+-- `%`, `~`, `!`, ... which aren't tokens. Instead scan raw bytes, joining
+-- runs of URL characters across whitespace and `#` comments (upstream
+-- accepts `[type.goo # c\ngleapis.com/...]`), then validate the prefix
+-- and the type name the way protobuf's text parser does.
 local function parse_any_url_brackets(S)
-    -- assumes current token is `[`
-    expect_punct(S, '[')
-    -- Concatenate identifier and `/` segments into the full URL.
+    -- assumes current token is `[`; the lexer already stepped past it
+    if S.tok_kind ~= 'punct' or S.tok_value ~= '[' then
+        err(S, 'expected "["')
+    end
+    local src, len = S.src, S.len
     local parts, n = {}, 0
-    while not (S.tok_kind == 'punct' and S.tok_value == ']') do
-        if S.tok_kind == 'ident' then
-            n = n + 1; parts[n] = S.tok_value
-            advance(S)
-        elseif S.tok_kind == 'punct' and S.tok_value == '/' then
-            n = n + 1; parts[n] = '/'
-            advance(S)
-        else
-            err(S, 'unexpected token inside [type.url]')
+    while true do
+        skip_ws(S)
+        local pos = S.pos
+        if pos > len then
+            err(S, 'unterminated [type.url]')
+        end
+        local c = src:byte(pos)
+        if c == 0x5d then            -- ']'
+            S.pos = pos + 1
+            break
+        end
+        if not URL_CHAR[c] then
+            err(S, ('unexpected character %q inside [type.url]')
+                :format(string.char(c)))
+        end
+        local p = pos + 1
+        while p <= len and URL_CHAR[src:byte(p)] do p = p + 1 end
+        n = n + 1; parts[n] = src:sub(pos, p - 1)
+        S.pos = p
+    end
+    local text = table.concat(parts)
+
+    local name = text
+    local slash = text:find('/[^/]*$')
+    if slash ~= nil then
+        local prefix = text:sub(1, slash)
+        name = text:sub(slash + 1)
+        if prefix == '/' then
+            err(S, 'type URL prefix is empty')
+        end
+        if prefix:byte(1) == 0x2f then
+            err(S, 'type URL starts with "/"')
+        end
+        local i = prefix:find('%', 1, true)
+        while i ~= nil do
+            if not (is_hex(prefix:byte(i + 1)) and is_hex(prefix:byte(i + 2))) then
+                err(S, ('invalid percent encoding %q in type URL')
+                    :format(prefix:sub(i, i + 2)))
+            end
+            i = prefix:find('%', i + 3, true)
         end
     end
-    expect_punct(S, ']')
-    return table.concat(parts)
+    -- Type name: non-empty identifiers separated by '.'.
+    for ident in (name .. '.'):gmatch('([^.]*)%.') do
+        if not ident:find('^[%a_][%w_]*$') then
+            err(S, ('invalid identifier %q in type name'):format(ident))
+        end
+    end
+    advance(S)
+    return text
 end
 
 -- ---- message body parser --------------------------------------------------
