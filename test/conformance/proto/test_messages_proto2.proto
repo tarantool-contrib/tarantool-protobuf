@@ -1,4 +1,4 @@
-// Vendored from protobuf v34.1
+// Vendored from protobuf v36.2
 // (src/google/protobuf/test_messages_proto2.proto) with one surgical edit:
 // every `message MessageSet*` nested message and the `message_set_correct`
 // field on TestAllTypesProto2 / TestAllRequiredTypesProto2 have been

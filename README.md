@@ -49,8 +49,8 @@ copy of `test_messages_proto2.proto`.
 | WKT: Any (opaque + registry pack/unpack) | ✅   |
 | WKT: FieldMask (strict round-trip) | ✅         |
 | Byte-for-byte interop with `protoc` (10 fixtures) | ✅ |
-| **Google conformance suite — binary + JSON**       | **2806 ✓ / 0 failures** |
-| **Google conformance suite — text format**         | **434 ✓ / 0 failures** |
+| **Google conformance suite — binary + JSON**       | **2817 ✓ / 0 failures** |
+| **Google conformance suite — text format**         | **445 ✓ / 0 failures** |
 | Runtime `.proto` parsing (`pb.parse`) | ✅       |
 | Runtime `FileDescriptorSet` ingest (`pb.from_pb`) | ✅ |
 | Markdown doc generator (`protoc-gen-tarantool-doc`) | ✅ |
@@ -376,12 +376,12 @@ host is what gets tested.) Known failures live in
 `test/conformance/known_failures_text.txt` (text-format suite); both are
 empty for the proto3 suites as of 2026-05-16.
 
-Current baseline (2026-05-17, protobuf v34.1, `--enforce_recommended`):
+Current baseline (2026-09-29, protobuf v36.2, `--enforce_recommended`):
 
 | Suite | Successes | Skipped | Expected failures | Unexpected |
 |-------|-----------|---------|-------------------|------------|
-| Binary + JSON | **2806** | 0 | 0 | 0 |
-| Text-format   |  **434** | 0 | 0 | 0 |
+| Binary + JSON | **2817** | 0 | 0 | 0 |
+| Text-format   |  **445** | 0 | 0 | 0 |
 
 Both proto2 and proto3 test messages run through the same dispatcher in
 `cmd/conformance/core.lua`. The `test_messages_proto2.proto` checked

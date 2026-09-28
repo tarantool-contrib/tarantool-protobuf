@@ -9,10 +9,10 @@
 
 FROM ubuntu:24.04 AS builder
 
-# Pinned to match the host protoc shipped by Homebrew (v34.1). Keeps the
+# Pinned to match the host protoc shipped by Homebrew (v36.2). Keeps the
 # conformance corpus and our generated _pb.lua aligned with the same
 # protobuf release that runs `make gen` on the host.
-ARG PROTOBUF_TAG=v34.1
+ARG PROTOBUF_TAG=v36.2
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -63,10 +63,9 @@ COPY --from=builder /src/build/conformance_test_runner /usr/local/bin/conformanc
 # protobuf's CMake build links conformance_test_runner against its
 # vendored libjsoncpp as a shared library; the .so isn't installed and
 # Ubuntu's libjsoncpp25 has a different soname. Ship the vendored copy.
-# v34.1 fetches jsoncpp via CMake FetchContent; the vendored .so lives
-# under _deps/jsoncpp-build/. Earlier protobuf releases placed it at
-# /src/build/lib/. Pin to the v34.1 path since the Dockerfile is locked
-# to that tag.
+# Since v34.1 jsoncpp is fetched via CMake FetchContent; the vendored .so
+# lives under _deps/jsoncpp-build/ (still true in v36.2). Earlier protobuf
+# releases placed it at /src/build/lib/.
 COPY --from=builder /src/build/_deps/jsoncpp-build/src/lib_json/libjsoncpp.so* /usr/local/lib/
 RUN ldconfig
 
