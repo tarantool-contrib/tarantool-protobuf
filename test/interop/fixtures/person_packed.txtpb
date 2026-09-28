@@ -1,0 +1,11 @@
+# type: hello.Person
+name: "Alice"
+age: 30
+emails: "a@example.com"
+emails: "b@example.com"
+status: OK
+lucky_numbers: 1
+lucky_numbers: 2
+lucky_numbers: 3
+lucky_numbers: -7
+lucky_numbers: 1024

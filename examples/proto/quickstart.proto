@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package quickstart;
+
+// One message, one enum. Enough to exercise the round-trip path.
+//
+// Generate with:
+//   protoc --tarantool_out=. examples/proto/quickstart.proto
+//
+// Then in Tarantool:
+//   local qs = require('quickstart.quickstart_pb')
+//   local bytes = qs.User_encode({id = 7, name = 'Alice', role = qs.Role.ADMIN})
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  USER = 1;
+  ADMIN = 2;
+}
+
+message User {
+  int32 id = 1;
+  string name = 2;
+  Role role = 3;
+  repeated string emails = 4;
+}

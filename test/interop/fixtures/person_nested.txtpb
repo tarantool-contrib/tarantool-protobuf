@@ -1,0 +1,18 @@
+# type: hello.Person
+name: "Root"
+friends {
+  name: "Alice"
+  age: 25
+}
+friends {
+  name: "Bob"
+  age: 31
+  friends {
+    name: "Carol"
+  }
+}
+address {
+  street: "Main St"
+  city: "Springfield"
+  zip: 100
+}

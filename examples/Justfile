@@ -1,0 +1,57 @@
+# examples/Justfile — one target per runnable example.
+#
+# Forwarded from the top-level Justfile via `just examples <recipe>`.
+# Recipes assume the parent repo's `just gen` has run so the
+# examples/expected/* modules exist.
+#
+# Run individual examples:
+#   just examples quickstart        # encode/decode round-trip
+#   just examples grpc-loopback     # Greeter end-to-end, all 4 streaming flavors
+#   just examples dynamic-schemas   # pb.parse on a schema stored in a Tarantool space
+#   just examples json-http         # JSON-over-HTTP server (needs `tt rocks install http`)
+#
+# Run all non-interactive examples in sequence:
+#   just examples all
+
+set shell := ["bash", "-cu"]
+
+# Run from the repo root so the LUA_PATH globs land correctly.
+repo := justfile_directory() / ".."
+
+# Shared LUA_PATH: runtime/ + generated examples/expected/.
+lua_path := "./runtime/?/init.lua;./runtime/?.lua;./examples/expected/?.lua;./examples/expected/?/init.lua;;"
+
+# Show available example recipes.
+default:
+    @just --list --justfile {{justfile()}}
+
+# Run every non-interactive example in sequence.
+all: quickstart grpc-loopback dynamic-schemas
+
+# Encode/decode a quickstart.User round-trip. Drives the first-message howto.
+quickstart:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool -e ' \
+        local qs = require("full.quickstart.quickstart_pb") \
+        local pb = require("pb") \
+        local b = qs.User_encode({id = 7, name = "Alice", role = qs.Role.ADMIN, emails = {"a@x", "b@x"}}) \
+        print("encoded " .. #b .. " bytes") \
+        local u = qs.User_decode(b) \
+        print(u.id, u.name, u.role, u.emails[1], u.emails[2]) \
+        print(qs.User_text(u)) \
+    '
+
+# Greeter end-to-end via pb.grpc.loopback (all 4 streaming flavors).
+grpc-loopback:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool examples/grpc/client.lua
+
+# pb.parse on schema text stored in a Tarantool space (cache + evolution).
+dynamic-schemas:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool examples/dynamic/load_from_space.lua
+
+# Interactive JSON-over-HTTP server on :8080 (needs `tt rocks install http`).
+json-http:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool examples/http/json_api.lua
+
+# Print the net.box transport stub (skeleton, not runnable on its own).
+netbox-stub:
+    @cd {{repo}} && cat examples/grpc/transport_netbox_stub.lua

@@ -1,0 +1,56 @@
+{
+  "schemas": [
+    {
+      "schema": "hello.Person",
+      "results": [
+        {
+          "size_label": "10B",
+          "size_bytes": 10,
+          "encode": {"alloc_kb_per_op_full": 0.133, "alloc_kb_per_op_runtime": 0.133},
+          "decode": {"alloc_kb_per_op_full": 0.109, "alloc_kb_per_op_runtime": 0.109}
+        },
+        {
+          "size_label": "100B",
+          "size_bytes": 94,
+          "encode": {"alloc_kb_per_op_full": 0.133, "alloc_kb_per_op_runtime": 0.133},
+          "decode": {"alloc_kb_per_op_full": 0.109, "alloc_kb_per_op_runtime": 0.109}
+        },
+        {
+          "size_label": "1KB",
+          "size_bytes": 930,
+          "encode": {"alloc_kb_per_op_full": 1.313, "alloc_kb_per_op_runtime": 1.336},
+          "decode": {"alloc_kb_per_op_full": 0.953, "alloc_kb_per_op_runtime": 0.977}
+        },
+        {
+          "size_label": "10KB",
+          "size_bytes": 9634,
+          "encode": {"alloc_kb_per_op_full": 8.317, "alloc_kb_per_op_runtime": 8.340},
+          "decode": {"alloc_kb_per_op_full": 4.703, "alloc_kb_per_op_runtime": 4.727}
+        },
+        {
+          "size_label": "100KB",
+          "size_bytes": 96674,
+          "encode": {"alloc_kb_per_op_full": 128.497, "alloc_kb_per_op_runtime": 128.521},
+          "decode": {"alloc_kb_per_op_full": 32.703, "alloc_kb_per_op_runtime": 32.727}
+        }
+      ]
+    },
+    {
+      "schema": "proto2_basic.BenchPayload",
+      "results": [
+        {
+          "size_label": "min",
+          "size_bytes": 5,
+          "encode": {"alloc_kb_per_op_full": 0.102, "alloc_kb_per_op_runtime": 0.102},
+          "decode": {"alloc_kb_per_op_full": 0.219, "alloc_kb_per_op_runtime": 0.359}
+        },
+        {
+          "size_label": "mid",
+          "size_bytes": 609,
+          "encode": {"alloc_kb_per_op_full": 1.438, "alloc_kb_per_op_runtime": 1.438},
+          "decode": {"alloc_kb_per_op_full": 1.156, "alloc_kb_per_op_runtime": 2.313}
+        }
+      ]
+    }
+  ]
+}

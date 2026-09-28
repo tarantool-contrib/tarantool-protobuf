@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package c_nested;
+
+// 5-level chain of singular sub-messages. Used by the C-runtime tests
+// to verify recursion across non-trivial depth. Each level carries an
+// int32 so the encoded body at each level is non-empty (catches
+// off-by-one bugs in the length-prefix path).
+message L1 { L2 next = 1; int32 v = 2; }
+message L2 { L3 next = 1; int32 v = 2; }
+message L3 { L4 next = 1; int32 v = 2; }
+message L4 { L5 next = 1; int32 v = 2; }
+message L5 {              int32 v = 2; }

@@ -1,0 +1,29 @@
+/protoc-gen-tarantool
+/protoc-gen-tarantool-doc
+/dist/
+/.rocks/
+*.pb.go
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tarantool instance state. Generated when running examples or anything
+# that calls box.cfg{} from the working directory. Examples under
+# examples/dynamic/ point their memtx_dir/wal_dir/log at /tmp; older or
+# user-written scripts may leak state here.
+*.snap
+*.xlog
+*.vylog
+*.run
+*.pid
+512.lock
+
+# C-acceleration build output. Source under runtime/pb/c/ when
+# present is committed; the compiled module sits next to the Lua files
+# so require('pb.c_runtime') resolves it via LUA_CPATH.
+/runtime/pb/c_runtime.so
+/runtime/pb/c_runtime.dylib
+/runtime/pb/c/*.o
+.builds/go*.tar.gz

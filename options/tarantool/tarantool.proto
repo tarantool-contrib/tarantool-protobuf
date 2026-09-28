@@ -1,0 +1,21 @@
+// Custom protobuf options for protoc-gen-tarantool.
+//
+// To use, place this file on your protoc include path and add to your .proto:
+//
+//   import "tarantool/tarantool.proto";
+//   option (tarantool.lua_package) = "myapp.proto.foo";
+//
+syntax = "proto3";
+
+package tarantool;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/tarantool-contrib/tarantool-protobuf/options/tarantool;tarantoolpb";
+
+extend google.protobuf.FileOptions {
+  // Overrides the Lua require path for the generated module.
+  // If unset, the path is derived from the proto package + filename:
+  //   package foo.bar; file baz.proto -> "foo.bar.baz_pb"
+  string lua_package = 60001;
+}

@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package c_repeated;
+
+// Fixture for repeated + packed C-runtime acceptance.
+//
+// Carries packed (proto3 default), explicit [packed=false], length-
+// delimited (string/bytes — never packable), and repeated sub-message
+// shapes so the C runtime exercises every repeated dispatch branch
+// against the same mode=full reference.
+//
+// Field numbers cluster by encoding shape so a hand-decode of a small
+// encoded payload stays readable when debugging fixture drift.
+
+message Inner {
+  int32  v = 1;
+  string s = 2;
+}
+
+message Holder {
+  // Packed scalars (proto3 default). One per encoder branch.
+  repeated int32   packed_int32   = 1;
+  repeated int64   packed_int64   = 2;
+  repeated sint32  packed_sint32  = 3;
+  repeated uint32  packed_uint32  = 4;
+  repeated fixed32 packed_fixed32 = 5;
+  repeated fixed64 packed_fixed64 = 6;
+  repeated double  packed_double  = 7;
+  repeated float   packed_float   = 8;
+  repeated bool    packed_bool    = 9;
+
+  // Explicit unpacked — emits one tag per element.
+  repeated int32   unpacked_int32   = 20 [packed = false];
+  repeated fixed64 unpacked_fixed64 = 21 [packed = false];
+  repeated sint32  unpacked_sint32  = 22 [packed = false];
+
+  // Length-delimited element kinds — never packable.
+  repeated string strings = 30;
+  repeated bytes  blobs   = 31;
+
+  // Repeated sub-message — per-element tag + length-prefix + body.
+  repeated Inner messages = 40;
+}

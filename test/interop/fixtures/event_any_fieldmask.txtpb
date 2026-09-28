@@ -1,0 +1,11 @@
+# type: hello.Event
+title: "wrap"
+extension {
+  type_url: "type.googleapis.com/hello.Address"
+  value: "\n4Main\022\001X\030\001"
+}
+update_mask {
+  paths: "title"
+  paths: "extension"
+  paths: "tags"
+}

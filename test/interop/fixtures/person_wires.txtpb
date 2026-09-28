@@ -1,0 +1,7 @@
+# type: hello.Person
+name: "X"
+avatar: "\000\001\002\377"
+user_id: 18369917520866213889
+balance: -12345
+weight_kg: 72.5
+status: ERROR

@@ -1,0 +1,6 @@
+# conformance_test_runner --failure_list
+#
+# Empty as of 2026-05-16: the proto3 binary + JSON suite is at
+# 1493 ✓ / 1313 skipped / 0 expected failures / 0 unexpected.
+# The 1313 skipped are the proto2/editions message-type buckets we
+# don't generate Lua for; everything in scope passes.

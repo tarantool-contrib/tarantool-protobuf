@@ -1,0 +1,35 @@
+// Bench-only subset of examples/proto/hello.proto with go_package set.
+// Field numbers and wire format match the Lua version exactly so encoded
+// bytes are interchangeable between runtimes.
+syntax = "proto3";
+
+package hello;
+
+option go_package = "github.com/tarantool-protobuf/bench/go/pb/hellopb;hellopb";
+
+enum Status {
+  UNKNOWN = 0;
+  OK = 1;
+  ERROR = 2;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+  int32 zip = 3;
+  optional string apartment = 4;
+}
+
+message Person {
+  string name = 1;
+  int32 age = 2;
+  repeated string emails = 3;
+  Status status = 4;
+  Address address = 5;
+  repeated Person friends = 6;
+  repeated int32 lucky_numbers = 7;
+  bytes avatar = 8;
+  fixed64 user_id = 9;
+  sint32 balance = 10;
+  double weight_kg = 11;
+}

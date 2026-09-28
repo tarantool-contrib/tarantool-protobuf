@@ -1,0 +1,6 @@
+# conformance_test_runner --text_format_failure_list
+#
+# pb.text.decode + the negative-zero codec fix close the proto3
+# TextFormatInput suite: 416 ✓ / 18 skipped / 0 expected failures.
+# The 18 skipped tests are the residual proto2 message-type bucket
+# (TestAllTypesProto2 — we don't generate Lua for it).

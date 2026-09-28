@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime": {
+    "version": "LuaJIT",
+    "path": [
+      "runtime/?.lua",
+      "runtime/?/init.lua",
+      "examples/expected/?.lua",
+      "examples/expected/?/init.lua",
+      "test/?.lua",
+      "?.lua",
+      "?/init.lua"
+    ]
+  },
+  "diagnostics": {
+    "globals": [
+      "box"
+    ],
+    "disable": [
+      "lowercase-global"
+    ]
+  },
+  "workspace": {
+    "checkThirdParty": false,
+    "ignoreDir": [
+      ".rocks",
+      "protoc-gen-tarantool",
+      "docker",
+      "bench/starwing",
+      "bench/c_accel/*.dylib",
+      "bench/c_accel/*.so"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+# type: hello.Address
+street: "Pushkina 1"
+city: "Moscow"
+zip: 123456

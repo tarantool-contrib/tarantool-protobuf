@@ -1,0 +1,32 @@
+// Bench-only subset of test/proto/proto2_basic.proto with go_package set.
+// Same field numbers and wire format as the Lua-tested version.
+syntax = "proto2";
+
+package proto2_basic;
+
+option go_package = "github.com/tarantool-protobuf/bench/go/pb/proto2pb;proto2pb";
+
+message BenchPayload {
+  required int32 id            = 1;
+  optional string name         = 2 [default = "anonymous"];
+  optional int32 retries       = 3 [default = 3];
+  repeated int32 lucky_numbers = 4 [packed = true];
+  repeated string tags         = 5;
+  optional Inner inner         = 6;
+  optional group Stats = 7 {
+    optional int32 latency_ns = 8;
+    optional int32 attempts   = 9;
+  }
+
+  message Inner {
+    required string key = 1;
+    optional int32 weight = 2;
+  }
+
+  extensions 100 to 199;
+}
+
+extend BenchPayload {
+  optional int32  ext_count = 100;
+  optional string ext_label = 101;
+}

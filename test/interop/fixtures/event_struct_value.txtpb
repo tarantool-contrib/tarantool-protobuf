@@ -1,0 +1,15 @@
+# type: hello.Event
+# Single-key payload to avoid map-iteration order ambiguity. The multi-key
+# Struct cases are covered by struct_value_test.lua round-trip assertions;
+# this fixture pins our wire bytes to mainline protoc's output.
+title: "interop"
+payload {
+  fields { key: "region" value { string_value: "us-east-1" } }
+}
+attribute { string_value: "hi" }
+tags {
+  values { number_value: 1 }
+  values { string_value: "two" }
+  values { bool_value: true }
+  values { null_value: NULL_VALUE }
+}

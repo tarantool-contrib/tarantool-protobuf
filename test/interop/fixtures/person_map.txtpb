@@ -1,0 +1,5 @@
+# type: hello.Person
+name: "MapHolder"
+ages_by_nickname { key: "alice" value: 30 }
+ages_by_nickname { key: "bob"   value: 25 }
+addresses_by_label { key: "home" value: { street: "Main" city: "X" zip: 1 } }

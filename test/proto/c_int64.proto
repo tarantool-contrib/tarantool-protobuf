@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package c_int64;
+
+// Fixture for 64-bit cdata fidelity.
+//
+// Carries one singular field per 64-bit proto kind. The C runtime
+// must encode/decode each through LuaJIT int64_t/uint64_t cdata —
+// never narrow to a Lua double — so values past 2^53 round-trip
+// byte-equal and remain cdata after decode.
+//
+// Same convention as Tarantool's msgpackffi, net.box, box.tuple,
+// and the built-in protobuf. See runtime/pb/wire.lua decoder
+// comments for the per-kind type mapping.
+
+message Wide {
+  int64    a_int64    = 1;   // varint, sign-extended
+  uint64   a_uint64   = 2;   // varint
+  sint64   a_sint64   = 3;   // zigzag varint
+  fixed64  a_fixed64  = 4;   // 8-byte LE unsigned
+  sfixed64 a_sfixed64 = 5;   // 8-byte LE signed
+}

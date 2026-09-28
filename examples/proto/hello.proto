@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package hello;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/field_mask.proto";
+
+// option (tarantool.lua_package) = "hello.foo";  // optional override
+
+enum Status {
+  UNKNOWN = 0;
+  OK = 1;
+  ERROR = 2;
+}
+
+// Demo message for oneof handling.
+message Result {
+  int32 id = 1;
+  oneof outcome {
+    string text = 2;
+    int32 code = 3;
+    Address details = 4;
+  }
+}
+
+// gRPC service demo. Covers unary + all three streaming flavors so the
+// loopback transport exercises every codegen branch.
+message HelloRequest {
+  string name = 1;
+}
+message HelloReply {
+  string greeting = 1;
+}
+service Greeter {
+  rpc SayHello(HelloRequest) returns (HelloReply);
+  rpc Echo(HelloRequest) returns (HelloRequest);
+  // Server-streaming: one request, server pushes N replies.
+  rpc StreamHellos(HelloRequest) returns (stream HelloReply);
+  // Client-streaming: client pushes N requests, server returns one reply.
+  rpc CollectHellos(stream HelloRequest) returns (HelloReply);
+  // Bidirectional: both sides push and pull independently.
+  rpc Chat(stream HelloRequest) returns (stream HelloReply);
+}
+
+// Demo message exercising well-known types.
+message Event {
+  string title = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Duration duration = 3;
+  google.protobuf.Empty ack = 4;
+  google.protobuf.Int32Value retry_count = 5;
+  google.protobuf.StringValue note = 6;
+  google.protobuf.BoolValue is_admin = 7;
+  google.protobuf.Struct payload = 8;
+  google.protobuf.Value attribute = 9;
+  google.protobuf.ListValue tags = 10;
+  google.protobuf.Any extension = 11;
+  google.protobuf.FieldMask update_mask = 12;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+  int32 zip = 3;
+  // Explicit-optional: presence is meaningful (distinct from default).
+  optional string apartment = 4;
+}
+
+message Person {
+  string name = 1;
+  int32 age = 2;
+  repeated string emails = 3;
+  Status status = 4;
+  Address address = 5;
+  repeated Person friends = 6;     // self-reference
+  repeated int32 lucky_numbers = 7; // packed by default
+  bytes avatar = 8;
+  fixed64 user_id = 9;
+  sint32 balance = 10;              // zigzag
+  double weight_kg = 11;
+
+  // Map fields
+  map<string, int32> ages_by_nickname = 13;        // scalar value
+  map<int32, string> nickname_by_age = 14;         // scalar key + value
+  map<string, Address> addresses_by_label = 15;    // message value
+}

@@ -1,0 +1,79 @@
+syntax = "proto2";
+
+package proto2_basic;
+
+message Defaults {
+  optional int32 i = 1 [default = 17];
+  optional string s = 2 [default = "hello"];
+  optional bool b = 3 [default = true];
+  optional float f = 4 [default = 3.5];
+  optional double d = 5 [default = 1.5];
+  optional int64 i64 = 6 [default = 1234567890123];
+  optional uint64 u64 = 7 [default = 17];
+  optional bytes by = 8 [default = "\x00\xff"];
+  optional Color color = 9 [default = GREEN];
+
+  enum Color {
+    RED = 0;
+    GREEN = 1;
+    BLUE = 2;
+  }
+}
+
+message Cardinality {
+  required int32 r = 1;
+  optional int32 o = 2;
+  repeated int32 packed_default = 3;
+  repeated int32 explicitly_packed = 4 [packed = true];
+  repeated int32 explicitly_unpacked = 5 [packed = false];
+}
+
+message Nested {
+  required Inner inner = 1;
+  optional Inner inner_opt = 2;
+
+  message Inner {
+    required int32 x = 1;
+  }
+}
+
+// Proto2 legacy groups. Wire format uses SGROUP (3) / EGROUP (4) tag
+// pairs instead of a length-prefixed message body.
+message WithGroup {
+  optional group SingleGroup = 1 {
+    optional int32 a = 2;
+    optional string s = 3;
+  }
+  repeated group RepGroup = 4 {
+    optional int32 n = 5;
+  }
+}
+
+// Bench fixture exercising the proto2-only shapes: required scalar,
+// optional repeated, custom default, a `group` field, and a nested
+// message. Used by bench/bench.lua against both modes.
+message BenchPayload {
+  required int32 id            = 1;
+  optional string name         = 2 [default = "anonymous"];
+  optional int32 retries       = 3 [default = 3];
+  repeated int32 lucky_numbers = 4 [packed = true];
+  repeated string tags         = 5;
+  optional Inner inner         = 6;
+  optional group Stats = 7 {
+    optional int32 latency_ns = 8;
+    optional int32 attempts   = 9;
+  }
+
+  message Inner {
+    required string key = 1;
+    optional int32 weight = 2;
+  }
+
+  // Reserve a range for the file-level extensions declared below.
+  extensions 100 to 199;
+}
+
+extend BenchPayload {
+  optional int32  ext_count   = 100;
+  optional string ext_label   = 101;
+}
