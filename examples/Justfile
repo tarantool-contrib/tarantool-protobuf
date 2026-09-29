@@ -8,7 +8,11 @@
 #   just examples quickstart        # encode/decode round-trip
 #   just examples grpc-loopback     # Greeter end-to-end, all 4 streaming flavors
 #   just examples dynamic-schemas   # pb.parse on a schema stored in a Tarantool space
+#   just examples tuple-range       # etcd-style Range response built from space tuples
 #   just examples json-http         # JSON-over-HTTP server (needs `tt rocks install http`)
+#
+# With PB_ENABLE_C=1 set (and `just build-c` run), the examples go
+# through the C runtime.
 #
 # Run all non-interactive examples in sequence:
 #   just examples all
@@ -21,16 +25,19 @@ repo := justfile_directory() / ".."
 # Shared LUA_PATH: runtime/ + generated examples/expected/.
 lua_path := "./runtime/?/init.lua;./runtime/?.lua;./examples/expected/?.lua;./examples/expected/?/init.lua;;"
 
+# Where `just build-c` puts pb.c_runtime; only loaded under PB_ENABLE_C=1.
+lua_cpath := "./runtime/?.dylib;./runtime/?.so;;"
+
 # Show available example recipes.
 default:
     @just --list --justfile {{justfile()}}
 
 # Run every non-interactive example in sequence.
-all: quickstart grpc-loopback dynamic-schemas
+all: quickstart grpc-loopback dynamic-schemas tuple-range
 
 # Encode/decode a quickstart.User round-trip. Drives the first-message howto.
 quickstart:
-    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool -e ' \
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool -e ' \
         local qs = require("full.quickstart.quickstart_pb") \
         local pb = require("pb") \
         local b = qs.User_encode({id = 7, name = "Alice", role = qs.Role.ADMIN, emails = {"a@x", "b@x"}}) \
@@ -42,15 +49,19 @@ quickstart:
 
 # Greeter end-to-end via pb.grpc.loopback (all 4 streaming flavors).
 grpc-loopback:
-    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool examples/grpc/client.lua
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/grpc/client.lua
 
 # pb.parse on schema text stored in a Tarantool space (cache + evolution).
 dynamic-schemas:
-    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool examples/dynamic/load_from_space.lua
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/dynamic/load_from_space.lua
+
+# Range response straight from space tuples (pb.tuple), and a put back.
+tuple-range:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/tuple/kv_range.lua
 
 # Interactive JSON-over-HTTP server on :8080 (needs `tt rocks install http`).
 json-http:
-    @cd {{repo}} && LUA_PATH="{{lua_path}}" tarantool examples/http/json_api.lua
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/http/json_api.lua
 
 # Print the net.box transport stub (skeleton, not runnable on its own).
 netbox-stub:
