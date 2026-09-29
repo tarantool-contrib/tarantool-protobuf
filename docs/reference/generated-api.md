@@ -63,9 +63,12 @@ surface.
 | nested message | nested Lua table (recursive) |
 | `oneof` member | only the active member is present in the table |
 
-**Absence vs default:** proto3 implicit fields decode as their default
-(`0` / `""` / `false` / `{}`); explicit-`optional` fields stay `nil`
-when absent. Use the `_has_<field>` helper to disambiguate.
+**Absence vs default:** a field that is not on the wire decodes to
+`nil` whatever its kind — defaults are not materialized, so read an
+absent implicit field as its default yourself (`t.count or 0`). A field
+on the wire holding its default comes back with that value. For
+explicit-`optional` fields the `_has_<field>` helper tells presence
+apart from the default.
 
 **`box.NULL`-equivalent:** `pb.NULL` is the canonical null sentinel
 for `google.protobuf.Value` null and JSON null. Prefer it over
