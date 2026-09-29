@@ -410,3 +410,54 @@ for _, mode in ipairs({'full', 'runtime'}) do
             conv._check_schema, conv)
     end
 end
+
+-- ---------------------------------------------------------------------
+-- Descriptors built at run time
+-- ---------------------------------------------------------------------
+
+local gd = t.group('tuple_bind.dynamic')
+
+gd.before_all(function() helper.ensure_box() end)
+
+gd.test_parsed_descriptor_binds = function()
+    local m = pb.parse([[
+        syntax = "proto3";
+        message M { int32 a = 1; string b = 2; }
+    ]])
+    local d = m.M_descriptor
+    t.assert_is(d.field_by_name, nil, 'pb.parse builds no field_by_name')
+    local s = helper.make_space('tuple_parsed', {
+        {name = 'a',     type = 'integer'},
+        {name = 'b_col', type = 'string'},
+    })
+    local p = pb.tuple.bind(d, s, {columns = {b = 'b_col'}}).plan
+    t.assert_equals(p.name, {'a', 'b'})
+    t.assert_equals(p.column, {1, 2})
+    t.assert_is(d.field_by_name, nil, 'bind leaves the descriptor alone')
+    t.assert_error_msg_contains("columns: M has no field 'c'",
+        pb.tuple.bind, d, s, {columns = {c = 'b_col'}})
+    t.assert_error_msg_contains("omit: M has no field 'c'",
+        pb.tuple.bind, d, s, {omit = {'c'}})
+end
+
+gd.test_descriptor_set_binds = function()
+    local fio = require('fio')
+    local root = fio.abspath(fio.pathjoin(
+        fio.dirname(debug.getinfo(1, 'S').source:sub(2)), '..'))
+    local out = fio.pathjoin(fio.tempdir(), 'kv.descpb')
+    local cmd = string.format(
+        'protoc --descriptor_set_out=%q -I %q -I %q %q', out,
+        fio.pathjoin(root, 'examples', 'proto'), fio.pathjoin(root, 'options'),
+        fio.pathjoin(root, 'examples', 'proto', 'kv.proto'))
+    local rc = os.execute(cmd)
+    t.assert(rc == 0 or rc == true, cmd)
+    local f = assert(io.open(out, 'rb'))
+    local bytes = f:read('*a')
+    f:close()
+    local set = pb.from_pb(bytes)
+    local d = set.lookup('kv.KeyValue')
+    t.assert_not_equals(d, nil)
+    local s = helper.make_space('tuple_kv', KV_FORMAT)
+    local p = pb.tuple.bind(d, s, {columns = {lease = 'lease_id'}}).plan
+    t.assert_equals(p.column, {1, 2, 3, 4, 5, 6})
+end

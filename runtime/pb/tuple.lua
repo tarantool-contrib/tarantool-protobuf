@@ -270,10 +270,20 @@ local function sorted_fields(desc)
     return list
 end
 
+-- A message descriptor from any producer: generated code, pb.parse or
+-- pb.from_pb. Only `name` and `fields` are relied on; the lookup tables
+-- pb.finalize_message adds (field_by_name, ...) are not built by every
+-- producer.
 local function is_message_desc(desc)
     return type(desc) == 'table' and type(desc.name) == 'string'
         and type(desc.fields) == 'table'
-        and type(desc.field_by_name) == 'table'
+end
+
+-- {[field name] = true} for the fields of `desc`.
+local function field_name_set(desc)
+    local set = {}
+    for _, f in ipairs(desc.fields) do set[f.name] = true end
+    return set
 end
 
 -- ---------------------------------------------------------------------------
@@ -511,13 +521,14 @@ local function normalize_opts(desc, opts)
             bind_error("unknown option '%s'", tostring(k))
         end
     end
+    local known = field_name_set(desc)
     local columns, omit = {}, {}
     if opts.columns ~= nil then
         if type(opts.columns) ~= 'table' then
             bind_error('columns must be a table, got %s', type(opts.columns))
         end
         for field, column in pairs(opts.columns) do
-            if desc.field_by_name[field] == nil then
+            if known[field] == nil then
                 bind_error("columns: %s has no field '%s'", desc.name,
                            tostring(field))
             end
@@ -533,7 +544,7 @@ local function normalize_opts(desc, opts)
             bind_error('omit must be an array, got %s', type(opts.omit))
         end
         for _, field in ipairs(opts.omit) do
-            if desc.field_by_name[field] == nil then
+            if known[field] == nil then
                 bind_error("omit: %s has no field '%s'", desc.name,
                            tostring(field))
             end
