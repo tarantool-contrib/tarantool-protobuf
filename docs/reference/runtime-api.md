@@ -34,6 +34,10 @@ pb.register(desc) / pb.lookup(name)       -- type registry for Any
 pb.grpc.loopback(server)                  -- in-process gRPC transport
 pb.grpc.multiplex({srv1, srv2, ...})      -- fan multiple servers
 
+local conv  = pb.tuple.bind(desc, space [, opts]) -- message <-> space format
+conv:encode(tuple)                        -- box.tuple -> wire bytes
+conv:decode(bytes)                        -- wire bytes -> box.tuple
+
 pb.field_names(t)                         -- strict field-name table (codegen)
 pb.enum(name, {RED=0, ...})               -- enum descriptor (codegen)
 pb.finalize_message(desc)                 -- finalize a hand-rolled descriptor
@@ -229,6 +233,61 @@ The transport *contract* (`:unary`, `:server_stream`, `:client_stream`,
 `:bidi`) is documented in
 [../specs/grpc_transports.md](../specs/grpc_transports.md). Any table
 implementing those four methods plugs into a generated client.
+
+## Tuple bridge — `pb.tuple`
+
+Converts between Tarantool tuples and wire bytes without a Lua table
+per row. The walkthrough, with the binding rules, the type
+compatibility list and a runnable example, is
+[how-to: tuples to protobuf and back](../howto/14-tuples.md); the full
+contract is the header comment of `runtime/pb/tuple.lua`.
+
+### `pb.tuple.bind(desc, space [, opts]) -> conv`
+
+Bind a message descriptor (from generated code, `pb.parse`,
+`pb.from_pb` or a hand-rolled one) to the format of `space` (a space
+object, e.g. `box.space.kv`). Top-level fields bind to columns by
+name.
+
+- `opts.columns = {[field name] = column name}` — renames.
+- `opts.omit = {field name, ...}` — fields left out of the binding.
+
+Any other option is an error. `bind` raises (`pb.tuple: ...`) on every
+descriptor/format mismatch: a field with no column, two fields on one
+column, an incompatible field and column type, a field with explicit
+presence in a non-nullable column, and the rest listed in the how-to.
+After a successful bind, conversions raise only per value.
+
+### Converter methods
+
+Every method first checks the box schema version. When it moved since
+the plan was compiled, the converter rebinds against the space's
+current format; it raises if the space was dropped or renamed, or if
+the new format no longer binds.
+
+| Method | Returns | Notes |
+|---|---|---|
+| `conv:encode(tuple)` | `string` | Wire bytes of the message the tuple holds. `tuple` is any `box.tuple` laid out per the format. |
+| `conv:encode_repeated(field_no, tuples)` | `string` | For each tuple: the tag of `field_no` (length-delimited), the length, the encoded row. Splices rows into an enclosing message as a `repeated` field. `field_no` is an integer in `[1, 2^29 - 1]`; `tuples` is a Lua array of `box.tuple`; an empty array gives `''`. |
+| `conv:decode(bytes)` | `box.tuple` | Laid out per the format but without it attached, so fields are read by number. Ends at the last bound column. |
+| `conv:insert(bytes)` | `box.tuple` | `decode`, then `space:insert`; the stored tuple. |
+| `conv:replace(bytes)` | `box.tuple` | `decode`, then `space:replace`; the stored tuple. |
+
+Errors from the methods:
+
+- an argument of the wrong type (`pb.tuple: expected a box.tuple, got
+  table`);
+- a value the field or column cannot take, naming the field, the
+  message and the column (`pb.tuple: field 'lease' of kv.KeyValue
+  (column 'lease_id'): value -1LL does not fit column type unsigned`);
+- on decode, malformed wire bytes (the codec's error), and a
+  non-nullable column that no field binds to;
+- on `insert` / `replace`, box errors such as a duplicate key, as box
+  raises them.
+
+With `PB_ENABLE_C=1` and the C runtime loaded (Tarantool 3.5 or later),
+all five methods run in C with the same results and the same error
+messages. `bind` stays in Lua.
 
 ## Sentinels and coercions
 

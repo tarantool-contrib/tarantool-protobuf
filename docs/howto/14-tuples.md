@@ -368,6 +368,8 @@ encode does not depend on the order.
 
 ## What's next
 
+- [Reference: runtime API → `pb.tuple`](../reference/runtime-api.md#tuple-bridge--pbtuple)
+  — signatures, return values and errors.
 - `runtime/pb/tuple.lua` — the header comment is the full contract:
   the binding rules, the plan the converters execute, and every
   conversion rule.
