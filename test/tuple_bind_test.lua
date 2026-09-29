@@ -1,6 +1,7 @@
 -- pb.tuple.bind: descriptor/space-format validation and the plan it
 -- compiles. Parameterized over both codegen modes.
 local t = require('luatest')
+local ffi = require('ffi')
 local pb = require('pb')
 local helper = require('tuple_helper')
 
@@ -433,12 +434,39 @@ for _, mode in ipairs({'full', 'runtime'}) do
 
     g.test_schema_version_changes_on_format = function()
         local s = helper.make_space('tuple_kv', KV_FORMAT)
-        local before = box.internal.schema_version()
+        local before = box.info.schema_version
         local format = table.deepcopy(KV_FORMAT)
         table.insert(format, {name = 'extra', type = 'any',
                               is_nullable = true})
         s:format(format)
-        t.assert_not_equals(box.internal.schema_version(), before)
+        t.assert_not_equals(box.info.schema_version, before)
+        -- the C API reports the same version
+        pcall(ffi.cdef, 'uint32_t box_schema_version(void);')
+        t.assert_equals(tonumber(ffi.C.box_schema_version()),
+                        box.info.schema_version)
+    end
+
+    -- box.internal.schema_version is deprecated (it logs a warning on
+    -- every call in Tarantool 3.x); bind and rebind read
+    -- box.info.schema_version.
+    g.test_no_deprecated_schema_version = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local internal = box.internal.schema_version
+        box.internal.schema_version = function()
+            error('box.internal.schema_version called', 0)
+        end
+        local ok, err = pcall(function()
+            local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                       {columns = {lease = 'lease_id'}})
+            local format = table.deepcopy(KV_FORMAT)
+            table.insert(format, {name = 'extra', type = 'any',
+                                  is_nullable = true})
+            s:format(format)
+            conv:_check_schema()
+            t.assert_equals(conv.schema_version, box.info.schema_version)
+        end)
+        box.internal.schema_version = internal
+        t.assert(ok, tostring(err))
     end
 
     g.test_rebinds_after_format_change = function()
@@ -457,7 +485,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
         conv:_check_schema()
         t.assert_is_not(conv.plan, old_plan)
         t.assert_equals(conv.plan.column[slot(conv.plan, 'lease')], 7)
-        t.assert_equals(conv.schema_version, box.internal.schema_version())
+        t.assert_equals(conv.schema_version, box.info.schema_version)
     end
 
     g.test_rebind_raises_on_incompatible_format = function()

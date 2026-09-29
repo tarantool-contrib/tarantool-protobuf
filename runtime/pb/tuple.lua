@@ -640,13 +640,17 @@ M.compile_node = compile_node
 -- bind
 -- ---------------------------------------------------------------------------
 
+-- The box schema version: it moves on every DDL, a space format change
+-- included. (box.internal.schema_version, the older spelling, logs a
+-- deprecation warning on each call in Tarantool 3.x.) Read at bind and
+-- on every conversion, where box is configured.
 local function schema_version()
-    local internal = box.internal
-    if internal == nil or internal.schema_version == nil then
-        error('pb.tuple: box.internal.schema_version() is not available '
-              .. 'in this Tarantool', 0)
+    local version = box.info.schema_version
+    if type(version) ~= 'number' then
+        error('pb.tuple: box.info.schema_version is not available in this '
+              .. 'Tarantool', 0)
     end
-    return internal.schema_version()
+    return version
 end
 
 local KNOWN_OPTS = {columns = true, omit = true}
