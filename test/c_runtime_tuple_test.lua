@@ -167,6 +167,7 @@ local ALL_PROTO = [[
     import "google/protobuf/timestamp.proto";
     enum E { E0 = 0; E1 = 1; E2 = 2; }
     message Leaf { string s = 1; int32 i = 2; }
+    message Nothing {}
     message All {
         int32 i32 = 1; int64 i64 = 2; uint32 u32 = 3; uint64 u64 = 4;
         sint32 s32 = 5; sint64 s64 = 6; fixed32 f32 = 7; fixed64 f64 = 8;
@@ -195,6 +196,7 @@ local ALL_PROTO = [[
         oneof pick { int32 p_i = 50; string p_s = 51; Leaf p_leaf = 52; }
         All self = 60;
         repeated All selves = 61;
+        Nothing nothing = 62;
         uint32 far = 1000;
     }
 ]]
@@ -510,6 +512,12 @@ for _, mode in ipairs({'full', 'runtime'}) do
         check_repeated_parity(conv, 16, {tuples[1],
             box.tuple.new({varbinary.new(''), 0, 0, 0})})
         check_repeated_parity(conv, 2, {})
+        -- a projection with no field at all
+        local none = pb.tuple.bind(kv.KeyValue_descriptor, s, {omit = {
+            'key', 'create_revision', 'mod_revision', 'version', 'value',
+            'lease'}})
+        check_parity(none, tuples[1], 'no field')
+        check_repeated_parity(none, 3, tuples, 'no field')
         for _, bad in ipairs({0, -1, 1.5, 536870912, 0 / 0, math.huge,
                               'kvs', '2', {}, NULL, true}) do
             check_repeated_parity(conv, bad, tuples, tostring(bad))
@@ -687,6 +695,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
             {str = LONG, self = {str = LONG, leaf = {s = LONG}},
              r_str = {LONG, LONG}},
             {far = 1},
+            {nothing = setmetatable({}, MAP_MT)}, {nothing = {x = 1}},
+            {nothing = {}},
             {fl = 1e-46, db = 1e-320},
         }
         for _, fv in ipairs(FLOATS) do
