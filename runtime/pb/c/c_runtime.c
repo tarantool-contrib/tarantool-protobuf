@@ -3108,7 +3108,10 @@ static const struct luaL_Reg plan_mt_methods[] = {
 	{NULL, NULL},
 };
 
-LUA_API int
+/* The module is built with -fvisibility=hidden (see Makefile) and
+ * LUA_API expands to plain `extern` outside Windows, so the entry point
+ * has to be made visible explicitly or `require` cannot find it. */
+LUA_API __attribute__((visibility("default"))) int
 luaopen_pb_c_runtime(lua_State *L)
 {
 	/* Register the plan metatable. */
