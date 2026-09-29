@@ -30,6 +30,7 @@ build = {
     type = "builtin",
     modules = {
         ["pb"]               = "runtime/pb/init.lua",
+        ["pb.c_loader"]      = "runtime/pb/c_loader.lua",
         ["pb.codec"]         = "runtime/pb/codec.lua",
         ["pb.descriptor_pb"] = "runtime/pb/descriptor_pb.lua",
         ["pb.dynamic"]       = "runtime/pb/dynamic.lua",

@@ -20,15 +20,9 @@ local pbtext  = require('pb.text')
 local lazy    = require('pb.lazy')
 local tuple   = require('pb.tuple')
 
--- C-acceleration opt-in. Single switch is PB_ENABLE_C=1 in the environment,
--- evaluated once at module load. A failed require (no .so built, ABI
--- mismatch, missing module.h) falls back silently to the pure-Lua path
--- — see docs/specs/c_accel_compat.md § Activation for the contract.
-local c_runtime
-if os.getenv('PB_ENABLE_C') == '1' then
-    local ok, mod = pcall(require, 'pb.c_runtime')
-    if ok then c_runtime = mod end
-end
+-- C-acceleration opt-in: PB_ENABLE_C=1 and a loadable pb.c_runtime. The
+-- decision lives in pb.c_loader, shared with pb.tuple.
+local c_runtime = require('pb.c_loader').runtime
 
 -- High-level codec entry points. When the C runtime is loaded, dispatch
 -- on desc.c_plan and lazily compile it on first call. Lazy compile is

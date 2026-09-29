@@ -736,13 +736,9 @@ end
 local Conv = {}
 Conv.__index = Conv
 
--- The C encoder, loaded under the switch pb/init.lua uses: PB_ENABLE_C=1
--- and pb.c_runtime loadable.
-local c_runtime
-if os.getenv('PB_ENABLE_C') == '1' then
-    local ok, mod = pcall(require, 'pb.c_runtime')
-    if ok then c_runtime = mod end
-end
+-- The C transcoder, active under the same switch as the codec
+-- (pb.c_loader): PB_ENABLE_C=1 and pb.c_runtime loadable.
+local c_runtime = require('pb.c_loader').runtime
 
 -- Compile the top-level plan of `conv` against `space`'s current format.
 local function compile_plan(conv, space)

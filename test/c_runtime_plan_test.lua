@@ -37,6 +37,16 @@ function g_loaded.test_loaded_when_enabled()
         'PB_ENABLE_C=1 but pb.c_runtime is nil')
 end
 
+-- The codec and pb.tuple take the C runtime from the same place, so they
+-- can never disagree on whether it is active.
+function g_loaded.test_one_switch_for_codec_and_tuple()
+    t.assert(rawequal(pb.c_runtime, require('pb.c_loader').runtime))
+    local fio = require('fio')
+    local src = fio.open('runtime/pb/tuple.lua'):read()
+    t.assert_str_contains(src, "require('pb.c_loader').runtime")
+    t.assert_not_str_contains(src, "os.getenv('PB_ENABLE_C')")
+end
+
 -- Run each test against both codegen modes — c_plan is attached to the
 -- descriptor regardless of mode, so both pick up the same compile path.
 for _, mode in ipairs({'full', 'runtime'}) do
