@@ -1418,15 +1418,20 @@ skip_field_entry = function(S, depth, desc, result, seen)
             -- The bracket name is the extension's fully-qualified field
             -- name (lowercase); using the type name (CamelCase) is a
             -- text-format parse error per the spec.
-            local v = parse_value_for_field(S, ext, depth)
             local exts = result._extensions
             if exts == nil then exts = {}; result._extensions = exts end
+            local prev = exts[ext.full_name]
             if ext.repeated then
-                local list = exts[ext.full_name]
-                if list == nil then list = {}; exts[ext.full_name] = list end
-                list[#list + 1] = v
+                local v = parse_value_for_field(S, ext, depth)
+                if prev == nil then prev = {}; exts[ext.full_name] = prev end
+                prev[#prev + 1] = v
+            elseif (ext.kind == 'message' or ext.kind == 'group')
+                    and prev ~= nil and ext.message.decode == nil
+                    and ext.message.text_decode == nil then
+                -- Merge into the previous occurrence, as for fields.
+                parse_message_field_value(S, ext.message, depth, prev)
             else
-                exts[ext.full_name] = v
+                exts[ext.full_name] = parse_value_for_field(S, ext, depth)
             end
         elseif desc ~= nil then
             -- Bracket name resolved neither as Any nor as a known
@@ -1563,23 +1568,30 @@ skip_field_entry = function(S, depth, desc, result, seen)
             err(S, ('non-repeated field %q set more than once'):
                 format(field.name))
         end
-        local v = parse_value_for_field(S, field, depth)
-        clear_oneof_siblings(result, field)
-        if (kind == 'message' or kind == 'group') and result[field.name] ~= nil then
-            -- text-format spec: repeated singular sub-messages merge. We
-            -- approximate by shallow-merging fields; sufficient for the
-            -- conformance corpus shapes.
-            local prev = result[field.name]
-            for k, nv in pairs(v) do prev[k] = nv end
+        local prev = result[field.name]
+        if (kind == 'message' or kind == 'group') and prev ~= nil
+                and field.message.decode == nil
+                and field.message.text_decode == nil then
+            -- A repeated singular sub-message merges into the previous
+            -- occurrence, the same as on the binary wire: parse the body
+            -- straight into the existing table, so repeated fields append,
+            -- nested messages merge and scalars take the last value. The
+            -- body gets a fresh `seen`, so a scalar repeated across two
+            -- occurrences is last-wins rather than a duplicate. WKTs with
+            -- a custom decode produce opaque values and are replaced.
+            parse_message_field_value(S, field.message, depth, prev)
         else
-            result[field.name] = v
+            result[field.name] = parse_value_for_field(S, field, depth)
+            clear_oneof_siblings(result, field)
         end
         if seen ~= nil then seen[field.name] = true end
     end
     if not accept_punct(S, ',') then accept_punct(S, ';') end
 end
 
-parse_message_field_value = function(S, msg_desc, depth)
+-- `into`, when given, is an already-decoded message the body is parsed
+-- into (merge); otherwise a fresh table is created.
+parse_message_field_value = function(S, msg_desc, depth, into)
     local opener
     if S.tok_kind ~= 'punct' or (S.tok_value ~= '{' and S.tok_value ~= '<') then
         err(S, ('expected { for message field, got %s %q'):format(
@@ -1594,7 +1606,7 @@ parse_message_field_value = function(S, msg_desc, depth)
         expect_punct(S, closer)
         return v
     end
-    local inner = {}
+    local inner = into or {}
     parse_message_body(S, msg_desc, inner, depth + 1)
     expect_punct(S, closer)
     return inner

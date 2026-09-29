@@ -138,3 +138,97 @@ for _, mode in ipairs(MODES) do
             hex(len(RECURSIVE, ext_field(8))))
     end
 end
+
+-- The same rule in the text format: `recursive_message { … }` given twice
+-- merges into one message. The reference C++ parser refuses the second
+-- occurrence, but the conformance suite asks for the merge
+-- (TestTextFormatPerformanceMergeMessageWithRepeatedField*, run only with
+-- --performance) and it keeps text and binary decoding in agreement.
+local pbtext = require('pb.text')
+
+for _, mode in ipairs(MODES) do
+    local g = t.group('merge_text.' .. mode)
+    local p3 = require(mode .. '.protobuf_test_messages.proto3.test_messages_proto3_pb')
+    local p2 = require(mode .. '.protobuf_test_messages.proto2.test_messages_proto2_pb')
+
+    local SCHEMAS = {
+        proto3 = {p3.TestAllTypesProto3_descriptor, p3.TestAllTypesProto3_encode},
+        proto2 = {p2.TestAllTypesProto2_descriptor, p2.TestAllTypesProto2_encode},
+    }
+
+    -- One case per field type the conformance performance tests cover.
+    local REPEATED = {
+        {'repeated_bool',   'true',  true},
+        {'repeated_double', '123',   123},
+        {'repeated_uint32', '123',   123},
+        {'repeated_uint64', '123',   123ULL},
+        {'repeated_string', '"foo"', 'foo'},
+        {'repeated_bytes',  '"foo"', 'foo'},
+    }
+
+    for name, s in pairs(SCHEMAS) do
+        local desc, encode = s[1], s[2]
+
+        for _, c in ipairs(REPEATED) do
+            local field, lit, want = c[1], c[2], c[3]
+            g['test_repeated_' .. field .. '_concatenates_' .. name] = function()
+                local n = 1000
+                local one = ('recursive_message { %s: %s }'):format(field, lit)
+                local msg = pbtext.decode(desc, one:rep(n, ' '))
+                local list = msg.recursive_message[field]
+                t.assert_equals(#list, n)
+                t.assert_equals(list[1], want)
+                t.assert_equals(list[n], want)
+
+                -- Equal to the message the conformance test expects.
+                local expected = pbtext.decode(desc, ('recursive_message { %s }')
+                    :format((('%s: %s'):format(field, lit)):rep(n, ' ')))
+                t.assert_equals(hex(encode(msg)), hex(encode(expected)))
+            end
+        end
+
+        g['test_nested_messages_merge_' .. name] = function()
+            local msg = pbtext.decode(desc, [[
+                recursive_message { recursive_message { repeated_int32: 1 } }
+                recursive_message { recursive_message { repeated_int32: 2 } }
+            ]])
+            t.assert_equals(msg.recursive_message.recursive_message.repeated_int32,
+                {1, 2})
+        end
+
+        -- Two occurrences each setting a scalar once: last-wins, as on the
+        -- binary wire. Setting it twice inside one body is still an error.
+        g['test_scalar_across_occurrences_is_last_wins_' .. name] = function()
+            local msg = pbtext.decode(desc, [[
+                recursive_message { optional_int32: 1 optional_string: "a" }
+                recursive_message { optional_int32: 2 }
+            ]])
+            t.assert_equals(msg.recursive_message.optional_int32, 2)
+            t.assert_equals(msg.recursive_message.optional_string, 'a')
+
+            t.assert_error_msg_contains('set more than once', pbtext.decode,
+                desc, 'recursive_message { optional_int32: 1 optional_int32: 2 }')
+        end
+
+        g['test_later_oneof_member_clears_earlier_sibling_' .. name] = function()
+            local msg = pbtext.decode(desc, [[
+                recursive_message { oneof_string: "x" }
+                recursive_message { oneof_uint32: 5 }
+            ]])
+            t.assert_equals(msg.recursive_message.oneof_uint32, 5)
+            t.assert_equals(msg.recursive_message.oneof_string, nil)
+        end
+    end
+
+    -- A message-typed proto2 extension given twice merges the same way.
+    g.test_message_extension_merges = function()
+        local desc = p2.TestAllTypesProto2_descriptor
+        local msg = pbtext.decode(desc, [[
+            [protobuf_test_messages.proto2.groupfield] { group_int32: 1 }
+            [protobuf_test_messages.proto2.groupfield] { group_uint32: 2 }
+        ]])
+        local gf = msg._extensions['protobuf_test_messages.proto2.groupfield']
+        t.assert_equals(gf.group_int32, 1)
+        t.assert_equals(gf.group_uint32, 2)
+    end
+end
