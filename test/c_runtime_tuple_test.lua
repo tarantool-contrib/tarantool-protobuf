@@ -818,6 +818,112 @@ for _, mode in ipairs({'full', 'runtime'}) do
 end
 
 -- ---------------------------------------------------------------------
+-- Re-entrancy: an encode can run Lua code (a finalizer, when growing the
+-- output buffer lets the GC run) that encodes with the same plan
+-- ---------------------------------------------------------------------
+
+local gre = t.group('c_runtime_tuple.reentrancy')
+
+gre.before_each(function()
+    skip_if_no_c()
+    helper.ensure_box()
+end)
+
+gre.test_finalizer_encoding_with_the_same_plan = function()
+    local m = pb.parse([[
+        syntax = "proto3";
+        package reentry;
+        message R { string s = 1; int32 i = 2; }
+    ]])
+    local s = helper.make_space('ctup_reentry', {
+        {name = 's', type = 'string'},
+        {name = 'i', type = 'integer'},
+    })
+    local conv = pb.tuple.bind(m.R_descriptor, s)
+    local tplan = conv._tplan
+    -- The outer row outgrows the 4KB stack buffer many times over, so
+    -- the buffer grows (allocates) between reading `s` and reading `i`.
+    local outer = box.tuple.new({string.rep('x', 100 * 1024), 123})
+    local inner = box.tuple.new({'', 999})
+    local bad = box.tuple.new({'', 'not an integer'})
+    local want_outer = lua.encode(conv, outer)
+    local want_inner = lua.encode(conv, inner)
+    local want_rep = lua.encode_repeated(conv, 3, {inner, outer})
+
+    local hits, inner_bad, inner_errors = 0, 0, 0
+    local function reenter()
+        hits = hits + 1
+        if c.tuple_encode(tplan, inner) ~= want_inner then
+            inner_bad = inner_bad + 1
+        end
+        -- an error inside the re-entrant call
+        if not pcall(c.tuple_encode, tplan, bad) then
+            inner_errors = inner_errors + 1
+        end
+    end
+    -- Finalizable garbage, made in a frame of its own so that no stack
+    -- slot of the caller keeps it alive.
+    local function plant(n)
+        for _ = 1, n do ffi.gc(ffi.new('char[1]'), reenter) end
+    end
+    -- Make the next allocation run a whole GC cycle, finalizers included:
+    -- with the collector stopped nothing is collected while the garbage
+    -- is made; `restart` puts the threshold at the current heap size, and
+    -- a huge step multiplier lets one step finish the cycle. The next
+    -- allocation is the output buffer growing inside the encode, after
+    -- the slots of the tuple level are filled and before they are read.
+    local function encode_with_gc(fn, ...)
+        collectgarbage('collect')
+        collectgarbage('stop')
+        plant(10)
+        collectgarbage('restart')
+        return fn(...)
+    end
+    local stepmul = collectgarbage('setstepmul', 2^30)
+    local rows = {inner, outer}
+    local ok, err = pcall(function()
+        for round = 1, 3 do
+            local out = encode_with_gc(c.tuple_encode, tplan, outer)
+            t.assert(out == want_outer, 'encode, round ' .. round)
+            local rep = encode_with_gc(c.tuple_encode_repeated, tplan, 3,
+                                       rows)
+            t.assert(rep == want_rep, 'encode_repeated, round ' .. round)
+        end
+    end)
+    collectgarbage('setstepmul', stepmul)
+    collectgarbage('restart')
+    t.assert(ok, tostring(err))
+    t.assert_equals({hits = hits, inner_bad = inner_bad,
+                     inner_errors = inner_errors},
+                    {hits = 60, inner_bad = 0, inner_errors = 60})
+
+    -- The error path calls the global tostring; re-enter from there, and
+    -- raise inside the re-entrant call too.
+    local big = box.tuple.new({'', 2^40})
+    local want_err = select(2, pcall(lua.encode, conv, big))
+    local orig = tostring
+    local ok2, err2 = pcall(function()
+        rawset(_G, 'tostring', function(v)
+            reenter()
+            return orig(v)
+        end)
+        return c.tuple_encode(tplan, big)
+    end)
+    rawset(_G, 'tostring', orig)
+    t.assert_not(ok2)
+    t.assert_equals(err2, want_err)
+    t.assert_equals({hits = hits, inner_bad = inner_bad,
+                     inner_errors = inner_errors},
+                    {hits = 61, inner_bad = 0, inner_errors = 61})
+
+    -- an error in an outermost call leaves the plan usable as well
+    t.assert_error_msg_contains('expected an integer', c.tuple_encode,
+                                tplan, bad)
+    t.assert(c.tuple_encode(tplan, outer) == want_outer)
+    t.assert(c.tuple_encode_repeated(tplan, 3, rows) == want_rep)
+end
+
+-- ---------------------------------------------------------------------
 -- IV3: the C path allocates the result string and nothing per row
 -- ---------------------------------------------------------------------
 

@@ -29,9 +29,27 @@
  * the key order in the tuple's maps. Each level first scans its msgpack
  * map (or array) and records where each field's value starts, one slot
  * per plan field; then it walks the slots in plan order and emits the
- * non-NULL ones. The slots live in a scratch array owned by the tplan,
- * grown on demand and reused by every call, so the per-call cost is no
- * allocation at all.
+ * non-NULL ones. Nested levels stack their slots in one scratch array.
+ *
+ * The scratch array and re-entrancy
+ * ---------------------------------
+ * An encode can run Lua code before it returns: every allocation it makes
+ * (the output buffer growing, the scratch growing, an error message) may
+ * run a GC step, and a GC step runs finalizers, which may encode with the
+ * same tplan. The error path also calls the global `tostring` on a value.
+ * So the scratch cannot simply belong to the tplan: a nested call would
+ * overwrite the slots of the call it interrupted.
+ *
+ * Instead the scratch is a Lua userdata that a call takes for itself. The
+ * tplan caches one in its environment table (env[1]). A call takes it out
+ * (env[1] = nil) and keeps it on its own Lua stack; a nested call finds
+ * env[1] empty and makes a scratch of its own, as a Lua userdata on its
+ * own stack. A call that returns normally puts its scratch back in
+ * env[1]. A call that raises never does: its scratch dies with its stack
+ * frame and is collected, and the next call makes a new one. There is no
+ * flag to reset, so a luaL_error longjmp cannot leave one stuck, and the
+ * common path -- take the cached scratch, put it back -- allocates
+ * nothing.
  *
  * Output goes to one enc_buf (c_plan.h): 4KB on the C stack, promoted to
  * Lua userdata on overflow, so a luaL_error mid-encode leaks nothing. A
@@ -138,12 +156,15 @@ typedef struct tp_node {
 	int      *by_name;       /* map: field indices sorted by name */
 } tp_node;
 
+/* The slot scratch is not here: see "The scratch array and re-entrancy"
+ * above. It lives in the tplan's environment table. */
 typedef struct tp_plan {
 	int          n_nodes;
 	tp_node     *nodes;      /* nodes[0] is the tuple level */
-	const char **slots;      /* scratch: per-level value positions */
-	size_t       slots_cap;
 } tp_plan;
+
+/* Slots in a freshly made scratch array. */
+#define TP_SCRATCH_INITIAL 64
 
 static void
 tp_plan_free(tp_plan *tp)
@@ -167,7 +188,6 @@ tp_plan_free(tp_plan *tp)
 		free(node->by_name);
 	}
 	free(tp->nodes);
-	free((void *)tp->slots);
 	memset(tp, 0, sizeof(*tp));
 }
 
@@ -692,6 +712,11 @@ pb_tuple_compile(lua_State *L)
 	memset(tp, 0, sizeof(*tp));
 	luaL_getmetatable(L, TUPLE_PLAN_MT);
 	lua_setmetatable(L, -2);                     /* 2: tplan */
+	/* env[1]: the cached slot scratch, see tp_scratch_take. */
+	lua_createtable(L, 1, 0);
+	lua_newuserdata(L, TP_SCRATCH_INITIAL * sizeof(const char *));
+	lua_rawseti(L, -2, 1);
+	lua_setfenv(L, 2);
 
 	lua_newtable(L);                             /* 3: node -> index */
 	int memo = lua_gettop(L);
@@ -1054,40 +1079,77 @@ tp_range_error(lua_State *L, const tp_node *node, int i, int elem,
  * ---------------------------------------------------------------- */
 
 typedef struct tp_ctx {
-	lua_State *L;
-	tp_plan   *plan;
-	enc_buf   *b;
-	size_t     top;          /* slots in use */
+	lua_State   *L;
+	tp_plan     *plan;
+	enc_buf     *b;
+	int          scratch_idx; /* stack slot of this call's scratch */
+	const char **slots;       /* its storage */
+	size_t       cap;         /* its size in slots */
+	size_t       top;         /* slots in use */
 } tp_ctx;
 
-/* Claim `n` cleared slots; returns the index of the first. The slot
- * array may move, so callers index it through ctx->plan every time. */
+/*
+ * Take the scratch cached by the tplan at stack index `plan_idx`, or make
+ * one when a call that is still running (this one's caller, re-entered
+ * through a finalizer) holds it. Leaves it at the top of the stack; the
+ * call keeps it there until it returns.
+ */
+static void
+tp_scratch_take(lua_State *L, tp_ctx *ctx, int plan_idx)
+{
+	lua_getfenv(L, plan_idx);
+	lua_rawgeti(L, -1, 1);
+	if (lua_type(L, -1) == LUA_TUSERDATA) {
+		lua_pushnil(L);
+		lua_rawseti(L, -3, 1);           /* env[1] = nil: taken */
+	} else {
+		lua_pop(L, 1);
+		lua_newuserdata(L, TP_SCRATCH_INITIAL * sizeof(const char *));
+	}
+	lua_remove(L, -2);                   /* the env table */
+	ctx->scratch_idx = lua_gettop(L);
+	ctx->slots = (const char **)lua_touserdata(L, -1);
+	ctx->cap = lua_objlen(L, -1) / sizeof(const char *);
+	ctx->top = 0;
+}
+
+/* Hand the scratch back to the tplan. Only on a normal return: a call
+ * that raises leaves env[1] empty and its scratch to the GC. */
+static void
+tp_scratch_return(lua_State *L, const tp_ctx *ctx, int plan_idx)
+{
+	lua_getfenv(L, plan_idx);
+	lua_pushvalue(L, ctx->scratch_idx);
+	lua_rawseti(L, -2, 1);
+	lua_pop(L, 1);
+}
+
+/* Claim `n` cleared slots; returns the index of the first. Growing the
+ * scratch moves it, so callers index it through ctx->slots every time. */
 static size_t
 tp_slots_push(tp_ctx *ctx, int n)
 {
-	tp_plan *tp = ctx->plan;
 	size_t base = ctx->top;
 	size_t need = base + (size_t)n;
-	if (need > tp->slots_cap) {
-		size_t cap = tp->slots_cap * 2;
-		if (cap < 64)
-			cap = 64;
+	if (need > ctx->cap) {
+		size_t cap = ctx->cap * 2;
 		while (cap < need)
 			cap *= 2;
-		const char **slots = (const char **)realloc(
-			(void *)tp->slots, cap * sizeof(const char *));
-		if (slots == NULL)
-			luaL_error(ctx->L, "pb.tuple: out of memory");
-		tp->slots = slots;
-		tp->slots_cap = cap;
+		const char **slots = (const char **)lua_newuserdata(ctx->L,
+			cap * sizeof(const char *));
+		memcpy((void *)slots, (const void *)ctx->slots,
+		       base * sizeof(const char *));
+		lua_replace(ctx->L, ctx->scratch_idx);
+		ctx->slots = slots;
+		ctx->cap = cap;
 	}
 	if (n > 0)
-		memset((void *)&tp->slots[base], 0, (size_t)n * sizeof(char *));
+		memset((void *)&ctx->slots[base], 0, (size_t)n * sizeof(char *));
 	ctx->top = need;
 	return base;
 }
 
-#define TP_SLOT(ctx, k) ((ctx)->plan->slots[(k)])
+#define TP_SLOT(ctx, k) ((ctx)->slots[(k)])
 
 static inline void
 tp_put(tp_ctx *ctx, const void *src, size_t n)
@@ -1680,8 +1742,13 @@ pb_tuple_encode(lua_State *L)
 	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
 	ebuf_init(&b, storage, sizeof(storage), 0);
-	tp_ctx ctx = {L, tp, &b, 0};
+	tp_ctx ctx;
+	ctx.L = L;
+	ctx.plan = tp;
+	ctx.b = &b;
+	tp_scratch_take(L, &ctx, 1);         /* 3: scratch */
 	tp_encode_tuple(&ctx, tuple);
+	tp_scratch_return(L, &ctx, 1);
 
 	lua_pushlstring(L, (const char *)ebuf_base(&b), b.used);
 	return 1;
@@ -1708,15 +1775,20 @@ pb_tuple_encode_repeated(lua_State *L)
 	uint8_t tag[5], tag_len;
 	encode_tag((uint32_t)d, PB_WIRE_LEN, tag, &tag_len);
 
-	/* Index 4 holds the tuple being encoded. It sits below the buffer's
+	uint8_t storage[ENC_TOP_BUF];
+	enc_buf b;
+	ebuf_init(&b, storage, sizeof(storage), 0);
+	tp_ctx ctx;
+	ctx.L = L;
+	ctx.plan = tp;
+	ctx.b = &b;
+	tp_scratch_take(L, &ctx, 1);         /* 4: scratch */
+
+	/* Index 5 holds the tuple being encoded. It sits below the buffer's
 	 * growth userdata, which ebuf_grow keeps at the top. */
 	lua_pushnil(L);
 	int slot = lua_gettop(L);
 
-	uint8_t storage[ENC_TOP_BUF];
-	enc_buf b;
-	ebuf_init(&b, storage, sizeof(storage), 0);
-	tp_ctx ctx = {L, tp, &b, 0};
 	size_t n = lua_objlen(L, 3);
 	for (size_t k = 1; k <= n; k++) {
 		lua_rawgeti(L, 3, (int)k);
@@ -1730,6 +1802,7 @@ pb_tuple_encode_repeated(lua_State *L)
 		tp_encode_tuple(&ctx, tuple);
 		tp_len_end(&ctx, mark);
 	}
+	tp_scratch_return(L, &ctx, 1);
 
 	lua_pushlstring(L, (const char *)ebuf_base(&b), b.used);
 	return 1;
