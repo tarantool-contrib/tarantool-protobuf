@@ -180,7 +180,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
 
     g.test_message_in_array_column_is_positioned_by_field_number = function()
         local s = helper.make_space('tuple_record',
-            record_format_with('address', {type = 'array'}))
+            record_format_with('address', {type = 'array', is_nullable = true}))
         local p = pb.tuple.bind(kv.Record_descriptor, s).plan
         local i = slot(p, 'address')
         t.assert_equals(p.repr[i], 'msg_array')
@@ -191,7 +191,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
 
     g.test_message_in_varbinary_column_is_raw = function()
         local s = helper.make_space('tuple_record',
-            record_format_with('address', {type = 'varbinary'}))
+            record_format_with('address', {type = 'varbinary',
+                                           is_nullable = true}))
         local p = pb.tuple.bind(kv.Record_descriptor, s).plan
         local i = slot(p, 'address')
         t.assert_equals(p.repr[i], 'raw')
@@ -200,7 +201,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
 
     g.test_any_column_is_checked_per_value = function()
         local s = helper.make_space('tuple_record',
-            record_format_with('address', {type = 'any'}))
+            record_format_with('address', {type = 'any', is_nullable = true}))
         local p = pb.tuple.bind(kv.Record_descriptor, s).plan
         local i = slot(p, 'address')
         t.assert_equals(p.repr[i], 'msg_map')
@@ -248,6 +249,40 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_error_msg_contains(
             "optional field 'nickname' of kv.Record needs a nullable column",
             pb.tuple.bind, kv.Record_descriptor, s)
+    end
+
+    -- A singular message field has explicit presence: absent <-> NULL.
+    g.test_message_on_non_nullable_column_raises = function()
+        local cases = {
+            {'address',    {type = 'map'}},
+            {'address',    {type = 'array'}},
+            {'address',    {type = 'varbinary'}},
+            {'address',    {type = 'any'}},
+            {'created_at', {type = 'datetime'}},
+            {'label',      {type = 'map'}},
+        }
+        for _, c in ipairs(cases) do
+            local s = helper.make_space('tuple_record',
+                record_format_with(c[1], c[2]))
+            t.assert_error_msg_contains(
+                string.format("message field '%s' of kv.Record needs a "
+                              .. "nullable column, column '%s' is not "
+                              .. 'nullable', c[1], c[1]),
+                pb.tuple.bind, kv.Record_descriptor, s)
+        end
+    end
+
+    -- An empty string is not a uuid: implicit '' <-> NULL.
+    g.test_uuid_column_must_be_nullable = function()
+        for _, name in ipairs({'owner', 'token'}) do
+            local s = helper.make_space('tuple_record',
+                record_format_with(name, {type = 'uuid'}))
+            t.assert_error_msg_contains(
+                string.format("field '%s' of kv.Record is bound to uuid "
+                              .. "column '%s', which must be nullable",
+                              name, name),
+                pb.tuple.bind, kv.Record_descriptor, s)
+        end
     end
 
     g.test_repeated_on_non_array_column_raises = function()
@@ -628,6 +663,50 @@ gd.test_parsed_descriptor_binds = function()
         pb.tuple.bind, d, s, {columns = {c = 'b_col'}})
     t.assert_error_msg_contains("omit: M has no field 'c'",
         pb.tuple.bind, d, s, {omit = {'c'}})
+end
+
+-- Oneof membership survives into the plan: a oneof and two proto3
+-- `optional` fields bound to the same columns must not compile alike.
+gd.test_oneof_groups_are_in_the_plan = function()
+    local m = pb.parse([[
+        syntax = "proto3";
+        message Inner {
+            oneof pick { int32 p = 1; string q = 2; }
+        }
+        message M {
+            int32 id = 1;
+            oneof choice { int32 a = 2; string b = 3; }
+            optional int32 c = 4;
+            optional int32 d = 5;
+            oneof other { bool x = 6; }
+            Inner inner = 7;
+        }
+    ]])
+    local s = helper.make_space('tuple_oneof', {
+        {name = 'id',    type = 'integer'},
+        {name = 'a',     type = 'integer', is_nullable = true},
+        {name = 'b',     type = 'string',  is_nullable = true},
+        {name = 'c',     type = 'integer', is_nullable = true},
+        {name = 'd',     type = 'integer', is_nullable = true},
+        {name = 'x',     type = 'boolean', is_nullable = true},
+        {name = 'inner', type = 'map',     is_nullable = true},
+    })
+    local p = pb.tuple.bind(m.M_descriptor, s).plan
+    t.assert_equals(p.name, {'id', 'a', 'b', 'c', 'd', 'x', 'inner'})
+    t.assert_equals(p.oneof, {0, 1, 1, 0, 0, 2, 0})
+    t.assert_equals(p.oneof_names, {'choice', 'other'})
+    t.assert_equals(p.optional, {false, true, true, true, true, true, false})
+    local inner = p.sub[7]
+    t.assert_equals(inner.oneof, {1, 1})
+    t.assert_equals(inner.oneof_names, {'pick'})
+
+    -- A message without oneofs still carries the (empty) arrays.
+    local s2 = helper.make_space('tuple_kv', KV_FORMAT)
+    local kv = require('runtime.kv.kv_pb')
+    local p2 = pb.tuple.bind(kv.KeyValue_descriptor, s2,
+                             {columns = {lease = 'lease_id'}}).plan
+    t.assert_equals(p2.oneof, {0, 0, 0, 0, 0, 0})
+    t.assert_equals(p2.oneof_names, {})
 end
 
 gd.test_descriptor_set_binds = function()

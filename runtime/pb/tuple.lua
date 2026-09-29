@@ -25,8 +25,13 @@
 --   by field number, `varbinary` -> raw wire bytes). Every deeper level,
 --   and every element of a `repeated` or `map<K,V>` field, is a map keyed
 --   by field name.
--- * A field with explicit presence (proto3 `optional`, or a oneof member)
---   needs a nullable column: absence has to be representable.
+-- * A field with explicit presence needs a nullable column: absence has
+--   to be representable, and NULL is how it is represented. Explicit
+--   presence means proto3 `optional`, a oneof member, or a singular
+--   message field (google.protobuf.Timestamp included).
+-- * A proto `string`/`bytes` field bound to a `uuid` column needs a
+--   nullable column as well: an empty value is not a uuid, so the proto3
+--   default '' is stored as NULL.
 -- * Nested slots are untyped, so a nested field is checked as if its
 --   column were `any`: its values are checked one by one at conversion.
 --
@@ -81,6 +86,10 @@
 --     sub      = {<node|false>},  -- child node of a message-typed field, of a
 --                                  -- repeated message's elements, or of a map's
 --                                  -- message values; false otherwise
+--     oneof    = {<int>},         -- 0 when the field is in no oneof, else the
+--                                  -- 1-based index into oneof_names of its group
+--     oneof_names = {<string>},   -- per node: the oneof groups' names, in
+--                                  -- order of their lowest-numbered member
 --     unbound_nonnull      = {<int>},    -- tuple layout: non-nullable columns
 --                                         -- with no proto field; else {}
 --     unbound_nonnull_name = {<string>}, -- their names
@@ -333,8 +342,21 @@ local function new_node(desc, layout)
         column_type = {}, kind = {}, ['repeated'] = {}, packed = {},
         repr = {}, conv = {}, nullable = {}, optional = {},
         key_kind = {}, value_kind = {}, sub = {},
+        oneof = {}, oneof_names = {},
         unbound_nonnull = {}, unbound_nonnull_name = {},
     }
+end
+
+-- 1-based index of oneof `name` in node.oneof_names, registering it on
+-- first sight. Fields are added in ascending field-number order, so a
+-- group's index follows its lowest-numbered member.
+local function oneof_index(node, name)
+    local names = node.oneof_names
+    for j = 1, #names do
+        if names[j] == name then return j end
+    end
+    names[#names + 1] = name
+    return #names
 end
 
 local function has_presence(f)
@@ -383,6 +405,18 @@ local function add_field(node, desc, f, slot, cache)
                    .. "column '%s' is not nullable", f.name, desc.name,
                    slot.column_name)
     end
+    -- A singular message field has explicit presence in proto3 too.
+    if f.kind == 'message' and not f.repeated and not slot.nullable then
+        bind_error("message field '%s' of %s needs a nullable column, "
+                   .. "column '%s' is not nullable", f.name, desc.name,
+                   slot.column_name)
+    end
+    -- An empty string/bytes value is not a uuid, so it is stored as NULL.
+    if (conv == 'uuid_text' or conv == 'uuid_bin') and not slot.nullable then
+        bind_error("field '%s' of %s is bound to uuid column '%s', which "
+                   .. 'must be nullable: an empty value is stored as NULL',
+                   f.name, desc.name, slot.column_name)
+    end
 
     local sub = false
     local msg = sub_message(f)
@@ -425,6 +459,7 @@ local function add_field(node, desc, f, slot, cache)
         node.value_kind[i] = ''
     end
     node.sub[i] = sub
+    node.oneof[i] = f.oneof ~= nil and oneof_index(node, f.oneof) or 0
 end
 
 -- Compile the plan node for one message level.
