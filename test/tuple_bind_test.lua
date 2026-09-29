@@ -623,6 +623,88 @@ gc.test_every_kind_against_every_column_type = function()
     t.assert_equals(mismatches, {})
 end
 
+-- Every well-known type with a descriptor-level encode/decode other than
+-- Timestamp -- Any included, though its descriptor also lists fields --
+-- binds only raw, to a varbinary column.
+gc.test_well_known_types_bind_only_raw = function()
+    local names = {}
+    for k, d in pairs(pb.wkt) do
+        if type(d) == 'table' and k:match('_descriptor$')
+                and (d.encode ~= nil or d.decode ~= nil)
+                and d.name ~= 'google.protobuf.Timestamp' then
+            names[#names + 1] = k
+        end
+    end
+    table.sort(names)
+    t.assert_equals(#names, 16)
+    local mismatches = {}
+    for _, k in ipairs(names) do
+        local f = {name = 'f', id = 1, kind = 'message',
+                   message = pb.wkt[k]}
+        for _, ctype in ipairs(COLUMN_TYPES) do
+            local repr, conv = pb.tuple.check_compat(f, ctype)
+            local want = ctype == 'varbinary' and 'raw/direct' or 'refused'
+            local got = repr ~= nil and (repr .. '/' .. conv) or 'refused'
+            if got ~= want then
+                mismatches[#mismatches + 1] = string.format('%s x %s: %s',
+                    pb.wkt[k].name, ctype, got)
+            end
+        end
+        -- no element or map value representation either
+        local r = {name = 'f', id = 1, kind = 'message', message = pb.wkt[k],
+                   ['repeated'] = true}
+        local m = {name = 'f', id = 1, kind = 'map',
+                   key = {kind = 'scalar', proto_type = 'string'},
+                   value = {kind = 'message', message = pb.wkt[k]}}
+        for _, ctype in ipairs({'array', 'map', 'any'}) do
+            if pb.tuple.check_compat(r, ctype) ~= nil
+                    or pb.tuple.check_compat(m, ctype) ~= nil then
+                mismatches[#mismatches + 1] = pb.wkt[k].name
+                    .. ' as an element in ' .. ctype
+            end
+        end
+    end
+    t.assert_equals(mismatches, {})
+end
+
+gc.test_any_binds_only_raw = function()
+    helper.ensure_box()
+    local m = pb.parse([[
+        syntax = "proto3";
+        package bind_any;
+        import "google/protobuf/any.proto";
+        message E { uint64 id = 1; google.protobuf.Any detail = 2; }
+        message W { uint64 id = 1; E e = 2; }
+    ]])
+    for _, ctype in ipairs({'map', 'array', 'any'}) do
+        local s = helper.make_space('tuple_any', {
+            {name = 'id', type = 'unsigned'},
+            {name = 'detail', type = ctype, is_nullable = true},
+        })
+        t.assert_error_msg_contains(
+            "field 'detail' (google.protobuf.Any) of bind_any.E cannot "
+                .. "bind to column 'detail' (" .. ctype .. ')',
+            pb.tuple.bind, m.E_descriptor, s)
+    end
+    local s = helper.make_space('tuple_any', {
+        {name = 'id', type = 'unsigned'},
+        {name = 'detail', type = 'varbinary', is_nullable = true},
+    })
+    local conv = pb.tuple.bind(m.E_descriptor, s)
+    t.assert_equals(conv.plan.repr[2], 'raw')
+    local any = pb.encode(m.E_descriptor, {id = 1, detail = {
+        type_url = 'type.googleapis.com/x', value = 'v'}})
+    t.assert_equals(conv:encode(conv:decode(any)), any)
+    -- nested, where every slot is untyped
+    local ws = helper.make_space('tuple_any_w', {
+        {name = 'id', type = 'unsigned'},
+        {name = 'e', type = 'map', is_nullable = true},
+    })
+    t.assert_error_msg_contains(
+        "field 'detail' (google.protobuf.Any) of bind_any.E has no tuple "
+            .. 'representation', pb.tuple.bind, m.W_descriptor, ws)
+end
+
 -- Every column type in the matrix is one Tarantool accepts in a format,
 -- so the matrix is not testing names no space can have.
 gc.test_column_types_are_real = function()

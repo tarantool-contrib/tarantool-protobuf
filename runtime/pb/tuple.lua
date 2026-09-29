@@ -221,9 +221,10 @@ local COLUMN_TYPE_ALIAS = {
 --
 -- Kind classes: a proto scalar type name, 'enum', 'timestamp'
 -- (google.protobuf.Timestamp), 'message' (a message with fields),
--- 'opaque' (a well-known type whose descriptor overrides encode/decode
--- and has no fields — Duration, wrappers, Struct, Any, ...), 'repeated'
--- (any element kind) and 'map'.
+-- 'opaque' (a well-known type other than Timestamp, whose descriptor
+-- overrides encode/decode -- Duration, wrappers, Struct, Any, ...; Any
+-- lists fields and is opaque all the same -- or a message descriptor
+-- with no fields), 'repeated' (any element kind) and 'map'.
 -- ---------------------------------------------------------------------------
 
 local function scalar(conv) return {'scalar', conv} end
@@ -320,10 +321,18 @@ local function field_kind(f)
     return f.kind
 end
 
+-- A message descriptor that decodes and encodes through functions of its
+-- own (a well-known type other than Timestamp) or lists no fields: its
+-- value has no tuple shape but its wire bytes. google.protobuf.Any lists
+-- fields and is still one of these.
+local function is_opaque(desc)
+    return desc.fields == nil or desc.decode ~= nil or desc.encode ~= nil
+end
+
 -- Kind class of a single value (COMPAT row), ignoring `repeated`.
 local function value_class(f)
     local k = field_kind(f)
-    if k == 'message' and f.message.fields == nil then return 'opaque' end
+    if k == 'message' and is_opaque(f.message) then return 'opaque' end
     return k
 end
 
@@ -459,12 +468,12 @@ local compile_node
 
 -- Descriptor of the message a field's sub-node describes, or nil.
 local function sub_message(f)
-    if f.kind == 'message' and f.message.fields ~= nil
+    if f.kind == 'message' and not is_opaque(f.message)
             and f.message.name ~= TIMESTAMP then
         return f.message
     end
     if f.kind == 'map' and f.value.kind == 'message'
-            and f.value.message.fields ~= nil
+            and not is_opaque(f.value.message)
             and f.value.message.name ~= TIMESTAMP then
         return f.value.message
     end
