@@ -730,7 +730,7 @@ local function set_plan(conv, plan)
             error('pb.tuple: the loaded pb.c_runtime has no tuple encoder; '
                   .. 'rebuild it', 0)
         end
-        conv._tplan = c_runtime.tuple_compile(plan)
+        conv._tplan = c_runtime.tuple_compile(plan, conv.desc)
     end
     conv.plan = plan
 end
@@ -1597,19 +1597,50 @@ else
     end
 end
 
-function Conv:decode(bytes)
-    self:_check_schema()
-    return box.tuple.new(lua_decode(self, bytes))
-end
+if c_runtime ~= nil then
+    local c_decode = c_runtime.tuple_decode
 
-function Conv:insert(bytes)
-    self:_check_schema()
-    return box.space[self.space_id]:insert(lua_decode(self, bytes))
-end
+    -- The C decoder does not word conversion errors: on bytes it refuses
+    -- it returns false, and the Lua path, run on the same bytes, raises
+    -- the error in its own words. The Lua path accepting them would mean
+    -- the two decoders disagree, which is a bug to report, not a result.
+    local function c_convert(conv, bytes, op)
+        local ok, tuple = c_decode(conv._tplan, bytes, op, conv.space_id)
+        if ok then return tuple end
+        lua_decode(conv, bytes)
+        error('pb.tuple: the C decoder refused input the Lua decoder '
+              .. 'accepts', 0)
+    end
 
-function Conv:replace(bytes)
-    self:_check_schema()
-    return box.space[self.space_id]:replace(lua_decode(self, bytes))
+    function Conv:decode(bytes)
+        self:_check_schema()
+        return c_convert(self, bytes, 'new')
+    end
+
+    function Conv:insert(bytes)
+        self:_check_schema()
+        return c_convert(self, bytes, 'insert')
+    end
+
+    function Conv:replace(bytes)
+        self:_check_schema()
+        return c_convert(self, bytes, 'replace')
+    end
+else
+    function Conv:decode(bytes)
+        self:_check_schema()
+        return box.tuple.new(lua_decode(self, bytes))
+    end
+
+    function Conv:insert(bytes)
+        self:_check_schema()
+        return box.space[self.space_id]:insert(lua_decode(self, bytes))
+    end
+
+    function Conv:replace(bytes)
+        self:_check_schema()
+        return box.space[self.space_id]:replace(lua_decode(self, bytes))
+    end
 end
 
 -- The Lua path on its own, for parity tests against other converters.

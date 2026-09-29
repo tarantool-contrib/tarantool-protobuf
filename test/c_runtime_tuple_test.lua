@@ -454,8 +454,13 @@ for _, mode in ipairs({'full', 'runtime'}) do
         -- Mixed.child is Mixed again: the plan is cyclic
         t.assert_equals(conv.plan.name[8], 'child')
         t.assert_is(conv.plan.sub[8].sub[8], conv.plan.sub[8])
-        t.assert_equals(type(c.tuple_compile(conv.plan)), 'userdata')
-        t.assert_error_msg_contains('malformed plan', c.tuple_compile, {})
+        t.assert_equals(type(c.tuple_compile(conv.plan, conv.desc)),
+                        'userdata')
+        t.assert_error_msg_contains('malformed plan', c.tuple_compile, {},
+                                    conv.desc)
+        -- the plan and the descriptor must describe the same message
+        t.assert_error_msg_contains('disagree on a message',
+            c.tuple_compile, conv.plan, kv.Record_descriptor)
         local kconv = bind(kv.KeyValue_descriptor, 'ctup_kv', {
             {name = 'key', type = 'varbinary'},
             {name = 'create_revision', type = 'integer'},
@@ -475,7 +480,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
             local bad = table.deepcopy(kconv.plan)
             spoil(bad)
             t.assert_error_msg_contains('malformed plan', c.tuple_compile,
-                                        bad)
+                                        bad, kv.KeyValue_descriptor)
         end
     end
 

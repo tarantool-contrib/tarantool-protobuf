@@ -3103,6 +3103,7 @@ static const struct luaL_Reg c_runtime_methods[] = {
 	{"tuple_compile",   pb_tuple_compile},
 	{"tuple_encode",    pb_tuple_encode},
 	{"tuple_encode_repeated", pb_tuple_encode_repeated},
+	{"tuple_decode",    pb_tuple_decode},
 	{NULL, NULL},
 };
 

@@ -12,9 +12,14 @@
 void
 pb_tuple_open(lua_State *L);
 
-/* c_runtime.tuple_compile(plan) -> tplan */
+/* c_runtime.tuple_compile(plan, desc) -> tplan */
 int
 pb_tuple_compile(lua_State *L);
+
+/* c_runtime.tuple_decode(tplan, bytes, op, space_id) -> true, tuple
+ * or false when the bytes do not convert (the caller words the error) */
+int
+pb_tuple_decode(lua_State *L);
 
 /* c_runtime.tuple_encode(tplan, tuple) -> string */
 int
