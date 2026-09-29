@@ -338,16 +338,24 @@ end
 -- A full GC cycle at every allocation
 -- ---------------------------------------------------------------------
 
--- With a pause of 0 the GC threshold is reached by any allocation, and a
--- huge step multiplier lets that one step finish the cycle: every
--- allocation the encode makes (each buffer growth, the scratch growth,
--- the result) runs a full collection. A finalizer, run inside each of
--- those cycles after the sweep, fills blocks of every buffer size with a
--- marker byte, so memory the sweep just freed is reused at once, and
--- plants the next finalizer for the next cycle. An output buffer that is
--- not anchored on the Lua stack is then freed and overwritten while the
--- encoder still writes to it and reads from it, and the bytes differ
--- instead of depending on when the GC happens to run.
+-- A buffer growth is lua_newuserdata, which runs a GC step before it
+-- allocates whenever the heap is past the GC threshold. With a pause of
+-- 0 the threshold set at the end of every cycle is 0, so every growth
+-- runs a step; with helper.GC_FULL_CYCLE_STEPMUL that one step finishes
+-- the cycle, finalizers included. So each growth runs a full collection
+-- while the storage it is about to copy from is the buffer's only copy.
+-- None of this depends on timing or on the allocator: it is how LuaJIT
+-- steps its collector.
+--
+-- A finalizer, run inside each of those cycles after the sweep, counts
+-- the cycle, fills blocks of every buffer size with a marker byte, so
+-- memory the sweep just freed is reused at once, and plants the next
+-- finalizer for the next cycle. An output buffer that is not anchored on
+-- the Lua stack is then freed and overwritten while the encoder still
+-- writes to it and reads from it, and the bytes differ. The count is
+-- checked against the number of growths the output length implies, so a
+-- run in which the collections did not happen fails instead of passing
+-- without having tested anything.
 local ggc = t.group('c_runtime_tuple_grow.gc')
 
 ggc.before_each(function()
@@ -379,7 +387,7 @@ end
 -- Returns fn's pcall results and the number of cycles that ran.
 local function with_gc_at_every_allocation(fn, ...)
     local pause = collectgarbage('setpause', 0)
-    local stepmul = collectgarbage('setstepmul', 2^30)
+    local stepmul = collectgarbage('setstepmul', helper.GC_FULL_CYCLE_STEPMUL)
     -- The threshold is set at the end of a cycle: finish one under the
     -- new pause.
     collectgarbage('collect')
@@ -404,6 +412,16 @@ local function growths(len)
         n = n + 1
     end
     return n
+end
+
+-- `n` cycles ran during a call whose output is `len` bytes: one at each
+-- growth, and one when the result string is made from the buffer
+-- (lua_pushlstring steps the collector before it copies), at least.
+local function assert_collected(n, len, label)
+    local g = growths(len)
+    t.assert_ge(g, 1, label .. ': the output never left the stack buffer')
+    t.assert(n >= g + 1, ('%s: %d collections for %d growths: the harness '
+        .. 'did not collect at every allocation'):format(label, n, g))
 end
 
 function ggc.test_buffer_stays_anchored_across_collection()
@@ -436,16 +454,14 @@ function ggc.test_buffer_stays_anchored_across_collection()
         local ok, got, n = with_gc_at_every_allocation(c.tuple_encode, tplan,
                                                        row)
         t.assert(ok, tostring(got))
-        -- a cycle ran at every growth at least
-        t.assert_ge(n, growths(#want), label)
-        t.assert_ge(growths(#want), 1, label)
+        assert_collected(n, #want, 'encode ' .. label)
         assert_same_bytes(got, want, 'encode ' .. label)
 
         local want_rep = lua.encode_repeated(conv, 2, rows)
         local ok_rep, got_rep, n_rep = with_gc_at_every_allocation(
             c.tuple_encode_repeated, tplan, 2, rows)
         t.assert(ok_rep, tostring(got_rep))
-        t.assert_ge(n_rep, growths(#want_rep), label)
+        assert_collected(n_rep, #want_rep, 'encode_repeated ' .. label)
         assert_same_bytes(got_rep, want_rep, 'encode_repeated ' .. label)
         fiber.yield()
     end
@@ -472,8 +488,7 @@ function ggc.test_buffer_stays_anchored_across_collection()
         local ok, got, n = with_gc_at_every_allocation(c.tuple_encode,
                                                        conv._tplan, row)
         t.assert(ok, tostring(got))
-        t.assert_ge(n, growths(#want), label)
-        t.assert_ge(growths(#want), 1, label)
+        assert_collected(n, #want, label)
         assert_same_bytes(got, want, label)
         fiber.yield()
     end

@@ -919,7 +919,7 @@ gre.test_finalizer_encoding_with_the_same_plan = function()
     -- Make the next allocation run a whole GC cycle, finalizers included:
     -- with the collector stopped nothing is collected while the garbage
     -- is made; `restart` puts the threshold at the current heap size, and
-    -- a huge step multiplier lets one step finish the cycle. The next
+    -- helper.GC_FULL_CYCLE_STEPMUL lets one step finish the cycle. The next
     -- allocation is the output buffer growing inside the encode, after
     -- the slots of the tuple level are filled and before they are read.
     local function encode_with_gc(fn, ...)
@@ -929,7 +929,7 @@ gre.test_finalizer_encoding_with_the_same_plan = function()
         collectgarbage('restart')
         return fn(...)
     end
-    local stepmul = collectgarbage('setstepmul', 2^30)
+    local stepmul = collectgarbage('setstepmul', helper.GC_FULL_CYCLE_STEPMUL)
     local rows = {inner, outer}
     local ok, err = pcall(function()
         for round = 1, 3 do
@@ -1867,7 +1867,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
         local function plant(n)
             for _ = 1, n do ffi.gc(ffi.new('char[1]'), reenter) end
         end
-        local stepmul = collectgarbage('setstepmul', 2^30)
+        local stepmul = collectgarbage('setstepmul',
+                                       helper.GC_FULL_CYCLE_STEPMUL)
         local region_before = tonumber(ffi.C.box_region_used())
         local ok, err = pcall(function()
             for round = 1, 3 do
