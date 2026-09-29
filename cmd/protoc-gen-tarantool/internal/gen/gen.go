@@ -10,6 +10,8 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	"github.com/tarantool-contrib/tarantool-protobuf/internal/messageset"
 )
 
 const runtimeRequire = "pb"
@@ -57,6 +59,9 @@ type Config struct {
 	// on the dominant small-value case (IDs, timestamps, byte counts).
 	// Default false — decoded 64-bit fields are always cdata.
 	Int64AsNumber bool
+	// MessageSets names the messages declared with
+	// `option message_set_wire_format = true` (see messageset.Strip).
+	MessageSets messageset.Set
 }
 
 // GenerateFile emits one `<lua_pkg>.lua` file per input `.proto`.
@@ -101,6 +106,13 @@ func GenerateFile(plug *protogen.Plugin, file *protogen.File, cfg Config) error 
 		w.line("-- Pre-declare message descriptors so cross-references resolve.")
 		for _, m := range allMsgs {
 			name := luaTypeName(m.Desc.FullName(), file.Desc.Package())
+			if cfg.MessageSets[string(m.Desc.FullName())] {
+				// The codecs read and write this message's extensions
+				// in the MessageSet item format.
+				w.line("M.%s_descriptor = {name = %q, message_set = true}",
+					name, string(m.Desc.FullName()))
+				continue
+			}
 			w.line("M.%s_descriptor = {name = %q}", name, string(m.Desc.FullName()))
 		}
 		w.line("")
@@ -126,10 +138,16 @@ func GenerateFile(plug *protogen.Plugin, file *protogen.File, cfg Config) error 
 	for _, m := range allMsgs {
 		switch cfg.Mode {
 		case ModeFull:
+			if cfg.MessageSets[string(m.Desc.FullName())] {
+				// The inline emitter has no MessageSet item codec;
+				// delegate to pb.codec, which has one.
+				emitMessageWrappers(w, file, m, true)
+				continue
+			}
 			extsForMe := extsByExtendee[string(m.Desc.FullName())]
 			emitInlineMessage(w, file, m, imports, cfg.Prefix, extsForMe)
 		default:
-			emitMessageWrappers(w, file, m)
+			emitMessageWrappers(w, file, m, false)
 		}
 	}
 
@@ -830,7 +848,13 @@ func typeRef(file *protogen.File, td protoreflect.Descriptor, selfPath string, i
 
 // emitMessageWrappers emits the small _new / _encode / _decode helpers plus
 // has_<field> / clear_<field> for each explicit-optional field.
-func emitMessageWrappers(w *writer, file *protogen.File, m *protogen.Message) {
+//
+// withDepth is set when the wrappers stand in for full-mode inline code:
+// the inline decoders of other messages call them as `_decode(b, depth)`
+// for a nested field, and the nesting level has to reach pb.codec for
+// the recursion limit to hold. With the C runtime loaded the inline
+// decoders never recurse in Lua, so pb.decode is used as usual.
+func emitMessageWrappers(w *writer, file *protogen.File, m *protogen.Message, withDepth bool) {
 	name := luaTypeName(m.Desc.FullName(), file.Desc.Package())
 	full := emmyMessageFullName(m)
 
@@ -839,13 +863,25 @@ func emitMessageWrappers(w *writer, file *protogen.File, m *protogen.Message) {
 	emitEmmyWrapperAnnotations(w, name, full, wrapperEncode)
 	w.line("function M.%s_encode(t) return pb.encode(M.%s_descriptor, t) end", name, name)
 	emitEmmyWrapperAnnotations(w, name, full, wrapperDecode)
-	w.line("function M.%s_decode(b) return pb.decode(M.%s_descriptor, b) end", name, name)
-	// API-symmetric unsafe-decode wrapper. Routes through
-	// pb.decode_unsafe which uses the parallel `_reader_unsafe`
-	// closures compiled in pb.finalize_message. Full mode emits
-	// inline (a literal sister decoder); runtime mode shares one
-	// dispatcher.
-	w.line("function M.%s_decode_unsafe(b) return pb.decode_unsafe(M.%s_descriptor, b) end", name, name)
+	if withDepth {
+		for _, v := range []struct{ suffix, entry string }{
+			{"_decode", "decode"}, {"_decode_unsafe", "decode_unsafe"},
+		} {
+			w.line("function M.%s%s(b, depth)", name, v.suffix)
+			w.line("    if pb.c_runtime ~= nil then return pb.%s(M.%s_descriptor, b) end",
+				v.entry, name)
+			w.line("    return pb.codec.%s(M.%s_descriptor, b, depth)", v.entry, name)
+			w.line("end")
+		}
+	} else {
+		w.line("function M.%s_decode(b) return pb.decode(M.%s_descriptor, b) end", name, name)
+		// API-symmetric unsafe-decode wrapper. Routes through
+		// pb.decode_unsafe which uses the parallel `_reader_unsafe`
+		// closures compiled in pb.finalize_message. Full mode emits
+		// inline (a literal sister decoder); runtime mode shares one
+		// dispatcher.
+		w.line("function M.%s_decode_unsafe(b) return pb.decode_unsafe(M.%s_descriptor, b) end", name, name)
+	}
 	emitEmmyWrapperAnnotations(w, name, full, wrapperDecodeLazy)
 	w.line("function M.%s_decode_lazy(b) return pb.decode_lazy(M.%s_descriptor, b) end", name, name)
 	emitEmmyWrapperAnnotations(w, name, full, wrapperText)

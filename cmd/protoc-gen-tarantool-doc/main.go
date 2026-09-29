@@ -30,6 +30,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/pluginpb"
+
+	"github.com/tarantool-contrib/tarantool-protobuf/internal/messageset"
 )
 
 func main() {
@@ -53,6 +55,10 @@ func main() {
 			f.Options.GoPackage = proto.String(stub)
 		}
 	}
+
+	// protobuf-go cannot load a MessageSet declaration. The option has no
+	// bearing on the reference docs, so it is simply dropped.
+	messageset.Strip(req)
 
 	plugin, err := protogen.Options{}.New(req)
 	if err != nil {

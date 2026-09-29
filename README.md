@@ -19,11 +19,8 @@ Proto2 + proto3 conformance is closed: every `Required.*` and `Recommended.*`
 test in both the binary+JSON and text-format suites passes. The proto2
 slice covers `required`/`optional`/`repeated` cardinalities, custom
 defaults, closed enums, legacy `group` fields (SGROUP/EGROUP wire types),
-and extensions (`extend`/`extensions`). The only un-runnable upstream
-schemas are those with `option message_set_wire_format = true;` — the
-protobuf-go protoreflect library rejects them outright as a removed
-proto1 feature, so the MessageSet fixture is stripped from our vendored
-copy of `test_messages_proto2.proto`.
+and extensions (`extend`/`extensions`), including the legacy MessageSet
+wire format. Only editions are out of scope for now.
 
 | Feature                          | State        |
 |----------------------------------|--------------|
@@ -63,7 +60,7 @@ copy of `test_messages_proto2.proto`.
 | proto2 `group` (SGROUP/EGROUP wire types) | ✅   |
 | proto2 extensions / `extend` blocks       | ✅   |
 | proto2 closed enums                       | ✅   |
-| `MessageSet` wire format                  | ❌ (protoreflect rejects upstream — `message_set_wire_format` option) |
+| `MessageSet` wire format (`message_set_wire_format`) | ✅ |
 | Editions                                  | ❌ deferred |
 
 ## Install
@@ -384,11 +381,8 @@ Current baseline (2026-09-29, protobuf v36.2, `--enforce_recommended`):
 | Text-format   |  **445** | 0 | 0 | 0 |
 
 Both proto2 and proto3 test messages run through the same dispatcher in
-`cmd/conformance/core.lua`. The `test_messages_proto2.proto` checked
-into `test/conformance/proto/` is a vendored copy with the
-`MessageSetCorrect*` nested messages stripped (see
-[docs/codegen.md#proto2-support](docs/codegen.md)); everything else
-matches upstream.
+`cmd/conformance/core.lua`. The test protos in `test/conformance/proto/`
+are vendored from upstream unchanged.
 
 The runner supports `protobuf_test_messages.proto3.TestAllTypesProto3` in
 binary, JSON, and text-format input/output, including the

@@ -61,6 +61,10 @@ M.TestAllTypesProto2_descriptor = {name = "protobuf_test_messages.proto2.TestAll
 M.TestAllTypesProto2_NestedMessage_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage"}
 M.TestAllTypesProto2_Data_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.Data"}
 M.TestAllTypesProto2_MultiWordGroupField_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField"}
+M.TestAllTypesProto2_MessageSetCorrect_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect", message_set = true}
+M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1"}
+M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2"}
+M.TestAllTypesProto2_ExtensionWithOneof_descriptor = {name = "protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof"}
 M.ForeignMessageProto2_descriptor = {name = "protobuf_test_messages.proto2.ForeignMessageProto2"}
 M.GroupField_descriptor = {name = "protobuf_test_messages.proto2.GroupField"}
 M.UnknownToTestAllTypes_descriptor = {name = "protobuf_test_messages.proto2.UnknownToTestAllTypes"}
@@ -72,6 +76,9 @@ M.ProtoWithKeywords_descriptor = {name = "protobuf_test_messages.proto2.ProtoWit
 M.TestAllRequiredTypesProto2_descriptor = {name = "protobuf_test_messages.proto2.TestAllRequiredTypesProto2"}
 M.TestAllRequiredTypesProto2_NestedMessage_descriptor = {name = "protobuf_test_messages.proto2.TestAllRequiredTypesProto2.NestedMessage"}
 M.TestAllRequiredTypesProto2_Data_descriptor = {name = "protobuf_test_messages.proto2.TestAllRequiredTypesProto2.Data"}
+M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor = {name = "protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect", message_set = true}
+M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor = {name = "protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1"}
+M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor = {name = "protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2"}
 M.TestLargeOneof_descriptor = {name = "protobuf_test_messages.proto2.TestLargeOneof"}
 M.TestLargeOneof_A1_descriptor = {name = "protobuf_test_messages.proto2.TestLargeOneof.A1"}
 M.TestLargeOneof_A2_descriptor = {name = "protobuf_test_messages.proto2.TestLargeOneof.A2"}
@@ -217,6 +224,7 @@ M.TestAllTypesProto2_descriptor.fields = {
     {name="field__Name16", id=416, kind='scalar', proto_type="int32", optional=true},
     {name="field_name17__", id=417, kind='scalar', proto_type="int32", optional=true},
     {name="Field_name18__", id=418, kind='scalar', proto_type="int32", optional=true},
+    {name="message_set_correct", id=500, kind='message', message=M.TestAllTypesProto2_MessageSetCorrect_descriptor, optional=true},
 }
 M.TestAllTypesProto2_descriptor.oneofs = {
     oneof_field = {"oneof_uint32", "oneof_nested_message", "oneof_string", "oneof_bytes", "oneof_bool", "oneof_uint64", "oneof_float", "oneof_double", "oneof_enum"},
@@ -362,6 +370,7 @@ M.TestAllTypesProto2_fields = pb.field_names({
     field__Name16 = "field__Name16",
     field_name17__ = "field_name17__",
     Field_name18__ = "Field_name18__",
+    message_set_correct = "message_set_correct",
 })
 M.TestAllTypesProto2_oneofs = pb.field_names({
     oneof_field = "oneof_field",
@@ -398,6 +407,48 @@ pb.finalize_message(M.TestAllTypesProto2_MultiWordGroupField_descriptor)
 M.TestAllTypesProto2_MultiWordGroupField_fields = pb.field_names({
     group_int32 = "group_int32",
     group_uint32 = "group_uint32",
+})
+
+-- Message: protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+M.TestAllTypesProto2_MessageSetCorrect_descriptor.fields = {
+}
+pb.finalize_message(M.TestAllTypesProto2_MessageSetCorrect_descriptor)
+
+-- Message: protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor.fields = {
+    {name="str", id=25, kind='scalar', proto_type="string", optional=true},
+}
+pb.finalize_message(M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor)
+M.TestAllTypesProto2_MessageSetCorrectExtension1_fields = pb.field_names({
+    str = "str",
+})
+
+-- Message: protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor.fields = {
+    {name="i", id=9, kind='scalar', proto_type="int32", optional=true},
+    {name="sub_msg", id=10, kind='message', message=M.TestAllTypesProto2_MessageSetCorrect_descriptor, optional=true},
+}
+pb.finalize_message(M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor)
+M.TestAllTypesProto2_MessageSetCorrectExtension2_fields = pb.field_names({
+    i = "i",
+    sub_msg = "sub_msg",
+})
+
+-- Message: protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+M.TestAllTypesProto2_ExtensionWithOneof_descriptor.fields = {
+    {name="a", id=1, kind='scalar', proto_type="int32", oneof="oneof_field"},
+    {name="b", id=2, kind='scalar', proto_type="int32", oneof="oneof_field"},
+}
+M.TestAllTypesProto2_ExtensionWithOneof_descriptor.oneofs = {
+    oneof_field = {"a", "b"},
+}
+pb.finalize_message(M.TestAllTypesProto2_ExtensionWithOneof_descriptor)
+M.TestAllTypesProto2_ExtensionWithOneof_fields = pb.field_names({
+    a = "a",
+    b = "b",
+})
+M.TestAllTypesProto2_ExtensionWithOneof_oneofs = pb.field_names({
+    oneof_field = "oneof_field",
 })
 
 -- Message: protobuf_test_messages.proto2.ForeignMessageProto2
@@ -587,6 +638,29 @@ pb.finalize_message(M.TestAllRequiredTypesProto2_Data_descriptor)
 M.TestAllRequiredTypesProto2_Data_fields = pb.field_names({
     group_int32 = "group_int32",
     group_uint32 = "group_uint32",
+})
+
+-- Message: protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor.fields = {
+}
+pb.finalize_message(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor)
+
+-- Message: protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor.fields = {
+    {name="str", id=25, kind='scalar', proto_type="string", required=true},
+}
+pb.finalize_message(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor)
+M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_fields = pb.field_names({
+    str = "str",
+})
+
+-- Message: protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor.fields = {
+    {name="i", id=9, kind='scalar', proto_type="int32", required=true},
+}
+pb.finalize_message(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor)
+M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_fields = pb.field_names({
+    i = "i",
 })
 
 -- Message: protobuf_test_messages.proto2.TestLargeOneof
@@ -789,6 +863,7 @@ pb.finalize_message(M.TestLargeOneof_A5_descriptor)
 ---@field field__Name16? integer
 ---@field field_name17__? integer
 ---@field Field_name18__? integer
+---@field message_set_correct? protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
 
 ---@class protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage
 ---@field a? integer
@@ -802,6 +877,20 @@ pb.finalize_message(M.TestLargeOneof_A5_descriptor)
 ---@class protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField
 ---@field group_int32? integer
 ---@field group_uint32? integer
+
+--- message_set test case.
+---@class protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+
+---@class protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+---@field str? string
+
+---@class protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+---@field i? integer
+---@field sub_msg? protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+
+---@class protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+---@field a? integer
+---@field b? integer
 
 ---@class protobuf_test_messages.proto2.ForeignMessageProto2
 ---@field c? integer
@@ -883,6 +972,15 @@ pb.finalize_message(M.TestLargeOneof_A5_descriptor)
 ---@class protobuf_test_messages.proto2.TestAllRequiredTypesProto2.Data
 ---@field group_int32 integer
 ---@field group_uint32 integer
+
+--- message_set test case.
+---@class protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+
+---@class protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+---@field str string
+
+---@class protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+---@field i integer
 
 ---@class protobuf_test_messages.proto2.TestLargeOneof
 ---@field a1? protobuf_test_messages.proto2.TestLargeOneof.A1
@@ -1203,6 +1301,11 @@ function M.TestAllTypesProto2_clear_field_name17__(t) t.field_name17__ = nil end
 function M.TestAllTypesProto2_has_Field_name18__(t) return t.Field_name18__ ~= nil end
 ---@param t protobuf_test_messages.proto2.TestAllTypesProto2
 function M.TestAllTypesProto2_clear_Field_name18__(t) t.Field_name18__ = nil end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2
+---@return boolean
+function M.TestAllTypesProto2_has_message_set_correct(t) return t.message_set_correct ~= nil end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2
+function M.TestAllTypesProto2_clear_message_set_correct(t) t.message_set_correct = nil end
 
 ---@param t? protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage
@@ -1287,6 +1390,93 @@ function M.TestAllTypesProto2_MultiWordGroupField_clear_group_int32(t) t.group_i
 function M.TestAllTypesProto2_MultiWordGroupField_has_group_uint32(t) return t.group_uint32 ~= nil end
 ---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField
 function M.TestAllTypesProto2_MultiWordGroupField_clear_group_uint32(t) t.group_uint32 = nil end
+
+---@param t? protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+function M.TestAllTypesProto2_MessageSetCorrect_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+---@return string
+function M.TestAllTypesProto2_MessageSetCorrect_encode(t) return pb.encode(M.TestAllTypesProto2_MessageSetCorrect_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+function M.TestAllTypesProto2_MessageSetCorrect_decode(b) return pb.decode(M.TestAllTypesProto2_MessageSetCorrect_descriptor, b) end
+function M.TestAllTypesProto2_MessageSetCorrect_decode_unsafe(b) return pb.decode_unsafe(M.TestAllTypesProto2_MessageSetCorrect_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllTypesProto2_MessageSetCorrect_decode_lazy(b) return pb.decode_lazy(M.TestAllTypesProto2_MessageSetCorrect_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllTypesProto2_MessageSetCorrect_text(t, opts) return pb.text.encode(M.TestAllTypesProto2_MessageSetCorrect_descriptor, t, opts) end
+
+---@param t? protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+---@return string
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_encode(t) return pb.encode(M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_decode(b) return pb.decode(M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor, b) end
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_decode_unsafe(b) return pb.decode_unsafe(M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_decode_lazy(b) return pb.decode_lazy(M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_text(t, opts) return pb.text.encode(M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor, t, opts) end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+---@return boolean
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_has_str(t) return t.str ~= nil end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1
+function M.TestAllTypesProto2_MessageSetCorrectExtension1_clear_str(t) t.str = nil end
+
+---@param t? protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+---@return string
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_encode(t) return pb.encode(M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_decode(b) return pb.decode(M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor, b) end
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_decode_unsafe(b) return pb.decode_unsafe(M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_decode_lazy(b) return pb.decode_lazy(M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_text(t, opts) return pb.text.encode(M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor, t, opts) end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+---@return boolean
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_has_i(t) return t.i ~= nil end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_clear_i(t) t.i = nil end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+---@return boolean
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_has_sub_msg(t) return t.sub_msg ~= nil end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2
+function M.TestAllTypesProto2_MessageSetCorrectExtension2_clear_sub_msg(t) t.sub_msg = nil end
+
+---@param t? protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+function M.TestAllTypesProto2_ExtensionWithOneof_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+---@return string
+function M.TestAllTypesProto2_ExtensionWithOneof_encode(t) return pb.encode(M.TestAllTypesProto2_ExtensionWithOneof_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+function M.TestAllTypesProto2_ExtensionWithOneof_decode(b) return pb.decode(M.TestAllTypesProto2_ExtensionWithOneof_descriptor, b) end
+function M.TestAllTypesProto2_ExtensionWithOneof_decode_unsafe(b) return pb.decode_unsafe(M.TestAllTypesProto2_ExtensionWithOneof_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllTypesProto2_ExtensionWithOneof_decode_lazy(b) return pb.decode_lazy(M.TestAllTypesProto2_ExtensionWithOneof_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllTypesProto2_ExtensionWithOneof_text(t, opts) return pb.text.encode(M.TestAllTypesProto2_ExtensionWithOneof_descriptor, t, opts) end
 
 ---@param t? protobuf_test_messages.proto2.ForeignMessageProto2
 ---@return protobuf_test_messages.proto2.ForeignMessageProto2
@@ -1556,6 +1746,60 @@ function M.TestAllRequiredTypesProto2_Data_decode_lazy(b) return pb.decode_lazy(
 ---@return string
 function M.TestAllRequiredTypesProto2_Data_text(t, opts) return pb.text.encode(M.TestAllRequiredTypesProto2_Data_descriptor, t, opts) end
 
+---@param t? protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+function M.TestAllRequiredTypesProto2_MessageSetCorrect_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+---@return string
+function M.TestAllRequiredTypesProto2_MessageSetCorrect_encode(t) return pb.encode(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+function M.TestAllRequiredTypesProto2_MessageSetCorrect_decode(b) return pb.decode(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, b) end
+function M.TestAllRequiredTypesProto2_MessageSetCorrect_decode_unsafe(b) return pb.decode_unsafe(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllRequiredTypesProto2_MessageSetCorrect_decode_lazy(b) return pb.decode_lazy(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllRequiredTypesProto2_MessageSetCorrect_text(t, opts) return pb.text.encode(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, t, opts) end
+
+---@param t? protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+---@return string
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_encode(t) return pb.encode(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_decode(b) return pb.decode(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor, b) end
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_decode_unsafe(b) return pb.decode_unsafe(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_decode_lazy(b) return pb.decode_lazy(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_text(t, opts) return pb.text.encode(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor, t, opts) end
+
+---@param t? protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_new(t) return t or {} end
+---@param t protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+---@return string
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_encode(t) return pb.encode(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor, t) end
+---@param b string
+---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_decode(b) return pb.decode(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor, b) end
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_decode_unsafe(b) return pb.decode_unsafe(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_decode_lazy(b) return pb.decode_lazy(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor, b) end
+---@param t protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_text(t, opts) return pb.text.encode(M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor, t, opts) end
+
 ---@param t? protobuf_test_messages.proto2.TestLargeOneof
 ---@return protobuf_test_messages.proto2.TestLargeOneof
 function M.TestLargeOneof_new(t) return t or {} end
@@ -1672,5 +1916,20 @@ pb.register_extension(M.TestAllTypesProto2_descriptor, {name="extension_string",
 pb.register_extension(M.TestAllTypesProto2_descriptor, {name="extension_bytes", full_name="protobuf_test_messages.proto2.extension_bytes", id=134, kind='scalar', proto_type="bytes", optional=true})
 -- Extension: protobuf_test_messages.proto2.groupfield extends protobuf_test_messages.proto2.TestAllTypesProto2 (tag 121)
 pb.register_extension(M.TestAllTypesProto2_descriptor, {name="groupfield", full_name="protobuf_test_messages.proto2.groupfield", id=121, kind='group', message=M.GroupField_descriptor, optional=true})
+
+-- Extension: protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1.message_set_extension extends protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect (tag 1547769)
+pb.register_extension(M.TestAllTypesProto2_MessageSetCorrect_descriptor, {name="message_set_extension", full_name="protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension1.message_set_extension", id=1547769, kind='message', message=M.TestAllTypesProto2_MessageSetCorrectExtension1_descriptor, optional=true})
+
+-- Extension: protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2.message_set_extension extends protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect (tag 4135312)
+pb.register_extension(M.TestAllTypesProto2_MessageSetCorrect_descriptor, {name="message_set_extension", full_name="protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrectExtension2.message_set_extension", id=4135312, kind='message', message=M.TestAllTypesProto2_MessageSetCorrectExtension2_descriptor, optional=true})
+
+-- Extension: protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof.extension_with_oneof extends protobuf_test_messages.proto2.TestAllTypesProto2.MessageSetCorrect (tag 123456789)
+pb.register_extension(M.TestAllTypesProto2_MessageSetCorrect_descriptor, {name="extension_with_oneof", full_name="protobuf_test_messages.proto2.TestAllTypesProto2.ExtensionWithOneof.extension_with_oneof", id=123456789, kind='message', message=M.TestAllTypesProto2_ExtensionWithOneof_descriptor, optional=true})
+
+-- Extension: protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1.message_set_extension extends protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect (tag 1547769)
+pb.register_extension(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, {name="message_set_extension", full_name="protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension1.message_set_extension", id=1547769, kind='message', message=M.TestAllRequiredTypesProto2_MessageSetCorrectExtension1_descriptor, optional=true})
+
+-- Extension: protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2.message_set_extension extends protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrect (tag 4135312)
+pb.register_extension(M.TestAllRequiredTypesProto2_MessageSetCorrect_descriptor, {name="message_set_extension", full_name="protobuf_test_messages.proto2.TestAllRequiredTypesProto2.MessageSetCorrectExtension2.message_set_extension", id=4135312, kind='message', message=M.TestAllRequiredTypesProto2_MessageSetCorrectExtension2_descriptor, optional=true})
 
 return M

@@ -54,7 +54,8 @@
 ---@field oneofs_list?    pb.OneofDescriptor[]               # filled by pb.finalize_message
 ---@field reserved_names? table<string, boolean>
 ---@field encode?         fun(t: table): string              # WKT override
----@field decode?         fun(b: string): table              # WKT override
+---@field decode?         fun(b: string, depth?: integer): table # WKT override
+---@field message_set?    boolean                            # extensions use the MessageSet item format
 ---@field text?           fun(t: table, opts?: pb.TextOpts): string
 ---@field json_encode?    fun(t: table): any
 ---@field json_decode?    fun(v: any): table

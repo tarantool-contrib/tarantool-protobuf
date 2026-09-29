@@ -1,15 +1,3 @@
-// Vendored from protobuf v36.2
-// (src/google/protobuf/test_messages_proto2.proto) with one surgical edit:
-// every `message MessageSet*` nested message and the `message_set_correct`
-// field on TestAllTypesProto2 / TestAllRequiredTypesProto2 have been
-// removed. protobuf-go's protoreflect refuses to load a FileDescriptor
-// declaring `option message_set_wire_format = true;`, calling MessageSet
-// "a legacy proto1 feature that is no longer supported" — that rejection
-// blocks plugin codegen for the entire file. The MessageSet wire format
-// is a separate slice; the proto2 conformance tests that target it (the
-// `MessageSetCorrect*` payload categories) will appear as known failures
-// until we add support or skip them.
-//
 // Protocol Buffers - Google's data interchange format
 // Copyright 2008 Google Inc.  All rights reserved.
 //
@@ -233,10 +221,39 @@ message TestAllTypesProto2 {
   // Reserved for unknown fields test.
   reserved 1000 to 9999;
 
+  optional MessageSetCorrect message_set_correct = 500;
 
+  // message_set test case.
+  message MessageSetCorrect {
+    option message_set_wire_format = true;
 
+    extensions 4 to max;
+  }
 
+  message MessageSetCorrectExtension1 {
+    extend MessageSetCorrect {
+      optional MessageSetCorrectExtension1 message_set_extension = 1547769;
+    }
+    optional string str = 25;
+  }
 
+  message MessageSetCorrectExtension2 {
+    extend MessageSetCorrect {
+      optional MessageSetCorrectExtension2 message_set_extension = 4135312;
+    }
+    optional int32 i = 9;
+    optional MessageSetCorrect sub_msg = 10;
+  }
+
+  message ExtensionWithOneof {
+    oneof oneof_field {
+      int32 a = 1;
+      int32 b = 2;
+    }
+    extend MessageSetCorrect {
+      optional ExtensionWithOneof extension_with_oneof = 123456789;
+    }
+  }
 
   reserved "reserved_field";
   reserved 999999;
@@ -367,8 +384,26 @@ message TestAllRequiredTypesProto2 {
   // Reserved for unknown fields test.
   reserved 1000 to 9999;
 
+  // message_set test case.
+  message MessageSetCorrect {
+    option message_set_wire_format = true;
 
+    extensions 4 to max;
+  }
 
+  message MessageSetCorrectExtension1 {
+    extend MessageSetCorrect {
+      optional MessageSetCorrectExtension1 message_set_extension = 1547769;
+    }
+    required string str = 25;
+  }
+
+  message MessageSetCorrectExtension2 {
+    extend MessageSetCorrect {
+      optional MessageSetCorrectExtension2 message_set_extension = 4135312;
+    }
+    required int32 i = 9;
+  }
 }
 
 message TestLargeOneof {

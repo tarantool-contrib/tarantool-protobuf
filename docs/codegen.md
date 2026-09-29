@@ -470,6 +470,38 @@ form per the proto2 JSON spec. Extensions extending
 skipped at codegen — those are meta-only and the WKT module doesn't
 surface their descriptors at runtime.
 
+### MessageSet
+
+A message declared with `option message_set_wire_format = true` holds
+only extensions, and each one travels as an item group instead of a
+field keyed by the extension number:
+
+```
+group 1 { uint32 type_id = 2; bytes message = 3; }
+```
+
+`protobuf-go` refuses to load such a declaration ("a legacy proto1
+feature that is no longer supported"), which would fail protogen for
+the whole file. The plugin therefore strips the option — and clamps
+the MessageSet's `extensions 4 to max` range to the ordinary field
+number limit — from the `CodeGeneratorRequest` before protogen sees
+it, and remembers which messages carried it. Those messages get
+`message_set = true` on their descriptor; in `mode=full` they also get
+thin wrappers that delegate to `pb.codec` instead of inline code.
+
+The Lua codec and the C codec both read items (fields in either
+order) into `_extensions` and write every singular message extension
+of a MessageSet back as an item. An extension that arrives as an
+ordinary field is accepted as well and merges with items for the same
+extension in wire order. An item whose `type_id` is not a registered
+extension is kept verbatim in `_unknown_fields`. Text and JSON see a
+MessageSet extension like any other: `[pkg.Ext.message_set_extension]
+{ … }`.
+
+`pb.parse` and `pb.from_pb` do not support extensions at all, so a
+MessageSet from those producers is an empty message whose items stay
+unknown fields.
+
 ### Closed enums
 
 Proto2 enums are closed: a numeric literal that doesn't match any
@@ -480,12 +512,6 @@ stay open to preserve forward-compatibility on the wire.
 
 ### What still doesn't work
 
-- **`MessageSet`** wire format. `protobuf-go`'s protoreflect refuses
-  to load a FileDescriptor declaring `option message_set_wire_format
-  = true;`, calling it "a legacy proto1 feature that is no longer
-  supported". Our vendored copy of
-  `test/conformance/proto/test_messages_proto2.proto` has the four
-  MessageSet-flavored nested messages stripped so the rest of the
-  schema compiles — the patch is documented in the file's header.
-  Real MessageSet support would need to fork protoreflect; deferred
-  until a Tarantool consumer asks.
+- **Editions.** Files with `edition = "2023"` and the editions test
+  messages of the conformance suite are not supported; the runner
+  answers `skipped` for them.

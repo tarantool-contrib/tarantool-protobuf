@@ -82,6 +82,7 @@ end
 -- decode_group is for proto2 groups; its assignment is deferred because
 -- the per-tag dispatch shares fast-path knowledge with decode_message.
 local encode_message
+local encode_message_set_item
 local decode_msg
 local decode_group
 -- Unsafe-decode twins. The unsafe reader closures (one per field,
@@ -1022,6 +1023,27 @@ function M.compile_readers_unsafe(desc)
     end
 end
 
+-- MessageSet wire format (`option message_set_wire_format = true`): each
+-- extension of the message is an item group rather than a field keyed by
+-- the extension number,
+--
+--   group 1 { uint32 type_id = 2; bytes message = 3; }
+--
+-- with the extension number as type_id and the extension's encoded
+-- message as `message`. Only singular message extensions can appear in a
+-- MessageSet; protoc refuses any other kind.
+local MS_ITEM_START = wire.encode_tag(1, wire.WIRE_SGROUP)
+local MS_ITEM_END   = wire.encode_tag(1, wire.WIRE_EGROUP)
+local MS_TYPE_ID    = wire.encode_tag(2, wire.WIRE_VARINT)
+local MS_MESSAGE    = wire.encode_tag(3, wire.WIRE_LEN)
+
+encode_message_set_item = function(ext, v)
+    local sub = ext.message
+    local body = sub.encode and sub.encode(v) or encode_message(sub, v)
+    return MS_ITEM_START .. MS_TYPE_ID .. wire.encode_varint(ext.id)
+        .. MS_MESSAGE .. wire.encode_varint(#body) .. body .. MS_ITEM_END
+end
+
 ---@param desc pb.Descriptor
 ---@param data table              message contents keyed by proto field name
 ---@return string                 wire-format bytes (proto3 / proto2)
@@ -1083,10 +1105,15 @@ encode_message = function(desc, data)
     if exts ~= nil then
         local elist = desc.extensions_list
         if elist ~= nil then
+            local message_set = desc.message_set
             for i = 1, #elist do
                 local ext = elist[i]
                 local v = exts[ext.full_name]
-                if v ~= nil then
+                if v == nil then
+                    -- absent
+                elseif message_set and ext.kind == 'message' and not ext.repeated then
+                    out[#out + 1] = encode_message_set_item(ext, v)
+                else
                     encode_field(ext, v, out, true)
                 end
             end
@@ -1305,6 +1332,52 @@ decode_extension = function(ext, buf, pos, wt, result, depth)
     error("decode_extension: unknown kind " .. tostring(kind), 0)
 end
 
+-- decode_message_set_item reads one MessageSet item (see
+-- encode_message_set_item) whose SGROUP tag is already consumed, `pos`
+-- sitting at its body, and merges a registered extension into
+-- result._extensions. The item's fields may come in any order. Returns
+-- the position past the closing EGROUP and whether the item was taken;
+-- an item for an unregistered type_id is left to the caller, who keeps
+-- its bytes as an unknown field so it re-encodes unchanged.
+local function decode_message_set_item(desc, buf, pos, result, depth, decode_msg_fn)
+    local type_id, payload
+    while true do
+        local id, wt
+        id, wt, pos = wire.decode_tag(buf, pos)
+        if wt == wire.WIRE_EGROUP then
+            if id ~= 1 then
+                error(("EGROUP id %d does not match SGROUP id 1"):format(id), 0)
+            end
+            break
+        end
+        if id == 2 and wt == wire.WIRE_VARINT then
+            local u
+            u, pos = wire.decode_varint(buf, pos)
+            type_id = tonumber(u)
+        elseif id == 3 and wt == wire.WIRE_LEN then
+            payload, pos = wire.decode_len(buf, pos)
+        else
+            pos = wire.skip_field(buf, pos, wt, id)
+        end
+    end
+    local ext = type_id ~= nil and desc.extensions_by_id
+        and desc.extensions_by_id[type_id]
+    if not ext or payload == nil or ext.kind ~= 'message' then
+        return pos, false
+    end
+    local decoded = decode_msg_fn(ext.message, payload, depth + 1)
+    local exts = result._extensions
+    if exts == nil then exts = {}; result._extensions = exts end
+    local prev = exts[ext.full_name]
+    if prev == nil or ext.message.decode then
+        exts[ext.full_name] = decoded
+    else
+        M.merge_message(ext.message, prev, decoded)
+    end
+    return pos, true
+end
+M.decode_message_set_item = decode_message_set_item
+
 ---@param desc pb.Descriptor
 ---@param buf  string           wire-format bytes
 ---@param depth? integer        nesting level of this message; nil at the top
@@ -1329,11 +1402,18 @@ decode_message = function(desc, buf, depth)
             -- Tag not in regular fields. Try registered proto2 extensions
             -- before treating the bytes as truly unknown.
             local ext = desc.extensions_by_id and desc.extensions_by_id[id]
+            local taken = false
             if ext ~= nil then
                 pos = decode_extension(ext, buf, pos, wt, result, depth)
+                taken = true
+            elseif id == 1 and wt == wire.WIRE_SGROUP and desc.message_set then
+                pos, taken = decode_message_set_item(desc, buf, pos, result,
+                    depth, decode_msg)
             else
-                -- Unknown field: capture verbatim for round-trip.
                 pos = wire.skip_field(buf, pos, wt, id)
+            end
+            if not taken then
+                -- Unknown field: capture verbatim for round-trip.
                 if unknown == nil then unknown = {} end
                 unknown[#unknown + 1] = buf:sub(tag_start, pos - 1)
             end
@@ -1617,10 +1697,17 @@ local decode_message_unsafe = function(desc, buf, depth)
         local f = fbi[id]
         if f == nil then
             local ext = desc.extensions_by_id and desc.extensions_by_id[id]
+            local taken = false
             if ext ~= nil then
                 pos = decode_extension_unsafe(ext, buf, pos, wt, result, depth)
+                taken = true
+            elseif id == 1 and wt == wire.WIRE_SGROUP and desc.message_set then
+                pos, taken = decode_message_set_item(desc, buf, pos, result,
+                    depth, decode_msg_unsafe)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
+            end
+            if not taken then
                 if unknown == nil then unknown = {} end
                 unknown[#unknown + 1] = buf:sub(tag_start, pos - 1)
             end

@@ -16,9 +16,8 @@ local proto2_tests = require('full.protobuf_test_messages.proto2.test_messages_p
 local M = {}
 
 -- Map of supported `message_type` -> descriptor. Any other message type
--- yields a `skipped` response so we don't claim conformance for protos we
--- don't actually support yet (editions; MessageSet-flavored proto2 schemas
--- still need work — those tests appear as runtime/parse errors below).
+-- (the editions test messages) yields a `skipped` response so we don't
+-- claim conformance for protos we don't actually support yet.
 local MESSAGE_REGISTRY = {
     ['protobuf_test_messages.proto3.TestAllTypesProto3'] =
         proto3_tests.TestAllTypesProto3_descriptor,

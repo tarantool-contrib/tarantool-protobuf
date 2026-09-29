@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 
 	"github.com/tarantool-contrib/tarantool-protobuf/cmd/protoc-gen-tarantool/internal/gen"
+	"github.com/tarantool-contrib/tarantool-protobuf/internal/messageset"
 )
 
 func main() {
@@ -46,6 +47,10 @@ func main() {
 			f.Options.GoPackage = proto.String(stub)
 		}
 	}
+
+	// protobuf-go cannot load a MessageSet declaration; strip the option
+	// and remember which messages had it.
+	messageSets := messageset.Strip(req)
 
 	var flags flag.FlagSet
 	modeFlag := flags.String("mode", "full", "codegen mode: full | runtime")
@@ -73,7 +78,8 @@ func main() {
 		fail("int64_as_number is currently mode=full only " +
 			"(runtime mode would require a descriptor flag wired through pb.codec)")
 	}
-	cfg := gen.Config{Mode: mode, Prefix: *prefixFlag, Int64AsNumber: *int64AsNumberFlag}
+	cfg := gen.Config{Mode: mode, Prefix: *prefixFlag, Int64AsNumber: *int64AsNumberFlag,
+		MessageSets: messageSets}
 
 	// Advertise proto3 optional support so protoc lets us see those fields.
 	plugin.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)

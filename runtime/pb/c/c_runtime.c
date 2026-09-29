@@ -171,6 +171,7 @@ typedef struct pb_plan {
 	int   extension_range_end;
 	int   n_extensions;          /* proto2 extensions registered on this message */
 	pb_plan_field *extensions;   /* extension field shapes; keyed by full_name */
+	uint8_t message_set;         /* desc.message_set: extensions travel as MessageSet items */
 	uint8_t has_override;
 	int   override_encode_ref;   /* LUA_NOREF if absent */
 	int   override_decode_ref;
@@ -613,6 +614,10 @@ compile_plan_impl(lua_State *L, int desc_idx)
 	} else {
 		lua_pop(L, 1);
 	}
+
+	lua_getfield(L, desc_idx, "message_set");
+	p->message_set = lua_toboolean(L, -1) ? 1 : 0;
+	lua_pop(L, 1);
 
 	/* Extension ranges (proto2). desc.extension_ranges = {{start, end}, ...} */
 	lua_getfield(L, desc_idx, "extension_ranges");
@@ -1693,10 +1698,26 @@ encode_extension(lua_State *L, enc_buf *b, pb_plan *plan,
 		return;
 	}
 	if (ext->kind == PB_KIND_MESSAGE) {
-		if (ext->is_group)
+		if (ext->is_group) {
 			encode_group_field(L, b, plan, ext, val_idx);
-		else
+		} else if (plan->message_set) {
+			/* MessageSet item, mirroring codec.lua's
+			 * encode_message_set_item:
+			 *   group 1 { uint32 type_id = 2; bytes message = 3; }
+			 * The message goes through the ordinary sub-message
+			 * path, re-tagged as field 3. */
+			pb_plan_field item = *ext;
+			encode_tag(3, PB_WIRE_LEN, item.tag_bytes, &item.tag_len);
+			ebuf_reserve(L, b, 2 + 10);
+			ebuf_put_byte(b, 0x0b);            /* SGROUP 1 */
+			ebuf_put_byte(b, 0x10);            /* type_id, varint */
+			ebuf_put_varint(b, ext->field_number);
+			encode_submessage_field(L, b, plan, &item, val_idx);
+			ebuf_reserve(L, b, 1);
+			ebuf_put_byte(b, 0x0c);            /* EGROUP 1 */
+		} else {
 			encode_submessage_field(L, b, plan, ext, val_idx);
+		}
 		return;
 	}
 	encode_one_field(L, b, ext, val_idx, /* force_emit */ 1);
@@ -2552,6 +2573,66 @@ decode_extension_into(dec_ctx *c, pb_plan_field *ext, uint8_t wt,
 	lua_pop(L, 1); /* _extensions */
 }
 
+/* Decode one MessageSet item — `group 1 { uint32 type_id = 2; bytes
+ * message = 3; }`, fields in any order — whose SGROUP tag is already
+ * consumed. When type_id names a registered message extension, the
+ * message is decoded and merged into result._extensions exactly as if
+ * it had arrived as that extension's own field, and 1 is returned.
+ * Otherwise returns 0; either way c->pos ends past the closing EGROUP,
+ * so the caller can keep the whole item as unknown bytes. Mirrors
+ * codec.lua's decode_message_set_item. */
+static int
+decode_message_set_item(dec_ctx *c, pb_plan *plan, int sub_plans_idx,
+                        int result_idx)
+{
+	lua_State *L = c->L;
+	uint64_t type_id = 0;
+	int have_type_id = 0;
+	size_t message_at = 0;   /* offset of the message's length varint */
+	int have_message = 0;
+	for (;;) {
+		if (c->pos >= c->len)
+			luaL_error(L, "unterminated SGROUP for field id 1");
+		uint64_t tag = dec_varint(c);
+		uint32_t id = (uint32_t)(tag >> 3);
+		uint8_t wt = (uint8_t)(tag & 0x07);
+		if (wt == PB_WIRE_EGROUP) {
+			if (id != 1)
+				luaL_error(L,
+					"EGROUP id %d does not match SGROUP id 1",
+					(int)id);
+			break;
+		}
+		if (id == 2 && wt == PB_WIRE_VARINT) {
+			type_id = dec_varint(c);
+			have_type_id = 1;
+		} else if (id == 3 && wt == PB_WIRE_LEN) {
+			message_at = c->pos;
+			have_message = 1;
+			dec_skip_with_id(c, wt, id);
+		} else {
+			dec_skip_with_id(c, wt, id);
+		}
+	}
+	if (!have_type_id || !have_message)
+		return 0;
+	pb_plan_field *ext = NULL;
+	for (int i = 0; i < plan->n_extensions; i++) {
+		if ((uint64_t)plan->extensions[i].field_number == type_id) {
+			ext = &plan->extensions[i];
+			break;
+		}
+	}
+	if (ext == NULL || ext->kind != PB_KIND_MESSAGE || ext->is_group ||
+	    ext->repeated)
+		return 0;
+	size_t end = c->pos;
+	c->pos = message_at;
+	decode_extension_into(c, ext, PB_WIRE_LEN, sub_plans_idx, result_idx);
+	c->pos = end;
+	return 1;
+}
+
 /* Decode one map<K,V> entry from the wire and lua_rawset it into the
  * map table at absolute stack index `map_idx`.
  *
@@ -3007,7 +3088,16 @@ decode_body(dec_ctx *c, pb_plan *plan, int result_idx,
 					continue;
 				}
 			}
-			dec_skip_with_id(c, wt, field_number);
+			if (plan->message_set && field_number == 1 &&
+			    wt == PB_WIRE_SGROUP) {
+				/* A MessageSet item; one for an unregistered
+				 * type_id falls through to the unknown bytes. */
+				if (decode_message_set_item(c, plan,
+				        sub_plans_idx, result_idx))
+					continue;
+			} else {
+				dec_skip_with_id(c, wt, field_number);
+			}
 			size_t chunk = c->pos - tag_start;
 			ebuf_reserve(L, &unknown, chunk);
 			ebuf_put_bytes(&unknown, c->buf + tag_start, chunk);
