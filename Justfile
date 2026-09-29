@@ -233,6 +233,19 @@ bench-wire: gen
 bench-shapes: gen
     tarantool bench/shapes_bench.lua
 
+# Range-shaped encode, Put-shaped decode/replace, nested-map name
+# matching; each candidate is checked against its baseline before timing.
+#
+# Tuple bridge (pb.tuple) versus per-row Lua tables.
+bench-tuple: gen
+    tarantool bench/tuple_bench.lua
+
+# The baselines' pb.encode / pb.decode go through the C codec as well.
+#
+# Same as `bench-tuple`, with PB_ENABLE_C=1.
+bench-tuple-c: build-c gen
+    PB_ENABLE_C=1 tarantool bench/tuple_bench.lua
+
 # Trace-stability gate: assert hot paths JIT-compile without fatal aborts.
 jit-trace: gen
     tarantool bench/jit_trace.lua
