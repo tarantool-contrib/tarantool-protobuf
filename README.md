@@ -51,6 +51,7 @@ wire format. Only editions are out of scope for now.
 | **Google conformance suite — `--performance`**     | **55 ✓ / 0 failures** (1 editions test skipped) |
 | Runtime `.proto` parsing (`pb.parse`) | ✅       |
 | Runtime `FileDescriptorSet` ingest (`pb.from_pb`) | ✅ |
+| Tuple ↔ wire without a Lua table per row (`pb.tuple`) | ✅ |
 | Markdown doc generator (`protoc-gen-tarantool-doc`) | ✅ |
 | proto3 JSON (`pb.json.encode`/`.decode`) | ✅    |
 | Text format (`pb.text.encode` / `pb.text.decode`) | ✅ |
@@ -409,8 +410,9 @@ every `just test` run.
 
 The optional C acceleration runtime (`runtime/pb/c_runtime.{so,dylib}`,
 built via `just build-c`, activated by `PB_ENABLE_C=1`) must produce
-byte-identical output to the pure-Lua codec. The parity gate reuses the
-existing test suites — no separate diff harness:
+byte-identical output to the pure-Lua codec. It needs Tarantool 3.5 or
+later; see [docs/c-accel.md](docs/c-accel.md#tarantool-version). The
+parity gate reuses the existing test suites — no separate diff harness:
 
 ```bash
 just test-all       # luatest under both codecs (752 + 1043 tests)

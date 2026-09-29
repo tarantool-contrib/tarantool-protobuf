@@ -33,6 +33,9 @@ links to the next.
     Makefile, Justfile, `buf`, CMake.
 12. **[Writing a custom transport](howto/13-custom-transport.md)** —
     implementing the four-method contract.
+13. **[Tuples to protobuf and back](howto/14-tuples.md)** —
+    `pb.tuple`: bind a message to a space format, convert rows
+    without a Lua table per row.
 
 When something doesn't work, **[troubleshooting](troubleshooting.md)**
 collects the common errors and their fixes.

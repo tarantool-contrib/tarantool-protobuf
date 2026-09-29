@@ -74,6 +74,23 @@ behavior change.
 The C path must be byte-equal to the Lua path on every encoded
 output and decode result — see "Parity verification" below.
 
+## Tarantool version
+
+The C runtime needs Tarantool 3.5 or later. The `pb.tuple`
+converters read a tuple's msgpack in place through
+`box_tuple_data`, which the module API gained in 3.5.0. An older
+Tarantool's `module.h` does not declare it, and an older Tarantool
+refuses a module built against a newer one:
+`require('pb.c_runtime')` fails with
+`undefined symbol: box_tuple_data`.
+
+`pb` treats that failure like an unset switch: it stays on the Lua
+codec, `pb.c_runtime` is nil, and nothing is reported. `pb.tuple`
+does the same. `just test-c` does not let this pass as a green run:
+its `c_runtime_loaded` group fails with the load error when
+`PB_ENABLE_C=1` is set and the module does not load, where the other
+C groups would only skip.
+
 ## Architecture sketch
 
 ### Descriptor compilation
