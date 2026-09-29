@@ -1196,19 +1196,19 @@ encode_message = function(node, s, p, depth, parent, pi, elem)
         for _ = 1, count do
             local kcls, kn, kbody, kext = mp_head(s, q)
             if kcls ~= MP_STR then
-                error(string.format('pb.tuple: a %s map has a key of type %s, '
-                                    .. 'field names are strings', node.message,
-                                    class_name(kcls, kext)), 0)
+                value_error(parent, pi, elem, 'a %s map has a key of type %s, '
+                            .. 'field names are strings', node.message,
+                            class_name(kcls, kext))
             end
             local key = sub(s, kbody, kbody + kn - 1)
             local i = a.index[key]
             if i == nil then
-                error(string.format("pb.tuple: unknown key '%s' in a %s map",
-                                    key, node.message), 0)
+                value_error(parent, pi, elem, "unknown key '%s' in a %s map",
+                            key, node.message)
             end
             if fpos[i] ~= nil then
-                error(string.format("pb.tuple: key '%s' appears twice in a "
-                                    .. '%s map', key, node.message), 0)
+                value_error(parent, pi, elem, "key '%s' appears twice in a %s "
+                            .. 'map', key, node.message)
             end
             q = kbody + kn
             fpos[i] = q
@@ -1223,8 +1223,8 @@ encode_message = function(node, s, p, depth, parent, pi, elem)
             if i ~= nil then
                 fpos[i] = q
             elseif byte(s, q) ~= 0xc0 then
-                error(string.format('pb.tuple: position %d of a %s array has '
-                                    .. 'no field', pos, node.message), 0)
+                value_error(parent, pi, elem, 'position %d of a %s array has '
+                            .. 'no field', pos, node.message)
             end
             q = mp_next(s, q)
         end

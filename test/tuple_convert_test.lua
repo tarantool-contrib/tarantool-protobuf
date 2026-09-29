@@ -385,11 +385,15 @@ for _, mode in ipairs({'full', 'runtime'}) do
         local conv = record_conv()
         local row = record_row()
         row[3] = {street = 'Main', bogus = 1}
-        t.assert_error_msg_contains("unknown key 'bogus' in a kv.Address map",
+        t.assert_error_msg_contains(
+            "field 'address' of kv.Record (column 'address'): unknown key "
+                .. "'bogus' in a kv.Address map",
             conv.encode, conv, box.tuple.new(row))
         row = record_row()
-        row[4] = {{number = '1', extra = true}}
-        t.assert_error_msg_contains("unknown key 'extra' in a kv.Phone map",
+        row[4] = {{number = '1'}, {number = '1', extra = true}}
+        t.assert_error_msg_contains(
+            "field 'phones' of kv.Record (column 'phones'): element 2: "
+                .. "unknown key 'extra' in a kv.Phone map",
             conv.encode, conv, box.tuple.new(row))
     end
 
