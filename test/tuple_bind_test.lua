@@ -1,0 +1,412 @@
+-- pb.tuple.bind: descriptor/space-format validation and the plan it
+-- compiles. Parameterized over both codegen modes.
+local t = require('luatest')
+local pb = require('pb')
+local helper = require('tuple_helper')
+
+-- Index of the plan entry for proto field `name`, or nil.
+local function slot(node, name)
+    for i = 1, node.n do
+        if node.name[i] == name then return i end
+    end
+    return nil
+end
+
+local KV_FORMAT = {
+    {name = 'key',             type = 'varbinary'},
+    {name = 'create_revision', type = 'integer'},
+    {name = 'mod_revision',    type = 'integer'},
+    {name = 'version',         type = 'integer'},
+    {name = 'value',           type = 'varbinary'},
+    {name = 'lease_id',        type = 'integer'},
+}
+
+local function record_format()
+    return {
+        {name = 'id',         type = 'unsigned'},
+        {name = 'name',       type = 'string'},
+        {name = 'address',    type = 'map', is_nullable = true},
+        {name = 'phones',     type = 'array'},
+        {name = 'scores',     type = 'map'},
+        {name = 'nickname',   type = 'string', is_nullable = true},
+        {name = 'kind',       type = 'unsigned'},
+        {name = 'created_at', type = 'datetime', is_nullable = true},
+        {name = 'owner',      type = 'uuid', is_nullable = true},
+        {name = 'token',      type = 'uuid', is_nullable = true},
+        {name = 'payload',    type = 'varbinary'},
+        {name = 'weight',     type = 'number'},
+        {name = 'active',     type = 'boolean'},
+        {name = 'label',      type = 'map', is_nullable = true},
+        {name = 'balance',    type = 'integer'},
+        {name = 'note',       type = 'string', is_nullable = true},
+    }
+end
+
+-- record_format() with the entry for column `name` replaced by `entry`.
+local function record_format_with(name, entry)
+    local f = record_format()
+    for i, e in ipairs(f) do
+        if e.name == name then
+            entry.name = name
+            f[i] = entry
+            return f
+        end
+    end
+    error('no column ' .. name)
+end
+
+for _, mode in ipairs({'full', 'runtime'}) do
+    local g = t.group('tuple_bind.' .. mode)
+    local kv = require(mode .. '.kv.kv_pb')
+    local hello = require(mode .. '.hello.hello_pb')
+
+    g.before_all(function() helper.ensure_box() end)
+
+    -- -----------------------------------------------------------------
+    -- Accepted bindings
+    -- -----------------------------------------------------------------
+
+    g.test_keyvalue_binds_with_rename = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        local p = conv.plan
+        t.assert_equals(p.layout, 'tuple')
+        t.assert_equals(p.message, 'kv.KeyValue')
+        t.assert_equals(p.n, 6)
+        t.assert_equals(p.field_no, {1, 2, 3, 4, 5, 6})
+        t.assert_equals(p.column, {1, 2, 3, 4, 5, 6})
+        t.assert_equals(p.name, {'key', 'create_revision', 'mod_revision',
+                                 'version', 'value', 'lease'})
+        t.assert_equals(p.column_name[6], 'lease_id')
+        t.assert_equals(p.kind, {'bytes', 'int64', 'int64', 'int64',
+                                 'bytes', 'int64'})
+        t.assert_equals(p.repr, {'scalar', 'scalar', 'scalar', 'scalar',
+                                 'scalar', 'scalar'})
+        t.assert_equals(p.conv, {'direct', 'range', 'range', 'range',
+                                 'direct', 'range'})
+        t.assert_equals(p.sub, {false, false, false, false, false, false})
+        t.assert_equals(p.unbound_nonnull, {})
+    end
+
+    g.test_omit_leaves_column_unbound = function()
+        local format = table.deepcopy(KV_FORMAT)
+        format[5].is_nullable = true
+        local s = helper.make_space('tuple_kv', format)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'},
+                                    omit = {'value'}})
+        local p = conv.plan
+        t.assert_equals(p.n, 5)
+        t.assert_equals(p.field_no, {1, 2, 3, 4, 6})
+        t.assert_equals(p.column, {1, 2, 3, 4, 6})
+        t.assert_is(slot(p, 'value'), nil)
+        -- nullable, so not a decode-time error
+        t.assert_equals(p.unbound_nonnull, {})
+    end
+
+    g.test_unbound_non_nullable_column_is_recorded = function()
+        local format = table.deepcopy(KV_FORMAT)
+        table.insert(format, {name = 'owner_id', type = 'unsigned'})
+        table.insert(format, {name = 'comment', type = 'string',
+                              is_nullable = true})
+        local s = helper.make_space('tuple_kv', format)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'},
+                                    omit = {'value'}})
+        t.assert_equals(conv.plan.unbound_nonnull, {5, 7})
+        t.assert_equals(conv.plan.unbound_nonnull_name, {'value', 'owner_id'})
+    end
+
+    g.test_record_representations = function()
+        local s = helper.make_space('tuple_record', record_format())
+        local p = pb.tuple.bind(kv.Record_descriptor, s).plan
+        t.assert_equals(p.n, 15)
+        -- ascending field numbers, whatever the column order
+        for i = 2, p.n do
+            t.assert(p.field_no[i - 1] < p.field_no[i])
+        end
+
+        local function check(name, want)
+            local i = slot(p, name)
+            t.assert_not_equals(i, nil, name)
+            for k, v in pairs(want) do
+                t.assert_equals(p[k][i], v, name .. '.' .. k)
+            end
+            return i
+        end
+
+        check('id',       {kind = 'uint64', repr = 'scalar', conv = 'direct',
+                           column = 1, column_type = 'unsigned'})
+        check('name',     {kind = 'string', conv = 'direct'})
+        local ia = check('address', {kind = 'message', repr = 'msg_map',
+                                     conv = 'direct', nullable = true})
+        check('phones',   {kind = 'message', repr = 'list', conv = 'direct',
+                           repeated = true})
+        check('scores',   {kind = 'map', repr = 'dict', conv = 'direct',
+                           key_kind = 'string', value_kind = 'int32'})
+        check('nickname', {kind = 'string', optional = true, nullable = true})
+        check('kind',     {kind = 'enum', repr = 'scalar', conv = 'range'})
+        check('created_at', {kind = 'timestamp', repr = 'scalar',
+                             conv = 'direct', column_type = 'datetime'})
+        check('owner',    {kind = 'string', conv = 'uuid_text'})
+        check('token',    {kind = 'bytes', conv = 'uuid_bin'})
+        check('payload',  {kind = 'bytes', conv = 'direct'})
+        check('weight',   {kind = 'double', conv = 'number'})
+        check('active',   {kind = 'bool', conv = 'direct'})
+        check('label',    {kind = 'message', repr = 'msg_map'})
+        check('balance',  {kind = 'sint64', conv = 'range', column = 15})
+
+        -- nested message as a map keyed by field name
+        local a = p.sub[ia]
+        t.assert_equals(a.layout, 'map')
+        t.assert_equals(a.message, 'kv.Address')
+        t.assert_equals(a.name, {'street', 'city', 'zip'})
+        t.assert_equals(a.field_no, {1, 2, 4})
+        t.assert_equals(a.column, {0, 0, 0})
+        t.assert_equals(a.conv, {'any', 'any', 'any'})
+        t.assert_equals(a.nullable, {true, true, true})
+
+        -- repeated message elements are maps keyed by name
+        local ph = p.sub[slot(p, 'phones')]
+        t.assert_equals(ph.layout, 'map')
+        t.assert_equals(ph.name, {'number', 'kind'})
+        t.assert_equals(ph.kind, {'string', 'enum'})
+
+        t.assert_equals(p.sub[slot(p, 'scores')], false)
+        -- `note` has no proto field and is nullable
+        t.assert_equals(p.unbound_nonnull, {})
+    end
+
+    g.test_message_in_array_column_is_positioned_by_field_number = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('address', {type = 'array'}))
+        local p = pb.tuple.bind(kv.Record_descriptor, s).plan
+        local i = slot(p, 'address')
+        t.assert_equals(p.repr[i], 'msg_array')
+        local a = p.sub[i]
+        t.assert_equals(a.layout, 'array')
+        t.assert_equals(a.column, {1, 2, 4})
+    end
+
+    g.test_message_in_varbinary_column_is_raw = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('address', {type = 'varbinary'}))
+        local p = pb.tuple.bind(kv.Record_descriptor, s).plan
+        local i = slot(p, 'address')
+        t.assert_equals(p.repr[i], 'raw')
+        t.assert_equals(p.sub[i], false)
+    end
+
+    g.test_any_column_is_checked_per_value = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('address', {type = 'any'}))
+        local p = pb.tuple.bind(kv.Record_descriptor, s).plan
+        local i = slot(p, 'address')
+        t.assert_equals(p.repr[i], 'msg_map')
+        t.assert_equals(p.conv[i], 'any')
+    end
+
+    g.test_string_and_bytes_are_interchangeable = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('payload', {type = 'string'}))
+        local p = pb.tuple.bind(kv.Record_descriptor, s).plan
+        t.assert_equals(p.conv[slot(p, 'payload')], 'str_bin')
+    end
+
+    g.test_recursive_message_shares_its_node = function()
+        local s = helper.make_space('tuple_person', {
+            {name = 'name',    type = 'string'},
+            {name = 'friends', type = 'array'},
+        })
+        local keep = {}
+        for _, f in ipairs(hello.Person_descriptor.fields) do
+            if f.name ~= 'name' and f.name ~= 'friends' then
+                keep[#keep + 1] = f.name
+            end
+        end
+        local p = pb.tuple.bind(hello.Person_descriptor, s,
+                                {omit = keep}).plan
+        local friend = p.sub[slot(p, 'friends')]
+        t.assert_equals(friend.layout, 'map')
+        t.assert_is(friend.sub[slot(friend, 'friends')], friend)
+    end
+
+    -- -----------------------------------------------------------------
+    -- Bind errors
+    -- -----------------------------------------------------------------
+
+    g.test_field_without_column_raises = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        t.assert_error_msg_contains("field 'lease' of kv.KeyValue has no column 'lease'",
+            pb.tuple.bind, kv.KeyValue_descriptor, s)
+    end
+
+    g.test_optional_on_non_nullable_column_raises = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('nickname', {type = 'string'}))
+        t.assert_error_msg_contains(
+            "optional field 'nickname' of kv.Record needs a nullable column",
+            pb.tuple.bind, kv.Record_descriptor, s)
+    end
+
+    g.test_repeated_on_non_array_column_raises = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('phones', {type = 'map'}))
+        t.assert_error_msg_contains(
+            "field 'phones' (repeated kv.Phone) of kv.Record cannot bind "
+                .. "to column 'phones' (map)",
+            pb.tuple.bind, kv.Record_descriptor, s)
+    end
+
+    g.test_proto_map_on_non_map_column_raises = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('scores', {type = 'array'}))
+        t.assert_error_msg_contains(
+            "field 'scores' (map<string, int32>) of kv.Record cannot bind "
+                .. "to column 'scores' (array)",
+            pb.tuple.bind, kv.Record_descriptor, s)
+    end
+
+    g.test_incompatible_scalar_types_raise = function()
+        local cases = {
+            {'id',         {type = 'string'},  'uint64',  'string'},
+            {'name',       {type = 'integer'}, 'string',  'integer'},
+            {'active',     {type = 'unsigned'}, 'bool',   'unsigned'},
+            {'weight',     {type = 'integer'}, 'double',  'integer'},
+            {'balance',    {type = 'number'},  'sint64',  'number'},
+            {'kind',       {type = 'string'},  'enum kv.Kind', 'string'},
+            {'created_at', {type = 'map', is_nullable = true},
+                'google.protobuf.Timestamp', 'map'},
+            {'payload',    {type = 'decimal'}, 'bytes',   'decimal'},
+        }
+        for _, c in ipairs(cases) do
+            local s = helper.make_space('tuple_record',
+                record_format_with(c[1], c[2]))
+            t.assert_error_msg_contains(
+                string.format("field '%s' (%s) of kv.Record cannot bind "
+                              .. "to column '%s' (%s)", c[1], c[3], c[1], c[4]),
+                pb.tuple.bind, kv.Record_descriptor, s)
+        end
+    end
+
+    g.test_too_sparse_array_message_raises = function()
+        local s = helper.make_space('tuple_record',
+            record_format_with('label', {type = 'array', is_nullable = true}))
+        t.assert_error_msg_contains(
+            "field 'label' of kv.Record: kv.Label is too sparse for an "
+                .. "array column (max field number 9, 2 fields)",
+            pb.tuple.bind, kv.Record_descriptor, s)
+    end
+
+    g.test_opaque_wkt_binds_only_to_varbinary = function()
+        local s = helper.make_space('tuple_event', {
+            {name = 'title',    type = 'string'},
+            {name = 'duration', type = 'map', is_nullable = true},
+        })
+        local keep = {}
+        for _, f in ipairs(hello.Event_descriptor.fields) do
+            if f.name ~= 'title' and f.name ~= 'duration' then
+                keep[#keep + 1] = f.name
+            end
+        end
+        t.assert_error_msg_contains(
+            "field 'duration' (google.protobuf.Duration) of hello.Event "
+                .. "cannot bind to column 'duration' (map)",
+            pb.tuple.bind, hello.Event_descriptor, s, {omit = keep})
+        s:format({
+            {name = 'title',    type = 'string'},
+            {name = 'duration', type = 'varbinary', is_nullable = true},
+        })
+        local p = pb.tuple.bind(hello.Event_descriptor, s, {omit = keep}).plan
+        t.assert_equals(p.repr[slot(p, 'duration')], 'raw')
+    end
+
+    g.test_bad_options_raise = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local d = kv.KeyValue_descriptor
+        t.assert_error_msg_contains("columns: kv.KeyValue has no field 'leese'",
+            pb.tuple.bind, d, s, {columns = {leese = 'lease_id'}})
+        t.assert_error_msg_contains("omit: kv.KeyValue has no field 'valeu'",
+            pb.tuple.bind, d, s, {columns = {lease = 'lease_id'},
+                                  omit = {'valeu'}})
+        t.assert_error_msg_contains("unknown option 'colums'",
+            pb.tuple.bind, d, s, {colums = {}})
+        t.assert_error_msg_contains(
+            "field 'lease' is both renamed and omitted",
+            pb.tuple.bind, d, s, {columns = {lease = 'lease_id'},
+                                  omit = {'lease'}})
+        t.assert_error_msg_contains(
+            "fields 'version' and 'lease' of kv.KeyValue both bind to "
+                .. "column 'version'",
+            pb.tuple.bind, d, s, {columns = {lease = 'version'}})
+    end
+
+    g.test_bad_arguments_raise = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        t.assert_error_msg_contains('expected a message descriptor',
+            pb.tuple.bind, nil, s)
+        t.assert_error_msg_contains('expected a message descriptor',
+            pb.tuple.bind, pb.wkt.Timestamp_descriptor, s)
+        t.assert_error_msg_contains('expected a space object',
+            pb.tuple.bind, kv.KeyValue_descriptor, 'tuple_kv')
+    end
+
+    -- -----------------------------------------------------------------
+    -- Schema changes
+    -- -----------------------------------------------------------------
+
+    g.test_schema_version_changes_on_format = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local before = box.internal.schema_version()
+        local format = table.deepcopy(KV_FORMAT)
+        table.insert(format, {name = 'extra', type = 'any',
+                              is_nullable = true})
+        s:format(format)
+        t.assert_not_equals(box.internal.schema_version(), before)
+    end
+
+    g.test_rebinds_after_format_change = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        local old_plan = conv.plan
+        conv:_check_schema()
+        t.assert_is(conv.plan, old_plan, 'no DDL, no rebind')
+
+        -- Move `lease_id` in front of a new non-nullable column.
+        local format = table.deepcopy(KV_FORMAT)
+        format[6] = {name = 'owner', type = 'unsigned', is_nullable = true}
+        format[7] = {name = 'lease_id', type = 'integer', is_nullable = true}
+        s:format(format)
+        conv:_check_schema()
+        t.assert_is_not(conv.plan, old_plan)
+        t.assert_equals(conv.plan.column[slot(conv.plan, 'lease')], 7)
+        t.assert_equals(conv.schema_version, box.internal.schema_version())
+    end
+
+    g.test_rebind_raises_on_incompatible_format = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        local format = table.deepcopy(KV_FORMAT)
+        format[6] = {name = 'lease_id', type = 'string'}
+        s:truncate()
+        s:format(format)
+        t.assert_error_msg_contains(
+            "field 'lease' (int64) of kv.KeyValue cannot bind to column "
+                .. "'lease_id' (string)",
+            conv._check_schema, conv)
+    end
+
+    g.test_rebind_raises_when_space_is_dropped = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        s:drop()
+        t.assert_error_msg_contains("space 'tuple_kv'",
+            conv._check_schema, conv)
+        t.assert_error_msg_contains('no longer exists',
+            conv._check_schema, conv)
+    end
+end

@@ -18,6 +18,7 @@ local fileset = require('pb.fileset')
 local pbjson  = require('pb.json')
 local pbtext  = require('pb.text')
 local lazy    = require('pb.lazy')
+local tuple   = require('pb.tuple')
 
 -- C-acceleration opt-in. Single switch is PB_ENABLE_C=1 in the environment,
 -- evaluated once at module load. A failed require (no .so built, ABI
@@ -145,6 +146,11 @@ return {
     -- Text format printer. pb.text.encode(desc, t, opts) -> string.
     -- opts: {single_line=bool, indent=string}. Encode-only.
     text = pbtext,
+
+    -- Tuple bridge: bind a message descriptor to a space format.
+    -- pb.tuple.bind(desc, space, {columns = {...}, omit = {...}}) -> conv.
+    -- See runtime/pb/tuple.lua for the binding rules and the plan.
+    tuple = tuple,
 
     -- Wire type constants
     WIRE_VARINT = wire.WIRE_VARINT,
