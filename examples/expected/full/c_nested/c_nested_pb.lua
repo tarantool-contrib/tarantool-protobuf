@@ -148,7 +148,7 @@ end
 
 ---@param b string
 ---@return c_nested.L1
-function M.L1_decode(buf)
+function M.L1_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L1_descriptor
     if pb.c_runtime ~= nil then
@@ -158,6 +158,8 @@ function M.L1_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L1 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -191,9 +193,9 @@ function M.L1_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L2_decode(payload)
+                result.next = M.L2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L2_descriptor, prev, M.L2_decode(payload))
+                pb.codec.merge_message(M.L2_descriptor, prev, M.L2_decode(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -203,7 +205,7 @@ function M.L1_decode(buf)
             local _ebid = M.L1_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -217,7 +219,7 @@ end
 
 ---@param b string
 ---@return c_nested.L1
-function M.L1_decode_unsafe(buf)
+function M.L1_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L1_descriptor
     if pb.c_runtime ~= nil then
@@ -227,6 +229,8 @@ function M.L1_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L1 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -260,9 +264,9 @@ function M.L1_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L2_decode_unsafe(payload)
+                result.next = M.L2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L2_descriptor, prev, M.L2_decode_unsafe(payload))
+                pb.codec.merge_message(M.L2_descriptor, prev, M.L2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -272,7 +276,7 @@ function M.L1_decode_unsafe(buf)
             local _ebid = M.L1_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -335,7 +339,7 @@ end
 
 ---@param b string
 ---@return c_nested.L2
-function M.L2_decode(buf)
+function M.L2_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L2_descriptor
     if pb.c_runtime ~= nil then
@@ -345,6 +349,8 @@ function M.L2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -378,9 +384,9 @@ function M.L2_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L3_decode(payload)
+                result.next = M.L3_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L3_descriptor, prev, M.L3_decode(payload))
+                pb.codec.merge_message(M.L3_descriptor, prev, M.L3_decode(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -390,7 +396,7 @@ function M.L2_decode(buf)
             local _ebid = M.L2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -404,7 +410,7 @@ end
 
 ---@param b string
 ---@return c_nested.L2
-function M.L2_decode_unsafe(buf)
+function M.L2_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L2_descriptor
     if pb.c_runtime ~= nil then
@@ -414,6 +420,8 @@ function M.L2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -447,9 +455,9 @@ function M.L2_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L3_decode_unsafe(payload)
+                result.next = M.L3_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L3_descriptor, prev, M.L3_decode_unsafe(payload))
+                pb.codec.merge_message(M.L3_descriptor, prev, M.L3_decode_unsafe(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -459,7 +467,7 @@ function M.L2_decode_unsafe(buf)
             local _ebid = M.L2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -522,7 +530,7 @@ end
 
 ---@param b string
 ---@return c_nested.L3
-function M.L3_decode(buf)
+function M.L3_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L3_descriptor
     if pb.c_runtime ~= nil then
@@ -532,6 +540,8 @@ function M.L3_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -565,9 +575,9 @@ function M.L3_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L4_decode(payload)
+                result.next = M.L4_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L4_descriptor, prev, M.L4_decode(payload))
+                pb.codec.merge_message(M.L4_descriptor, prev, M.L4_decode(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -577,7 +587,7 @@ function M.L3_decode(buf)
             local _ebid = M.L3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -591,7 +601,7 @@ end
 
 ---@param b string
 ---@return c_nested.L3
-function M.L3_decode_unsafe(buf)
+function M.L3_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L3_descriptor
     if pb.c_runtime ~= nil then
@@ -601,6 +611,8 @@ function M.L3_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -634,9 +646,9 @@ function M.L3_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L4_decode_unsafe(payload)
+                result.next = M.L4_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L4_descriptor, prev, M.L4_decode_unsafe(payload))
+                pb.codec.merge_message(M.L4_descriptor, prev, M.L4_decode_unsafe(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -646,7 +658,7 @@ function M.L3_decode_unsafe(buf)
             local _ebid = M.L3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -709,7 +721,7 @@ end
 
 ---@param b string
 ---@return c_nested.L4
-function M.L4_decode(buf)
+function M.L4_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L4_descriptor
     if pb.c_runtime ~= nil then
@@ -719,6 +731,8 @@ function M.L4_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L4 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -752,9 +766,9 @@ function M.L4_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L5_decode(payload)
+                result.next = M.L5_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L5_descriptor, prev, M.L5_decode(payload))
+                pb.codec.merge_message(M.L5_descriptor, prev, M.L5_decode(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -764,7 +778,7 @@ function M.L4_decode(buf)
             local _ebid = M.L4_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -778,7 +792,7 @@ end
 
 ---@param b string
 ---@return c_nested.L4
-function M.L4_decode_unsafe(buf)
+function M.L4_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L4_descriptor
     if pb.c_runtime ~= nil then
@@ -788,6 +802,8 @@ function M.L4_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L4 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -821,9 +837,9 @@ function M.L4_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.next
             if prev == nil then
-                result.next = M.L5_decode_unsafe(payload)
+                result.next = M.L5_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.L5_descriptor, prev, M.L5_decode_unsafe(payload))
+                pb.codec.merge_message(M.L5_descriptor, prev, M.L5_decode_unsafe(payload, depth + 1))
             end
         elseif id == 2 then
             local val
@@ -833,7 +849,7 @@ function M.L4_decode_unsafe(buf)
             local _ebid = M.L4_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -883,7 +899,7 @@ end
 
 ---@param b string
 ---@return c_nested.L5
-function M.L5_decode(buf)
+function M.L5_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L5_descriptor
     if pb.c_runtime ~= nil then
@@ -893,6 +909,8 @@ function M.L5_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L5 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -929,7 +947,7 @@ function M.L5_decode(buf)
             local _ebid = M.L5_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -943,7 +961,7 @@ end
 
 ---@param b string
 ---@return c_nested.L5
-function M.L5_decode_unsafe(buf)
+function M.L5_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.L5_descriptor
     if pb.c_runtime ~= nil then
@@ -953,6 +971,8 @@ function M.L5_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_nested.L5 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -989,7 +1009,7 @@ function M.L5_decode_unsafe(buf)
             local _ebid = M.L5_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

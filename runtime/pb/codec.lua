@@ -25,6 +25,8 @@
 local ffi  = require('ffi')
 local wire = require('pb.wire')
 
+local RECURSION_LIMIT = wire.RECURSION_LIMIT
+
 local M = {}
 
 local UINT64       = ffi.typeof('uint64_t')
@@ -798,7 +800,7 @@ local function build_repeated_reader(f, scalar_tbl, decode_msg_fn, decode_group_
         local packable = handler.packable and (handler.wire ~= wire.WIRE_LEN)
         local WIRE_LEN = wire.WIRE_LEN
         local decode_len_fn = wire.decode_len
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local list = result[fname]
             if list == nil then list = {}; result[fname] = list end
             if packable and wt == WIRE_LEN then
@@ -823,7 +825,7 @@ local function build_repeated_reader(f, scalar_tbl, decode_msg_fn, decode_group_
         local decode_len_fn = wire.decode_len
         local decode_varint_fn = wire.decode_varint
         local varint_to_int32 = wire.varint_to_int32
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local list = result[fname]
             if list == nil then list = {}; result[fname] = list end
             if wt == WIRE_LEN then
@@ -846,11 +848,11 @@ local function build_repeated_reader(f, scalar_tbl, decode_msg_fn, decode_group_
     if kind == 'message' then
         local sub_desc = f.message
         local decode_len_fn = wire.decode_len
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local list = result[fname]
             if list == nil then list = {}; result[fname] = list end
             local payload, np = decode_len_fn(buf, pos)
-            list[#list + 1] = decode_msg_fn(sub_desc, payload)
+            list[#list + 1] = decode_msg_fn(sub_desc, payload, depth + 1)
             return np
         end
     end
@@ -858,10 +860,10 @@ local function build_repeated_reader(f, scalar_tbl, decode_msg_fn, decode_group_
     if kind == 'group' then
         local sub_desc = f.message
         local stop_id  = f.id
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local list = result[fname]
             if list == nil then list = {}; result[fname] = list end
-            local decoded, np = decode_group_fn(sub_desc, buf, pos, stop_id)
+            local decoded, np = decode_group_fn(sub_desc, buf, pos, stop_id, depth + 1)
             list[#list + 1] = decoded
             return np
         end
@@ -885,14 +887,14 @@ local function build_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
         if not handler then return nil end
         local decode_value = handler.decode
         if siblings then
-            return function(buf, pos, wt, result)
+            return function(buf, pos, wt, result, depth)
                 local v, np = decode_value(buf, pos)
                 result[fname] = v
                 for i = 1, #siblings do result[siblings[i]] = nil end
                 return np
             end
         end
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local v, np = decode_value(buf, pos)
             result[fname] = v
             return np
@@ -903,14 +905,14 @@ local function build_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
         local decode_varint_fn = wire.decode_varint
         local varint_to_int32 = wire.varint_to_int32
         if siblings then
-            return function(buf, pos, wt, result)
+            return function(buf, pos, wt, result, depth)
                 local u, np = decode_varint_fn(buf, pos)
                 result[fname] = varint_to_int32(u)
                 for i = 1, #siblings do result[siblings[i]] = nil end
                 return np
             end
         end
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local u, np = decode_varint_fn(buf, pos)
             result[fname] = varint_to_int32(u)
             return np
@@ -929,23 +931,23 @@ local function build_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
         -- opts out because its decoded value is not a Lua table.
         if has_custom_decode then
             if siblings then
-                return function(buf, pos, wt, result)
+                return function(buf, pos, wt, result, depth)
                     local payload, np = decode_len_fn(buf, pos)
-                    result[fname] = decode_msg_fn(sub_desc, payload)
+                    result[fname] = decode_msg_fn(sub_desc, payload, depth + 1)
                     for i = 1, #siblings do result[siblings[i]] = nil end
                     return np
                 end
             end
-            return function(buf, pos, wt, result)
+            return function(buf, pos, wt, result, depth)
                 local payload, np = decode_len_fn(buf, pos)
-                result[fname] = decode_msg_fn(sub_desc, payload)
+                result[fname] = decode_msg_fn(sub_desc, payload, depth + 1)
                 return np
             end
         end
         if siblings then
-            return function(buf, pos, wt, result)
+            return function(buf, pos, wt, result, depth)
                 local payload, np = decode_len_fn(buf, pos)
-                local decoded = decode_msg_fn(sub_desc, payload)
+                local decoded = decode_msg_fn(sub_desc, payload, depth + 1)
                 local prev = result[fname]
                 if prev == nil then
                     result[fname] = decoded
@@ -956,9 +958,9 @@ local function build_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
                 return np
             end
         end
-        return function(buf, pos, wt, result)
+        return function(buf, pos, wt, result, depth)
             local payload, np = decode_len_fn(buf, pos)
-            local decoded = decode_msg_fn(sub_desc, payload)
+            local decoded = decode_msg_fn(sub_desc, payload, depth + 1)
             local prev = result[fname]
             if prev == nil then
                 result[fname] = decoded
@@ -973,8 +975,8 @@ local function build_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
         local sub_desc = f.message
         local stop_id  = f.id
         if siblings then
-            return function(buf, pos, wt, result)
-                local decoded, np = decode_group_fn(sub_desc, buf, pos, stop_id)
+            return function(buf, pos, wt, result, depth)
+                local decoded, np = decode_group_fn(sub_desc, buf, pos, stop_id, depth + 1)
                 local prev = result[fname]
                 if prev == nil then
                     result[fname] = decoded
@@ -985,8 +987,8 @@ local function build_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
                 return np
             end
         end
-        return function(buf, pos, wt, result)
-            local decoded, np = decode_group_fn(sub_desc, buf, pos, stop_id)
+        return function(buf, pos, wt, result, depth)
+            local decoded, np = decode_group_fn(sub_desc, buf, pos, stop_id, depth + 1)
             local prev = result[fname]
             if prev == nil then
                 result[fname] = decoded
@@ -1106,16 +1108,19 @@ local decode_message
 -- decode_msg dispatches to a descriptor's custom decode (WKT) when present.
 -- Assigned to the forward declaration near the top so reader closures
 -- built by compile_readers can capture it.
-decode_msg = function(desc, buf)
-    if desc.decode then return desc.decode(buf) end
-    return decode_message(desc, buf)
+-- `depth` is the nesting level of the message being decoded (0, or nil,
+-- for the top level); it reaches custom decoders too, since Struct /
+-- Value / ListValue recurse on their own.
+decode_msg = function(desc, buf, depth)
+    if desc.decode then return desc.decode(buf, depth) end
+    return decode_message(desc, buf, depth)
 end
 
 -- decode_one returns (value, new_pos) for a single value based on field kind.
 -- scalar_tbl and decode_msg_fn are parameterized so the same helper serves
 -- both the validating (decode_message) and unsafe (decode_message_unsafe)
 -- map fallback paths.
-local function decode_one(field, buf, pos, scalar_tbl, decode_msg_fn)
+local function decode_one(field, buf, pos, scalar_tbl, decode_msg_fn, depth)
     local kind = field.kind
     if kind == 'scalar' then
         return scalar_tbl[field.proto_type].decode(buf, pos)
@@ -1124,7 +1129,7 @@ local function decode_one(field, buf, pos, scalar_tbl, decode_msg_fn)
         return wire.varint_to_int32(u), np
     elseif kind == 'message' then
         local payload, np = wire.decode_len(buf, pos)
-        return decode_msg_fn(field.message, payload), np
+        return decode_msg_fn(field.message, payload, depth), np
     end
     error("decode_one: unknown kind " .. tostring(kind), 0)
 end
@@ -1165,7 +1170,10 @@ end
 -- Mirrors decode_message's per-tag dispatch but stops on EGROUP instead of
 -- end-of-buffer. Forward-declared near the top of the file so reader
 -- closures built by compile_readers can capture it before this assignment.
-decode_group = function(desc, buf, pos, stop_id)
+decode_group = function(desc, buf, pos, stop_id, depth)
+    -- depth is optional for generated modules predating the limit.
+    depth = depth or 1
+    if depth > RECURSION_LIMIT then wire.recursion_limit_error() end
     local result  = {}
     local fbi     = desc.field_by_id
     local len     = #buf
@@ -1193,7 +1201,7 @@ decode_group = function(desc, buf, pos, stop_id)
         else
             local reader = f._reader
             if reader ~= nil then
-                pos = reader(buf, pos, wt, result)
+                pos = reader(buf, pos, wt, result, depth)
             else
                 -- Slow-path map decode mirrors decode_message; groups
                 -- containing maps are exotic but we handle them.
@@ -1215,7 +1223,9 @@ M.decode_group = decode_group
 local decode_extension
 function M.decode_extension(...) return decode_extension(...) end
 
-decode_extension = function(ext, buf, pos, wt, result)
+decode_extension = function(ext, buf, pos, wt, result, depth)
+    -- depth is the extendee's level; optional for older generated modules.
+    depth = depth or 0
     local exts = result._extensions
     if exts == nil then exts = {}; result._extensions = exts end
     local key = ext.full_name
@@ -1252,10 +1262,10 @@ decode_extension = function(ext, buf, pos, wt, result)
             return np
         elseif kind == 'message' then
             local payload, np = wire.decode_len(buf, pos)
-            list[#list + 1] = decode_msg(ext.message, payload)
+            list[#list + 1] = decode_msg(ext.message, payload, depth + 1)
             return np
         elseif kind == 'group' then
-            local decoded, np = decode_group(ext.message, buf, pos, ext.id)
+            local decoded, np = decode_group(ext.message, buf, pos, ext.id, depth + 1)
             list[#list + 1] = decoded
             return np
         end
@@ -1274,7 +1284,7 @@ decode_extension = function(ext, buf, pos, wt, result)
         return np
     elseif kind == 'message' then
         local payload, np = wire.decode_len(buf, pos)
-        local decoded = decode_msg(ext.message, payload)
+        local decoded = decode_msg(ext.message, payload, depth + 1)
         local prev = exts[key]
         if prev == nil then
             exts[key] = decoded
@@ -1283,7 +1293,7 @@ decode_extension = function(ext, buf, pos, wt, result)
         end
         return np
     elseif kind == 'group' then
-        local decoded, np = decode_group(ext.message, buf, pos, ext.id)
+        local decoded, np = decode_group(ext.message, buf, pos, ext.id, depth + 1)
         local prev = exts[key]
         if prev == nil then
             exts[key] = decoded
@@ -1297,11 +1307,14 @@ end
 
 ---@param desc pb.Descriptor
 ---@param buf  string           wire-format bytes
+---@param depth? integer        nesting level of this message; nil at the top
 ---@return table                decoded message; unknown fields go in `_unknown_fields`, extensions in `_extensions`
-decode_message = function(desc, buf)
+decode_message = function(desc, buf, depth)
     if type(buf) ~= 'string' then
         error(("expected string for decode of %s, got %s"):format(desc.name, type(buf)), 0)
     end
+    depth = depth or 0
+    if depth > RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local fbi = desc.field_by_id
@@ -1317,7 +1330,7 @@ decode_message = function(desc, buf)
             -- before treating the bytes as truly unknown.
             local ext = desc.extensions_by_id and desc.extensions_by_id[id]
             if ext ~= nil then
-                pos = decode_extension(ext, buf, pos, wt, result)
+                pos = decode_extension(ext, buf, pos, wt, result, depth)
             else
                 -- Unknown field: capture verbatim for round-trip.
                 pos = wire.skip_field(buf, pos, wt, id)
@@ -1327,7 +1340,7 @@ decode_message = function(desc, buf)
         else
             local reader = f._reader
             if reader ~= nil then
-                pos = reader(buf, pos, wt, result)
+                pos = reader(buf, pos, wt, result, depth)
             else
                 -- Fallthrough for shapes without a specialized reader
                 -- (currently only map fields).
@@ -1343,9 +1356,9 @@ decode_message = function(desc, buf)
                     local eid, ewt
                     eid, ewt, ep = wire.decode_tag(payload, ep)
                     if eid == 1 then
-                        key, ep = decode_one(f.key, payload, ep, scalar, decode_msg)
+                        key, ep = decode_one(f.key, payload, ep, scalar, decode_msg, depth + 1)
                     elseif eid == 2 then
-                        val, ep = decode_one(f.value, payload, ep, scalar, decode_msg)
+                        val, ep = decode_one(f.value, payload, ep, scalar, decode_msg, depth + 1)
                     else
                         ep = wire.skip_field(payload, ep, ewt, eid)
                     end
@@ -1404,7 +1417,7 @@ decode_message = function(desc, buf)
                 elseif kind == 'message' then
                     local payload, np = wire.decode_len(buf, pos)
                     pos = np
-                    list[#list + 1] = decode_msg(f.message, payload)
+                    list[#list + 1] = decode_msg(f.message, payload, depth + 1)
                 end
             else
                 -- Singular
@@ -1420,7 +1433,7 @@ decode_message = function(desc, buf)
                 elseif kind == 'message' then
                     local payload, np = wire.decode_len(buf, pos)
                     pos = np
-                    local decoded = decode_msg(f.message, payload)
+                    local decoded = decode_msg(f.message, payload, depth + 1)
                     -- Per spec: repeated singular message fields merge,
                     -- *unless* this is a oneof branch (exclusive). WKT
                     -- types use custom decode and aren't merged either.
@@ -1467,7 +1480,9 @@ M.decode = decode_message
 
 local decode_extension_unsafe
 
-decode_group_unsafe = function(desc, buf, pos, stop_id)
+decode_group_unsafe = function(desc, buf, pos, stop_id, depth)
+    depth = depth or 1
+    if depth > RECURSION_LIMIT then wire.recursion_limit_error() end
     local result  = {}
     local fbi     = desc.field_by_id
     local len     = #buf
@@ -1495,7 +1510,7 @@ decode_group_unsafe = function(desc, buf, pos, stop_id)
         else
             local reader = f._reader_unsafe
             if reader ~= nil then
-                pos = reader(buf, pos, wt, result)
+                pos = reader(buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
             end
@@ -1504,7 +1519,8 @@ decode_group_unsafe = function(desc, buf, pos, stop_id)
     error("group not terminated by EGROUP id " .. tostring(stop_id), 0)
 end
 
-decode_extension_unsafe = function(ext, buf, pos, wt, result)
+decode_extension_unsafe = function(ext, buf, pos, wt, result, depth)
+    depth = depth or 0
     local exts = result._extensions
     if exts == nil then exts = {}; result._extensions = exts end
     local key = ext.full_name
@@ -1541,10 +1557,10 @@ decode_extension_unsafe = function(ext, buf, pos, wt, result)
             return np
         elseif kind == 'message' then
             local payload, np = wire.decode_len(buf, pos)
-            list[#list + 1] = decode_msg_unsafe(ext.message, payload)
+            list[#list + 1] = decode_msg_unsafe(ext.message, payload, depth + 1)
             return np
         elseif kind == 'group' then
-            local decoded, np = decode_group_unsafe(ext.message, buf, pos, ext.id)
+            local decoded, np = decode_group_unsafe(ext.message, buf, pos, ext.id, depth + 1)
             list[#list + 1] = decoded
             return np
         end
@@ -1562,7 +1578,7 @@ decode_extension_unsafe = function(ext, buf, pos, wt, result)
         return np
     elseif kind == 'message' then
         local payload, np = wire.decode_len(buf, pos)
-        local decoded = decode_msg_unsafe(ext.message, payload)
+        local decoded = decode_msg_unsafe(ext.message, payload, depth + 1)
         local prev = exts[key]
         if prev == nil then
             exts[key] = decoded
@@ -1571,7 +1587,7 @@ decode_extension_unsafe = function(ext, buf, pos, wt, result)
         end
         return np
     elseif kind == 'group' then
-        local decoded, np = decode_group_unsafe(ext.message, buf, pos, ext.id)
+        local decoded, np = decode_group_unsafe(ext.message, buf, pos, ext.id, depth + 1)
         local prev = exts[key]
         if prev == nil then
             exts[key] = decoded
@@ -1583,10 +1599,12 @@ decode_extension_unsafe = function(ext, buf, pos, wt, result)
     error("decode_extension_unsafe: unknown kind " .. tostring(kind), 0)
 end
 
-local decode_message_unsafe = function(desc, buf)
+local decode_message_unsafe = function(desc, buf, depth)
     if type(buf) ~= 'string' then
         error(("expected string for decode of %s, got %s"):format(desc.name, type(buf)), 0)
     end
+    depth = depth or 0
+    if depth > RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local fbi = desc.field_by_id
@@ -1600,7 +1618,7 @@ local decode_message_unsafe = function(desc, buf)
         if f == nil then
             local ext = desc.extensions_by_id and desc.extensions_by_id[id]
             if ext ~= nil then
-                pos = decode_extension_unsafe(ext, buf, pos, wt, result)
+                pos = decode_extension_unsafe(ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if unknown == nil then unknown = {} end
@@ -1609,7 +1627,7 @@ local decode_message_unsafe = function(desc, buf)
         else
             local reader = f._reader_unsafe
             if reader ~= nil then
-                pos = reader(buf, pos, wt, result)
+                pos = reader(buf, pos, wt, result, depth)
             else
             local kind = f.kind
             if kind == 'map' then
@@ -1623,9 +1641,9 @@ local decode_message_unsafe = function(desc, buf)
                     local eid, ewt
                     eid, ewt, ep = wire.decode_tag(payload, ep)
                     if eid == 1 then
-                        key, ep = decode_one(f.key, payload, ep, scalar_unsafe, decode_msg_unsafe)
+                        key, ep = decode_one(f.key, payload, ep, scalar_unsafe, decode_msg_unsafe, depth + 1)
                     elseif eid == 2 then
-                        val, ep = decode_one(f.value, payload, ep, scalar_unsafe, decode_msg_unsafe)
+                        val, ep = decode_one(f.value, payload, ep, scalar_unsafe, decode_msg_unsafe, depth + 1)
                     else
                         ep = wire.skip_field(payload, ep, ewt, eid)
                     end
@@ -1673,7 +1691,7 @@ local decode_message_unsafe = function(desc, buf)
                 elseif kind == 'message' then
                     local payload, np = wire.decode_len(buf, pos)
                     pos = np
-                    list[#list + 1] = decode_msg_unsafe(f.message, payload)
+                    list[#list + 1] = decode_msg_unsafe(f.message, payload, depth + 1)
                 end
             else
                 if kind == 'scalar' then
@@ -1688,7 +1706,7 @@ local decode_message_unsafe = function(desc, buf)
                 elseif kind == 'message' then
                     local payload, np = wire.decode_len(buf, pos)
                     pos = np
-                    local decoded = decode_msg_unsafe(f.message, payload)
+                    local decoded = decode_msg_unsafe(f.message, payload, depth + 1)
                     local prev = result[f.name]
                     if prev == nil or f.oneof or f.message.decode then
                         result[f.name] = decoded
@@ -1710,9 +1728,9 @@ end
 -- decode_msg_unsafe dispatches WKT custom decoders normally (they have
 -- no _unsafe twin and don't run utf8_len) and routes everything else
 -- through decode_message_unsafe.
-decode_msg_unsafe = function(desc, buf)
-    if desc.decode then return desc.decode(buf) end
-    return decode_message_unsafe(desc, buf)
+decode_msg_unsafe = function(desc, buf, depth)
+    if desc.decode then return desc.decode(buf, depth) end
+    return decode_message_unsafe(desc, buf, depth)
 end
 
 M.decode_unsafe = decode_msg_unsafe

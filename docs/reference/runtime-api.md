@@ -55,6 +55,25 @@ match field names. Defaults are filled in per proto3 semantics; absent
 explicit-optional fields stay `nil`. Unknown fields are concatenated
 into `t._unknown_fields` (raw bytes, re-emitted on encode).
 
+A singular message field that occurs more than once on the wire is
+merged, not replaced: scalars take the last value, repeated fields
+concatenate, nested messages merge recursively, a oneof member clears
+the siblings an earlier occurrence set, and the unknown fields and
+proto2 extensions of every occurrence are kept. `pb.text.decode`
+merges a repeated `field { ... }` block the same way.
+
+Decoding refuses input nested more than `pb.wire.RECURSION_LIMIT`
+(100) messages or groups below the top-level message, with the error
+`message nesting exceeds the recursion limit (100)`. The bound is the
+same as protobuf's C++ and upb parsers and covers every path that
+recurses: nested messages, groups, map values, extensions,
+`Struct` / `Value` / `ListValue`, and unknown groups being skipped.
+Every decoder enforces it identically — both codegen modes and the C
+codec — which keeps hostile input from exhausting the Lua stack or the
+fiber's C stack. The C encoder refuses a table nested past the same
+bound (which also catches a self-referencing table); the Lua encoders
+have no bound and fail on such a table with Lua's own `stack overflow`.
+
 ### `pb.decode_lazy(desc, bytes) -> MessageView`
 
 Build a zero-copy view over the bytes. Nothing past the field index is
@@ -270,6 +289,8 @@ directly. The full surface is in `runtime/pb/wire.lua`. Highlights:
   variants.
 - UTF-8 validator: `pb.wire.is_valid_utf8(s)` — ICU-backed, matches
   every proto3 UTF-8 rejection rule.
+- `pb.wire.RECURSION_LIMIT` — the decode nesting bound (100); see
+  [`pb.decode`](#pbdecodedesc-bytes---table).
 
 Adding a new scalar means touching `wire.lua` (primitives +
 `TYPE_INFO`), `types.go` (Kind mapping), and `inline.go` (emission).

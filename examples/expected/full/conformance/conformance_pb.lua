@@ -262,7 +262,7 @@ end
 
 ---@param b string
 ---@return conformance.TestStatus
-function M.TestStatus_decode(buf)
+function M.TestStatus_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.TestStatus_descriptor
@@ -273,6 +273,8 @@ function M.TestStatus_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.TestStatus decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -401,7 +403,7 @@ function M.TestStatus_decode(buf)
             local _ebid = M.TestStatus_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -415,7 +417,7 @@ end
 
 ---@param b string
 ---@return conformance.TestStatus
-function M.TestStatus_decode_unsafe(buf)
+function M.TestStatus_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.TestStatus_descriptor
@@ -426,6 +428,8 @@ function M.TestStatus_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.TestStatus decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -548,7 +552,7 @@ function M.TestStatus_decode_unsafe(buf)
             local _ebid = M.TestStatus_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -608,7 +612,7 @@ end
 
 ---@param b string
 ---@return conformance.FailureSet
-function M.FailureSet_decode(buf)
+function M.FailureSet_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.FailureSet_descriptor
     if pb.c_runtime ~= nil then
@@ -618,6 +622,8 @@ function M.FailureSet_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.FailureSet decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -652,12 +658,12 @@ function M.FailureSet_decode(buf)
             if list == nil then list = {}; result.test = list end
             local payload
             payload, pos = wire.decode_len(buf, pos)
-            _n_test = _n_test + 1; list[_n_test] = M.TestStatus_decode(payload)
+            _n_test = _n_test + 1; list[_n_test] = M.TestStatus_decode(payload, depth + 1)
         else
             local _ebid = M.FailureSet_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -671,7 +677,7 @@ end
 
 ---@param b string
 ---@return conformance.FailureSet
-function M.FailureSet_decode_unsafe(buf)
+function M.FailureSet_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.FailureSet_descriptor
     if pb.c_runtime ~= nil then
@@ -681,6 +687,8 @@ function M.FailureSet_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.FailureSet decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -715,12 +723,12 @@ function M.FailureSet_decode_unsafe(buf)
             if list == nil then list = {}; result.test = list end
             local payload
             payload, pos = wire.decode_len(buf, pos)
-            _n_test = _n_test + 1; list[_n_test] = M.TestStatus_decode_unsafe(payload)
+            _n_test = _n_test + 1; list[_n_test] = M.TestStatus_decode_unsafe(payload, depth + 1)
         else
             local _ebid = M.FailureSet_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -876,7 +884,7 @@ end
 
 ---@param b string
 ---@return conformance.ConformanceRequest
-function M.ConformanceRequest_decode(buf)
+function M.ConformanceRequest_decode(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
@@ -890,6 +898,8 @@ function M.ConformanceRequest_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.ConformanceRequest decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1101,9 +1111,9 @@ function M.ConformanceRequest_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.jspb_encoding_options
             if prev == nil then
-                result.jspb_encoding_options = M.JspbEncodingConfig_decode(payload)
+                result.jspb_encoding_options = M.JspbEncodingConfig_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.JspbEncodingConfig_descriptor, prev, M.JspbEncodingConfig_decode(payload))
+                pb.codec.merge_message(M.JspbEncodingConfig_descriptor, prev, M.JspbEncodingConfig_decode(payload, depth + 1))
             end
         elseif id == 9 then
             local val
@@ -1113,7 +1123,7 @@ function M.ConformanceRequest_decode(buf)
             local _ebid = M.ConformanceRequest_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1127,7 +1137,7 @@ end
 
 ---@param b string
 ---@return conformance.ConformanceRequest
-function M.ConformanceRequest_decode_unsafe(buf)
+function M.ConformanceRequest_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local decode_varint = wire.decode_varint
@@ -1140,6 +1150,8 @@ function M.ConformanceRequest_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.ConformanceRequest decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1343,9 +1355,9 @@ function M.ConformanceRequest_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.jspb_encoding_options
             if prev == nil then
-                result.jspb_encoding_options = M.JspbEncodingConfig_decode_unsafe(payload)
+                result.jspb_encoding_options = M.JspbEncodingConfig_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.JspbEncodingConfig_descriptor, prev, M.JspbEncodingConfig_decode_unsafe(payload))
+                pb.codec.merge_message(M.JspbEncodingConfig_descriptor, prev, M.JspbEncodingConfig_decode_unsafe(payload, depth + 1))
             end
         elseif id == 9 then
             local val
@@ -1355,7 +1367,7 @@ function M.ConformanceRequest_decode_unsafe(buf)
             local _ebid = M.ConformanceRequest_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1518,7 +1530,7 @@ end
 
 ---@param b string
 ---@return conformance.ConformanceResponse
-function M.ConformanceResponse_decode(buf)
+function M.ConformanceResponse_decode(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
@@ -1530,6 +1542,8 @@ function M.ConformanceResponse_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.ConformanceResponse decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1920,7 +1934,7 @@ function M.ConformanceResponse_decode(buf)
             local _ebid = M.ConformanceResponse_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1934,7 +1948,7 @@ end
 
 ---@param b string
 ---@return conformance.ConformanceResponse
-function M.ConformanceResponse_decode_unsafe(buf)
+function M.ConformanceResponse_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.ConformanceResponse_descriptor
@@ -1945,6 +1959,8 @@ function M.ConformanceResponse_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.ConformanceResponse decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2319,7 +2335,7 @@ function M.ConformanceResponse_decode_unsafe(buf)
             local _ebid = M.ConformanceResponse_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2369,7 +2385,7 @@ end
 
 ---@param b string
 ---@return conformance.JspbEncodingConfig
-function M.JspbEncodingConfig_decode(buf)
+function M.JspbEncodingConfig_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.JspbEncodingConfig_descriptor
     if pb.c_runtime ~= nil then
@@ -2379,6 +2395,8 @@ function M.JspbEncodingConfig_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.JspbEncodingConfig decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2415,7 +2433,7 @@ function M.JspbEncodingConfig_decode(buf)
             local _ebid = M.JspbEncodingConfig_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2429,7 +2447,7 @@ end
 
 ---@param b string
 ---@return conformance.JspbEncodingConfig
-function M.JspbEncodingConfig_decode_unsafe(buf)
+function M.JspbEncodingConfig_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.JspbEncodingConfig_descriptor
     if pb.c_runtime ~= nil then
@@ -2439,6 +2457,8 @@ function M.JspbEncodingConfig_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for conformance.JspbEncodingConfig decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2475,7 +2495,7 @@ function M.JspbEncodingConfig_decode_unsafe(buf)
             local _ebid = M.JspbEncodingConfig_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

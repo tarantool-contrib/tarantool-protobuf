@@ -2740,7 +2740,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2
-function M.TestAllTypesProto2_decode(buf)
+function M.TestAllTypesProto2_decode(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -2769,6 +2769,8 @@ function M.TestAllTypesProto2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2965,18 +2967,18 @@ function M.TestAllTypesProto2_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_nested_message
             if prev == nil then
-                result.optional_nested_message = M.TestAllTypesProto2_NestedMessage_decode(payload)
+                result.optional_nested_message = M.TestAllTypesProto2_NestedMessage_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode(payload, depth + 1))
             end
         elseif id == 19 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_foreign_message
             if prev == nil then
-                result.optional_foreign_message = M.ForeignMessageProto2_decode(payload)
+                result.optional_foreign_message = M.ForeignMessageProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode(payload))
+                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode(payload, depth + 1))
             end
         elseif id == 21 then
             local u
@@ -3055,9 +3057,9 @@ function M.TestAllTypesProto2_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.recursive_message
             if prev == nil then
-                result.recursive_message = M.TestAllTypesProto2_decode(payload)
+                result.recursive_message = M.TestAllTypesProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode(payload, depth + 1))
             end
         elseif id == 31 then
             if wt == 2 then
@@ -3413,13 +3415,13 @@ function M.TestAllTypesProto2_decode(buf)
             if list == nil then list = {}; result.repeated_nested_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto2_NestedMessage_decode(payload)
+            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto2_NestedMessage_decode(payload, depth + 1)
         elseif id == 49 then
             local list = result.repeated_foreign_message
             if list == nil then list = {}; result.repeated_foreign_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessageProto2_decode(payload)
+            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessageProto2_decode(payload, depth + 1)
         elseif id == 51 then
             if wt == 2 then
                 local payload
@@ -4475,7 +4477,7 @@ function M.TestAllTypesProto2_decode(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.TestAllTypesProto2_NestedMessage_decode(_payload)
+                    _val = M.TestAllTypesProto2_NestedMessage_decode(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -4553,7 +4555,7 @@ function M.TestAllTypesProto2_decode(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.TestAllTypesProto2_NestedMessage_decode(_payload)
+                    _val = M.TestAllTypesProto2_NestedMessage_decode(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -4574,7 +4576,7 @@ function M.TestAllTypesProto2_decode(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.ForeignMessageProto2_decode(_payload)
+                    _val = M.ForeignMessageProto2_decode(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -4639,9 +4641,9 @@ function M.TestAllTypesProto2_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.oneof_nested_message
             if prev == nil then
-                result.oneof_nested_message = M.TestAllTypesProto2_NestedMessage_decode(payload)
+                result.oneof_nested_message = M.TestAllTypesProto2_NestedMessage_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode(payload, depth + 1))
             end
             result.oneof_uint32 = nil
             result.oneof_string = nil
@@ -4791,7 +4793,7 @@ function M.TestAllTypesProto2_decode(buf)
             result.oneof_double = nil
         elseif id == 201 then
             local payload
-            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_Data_descriptor, buf, pos, 201)
+            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_Data_descriptor, buf, pos, 201, depth + 1)
             local prev = result.data
             if prev == nil then
                 result.data = payload
@@ -4800,7 +4802,7 @@ function M.TestAllTypesProto2_decode(buf)
             end
         elseif id == 204 then
             local payload
-            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_MultiWordGroupField_descriptor, buf, pos, 204)
+            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_MultiWordGroupField_descriptor, buf, pos, 204, depth + 1)
             local prev = result.multiwordgroupfield
             if prev == nil then
                 result.multiwordgroupfield = payload
@@ -5001,7 +5003,7 @@ function M.TestAllTypesProto2_decode(buf)
             _e["protobuf_test_messages.proto2.extension_int32"] = _val
         elseif id == 121 then
             local _payload
-            _payload, pos = pb.codec.decode_group(M.GroupField_descriptor, buf, pos, 121)
+            _payload, pos = pb.codec.decode_group(M.GroupField_descriptor, buf, pos, 121, depth + 1)
             local _e = result._extensions
             if _e == nil then _e = {}; result._extensions = _e end
             _e["protobuf_test_messages.proto2.groupfield"] = _payload
@@ -5021,7 +5023,7 @@ function M.TestAllTypesProto2_decode(buf)
             local _ebid = M.TestAllTypesProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -5035,7 +5037,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2
-function M.TestAllTypesProto2_decode_unsafe(buf)
+function M.TestAllTypesProto2_decode_unsafe(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -5063,6 +5065,8 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -5257,18 +5261,18 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_nested_message
             if prev == nil then
-                result.optional_nested_message = M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload)
+                result.optional_nested_message = M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1))
             end
         elseif id == 19 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_foreign_message
             if prev == nil then
-                result.optional_foreign_message = M.ForeignMessageProto2_decode_unsafe(payload)
+                result.optional_foreign_message = M.ForeignMessageProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 21 then
             local u
@@ -5343,9 +5347,9 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.recursive_message
             if prev == nil then
-                result.recursive_message = M.TestAllTypesProto2_decode_unsafe(payload)
+                result.recursive_message = M.TestAllTypesProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 31 then
             if wt == 2 then
@@ -5699,13 +5703,13 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             if list == nil then list = {}; result.repeated_nested_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload)
+            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1)
         elseif id == 49 then
             local list = result.repeated_foreign_message
             if list == nil then list = {}; result.repeated_foreign_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessageProto2_decode_unsafe(payload)
+            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessageProto2_decode_unsafe(payload, depth + 1)
         elseif id == 51 then
             if wt == 2 then
                 local payload
@@ -6757,7 +6761,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.TestAllTypesProto2_NestedMessage_decode_unsafe(_payload)
+                    _val = M.TestAllTypesProto2_NestedMessage_decode_unsafe(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -6835,7 +6839,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.TestAllTypesProto2_NestedMessage_decode_unsafe(_payload)
+                    _val = M.TestAllTypesProto2_NestedMessage_decode_unsafe(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -6856,7 +6860,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.ForeignMessageProto2_decode_unsafe(_payload)
+                    _val = M.ForeignMessageProto2_decode_unsafe(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -6921,9 +6925,9 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.oneof_nested_message
             if prev == nil then
-                result.oneof_nested_message = M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload)
+                result.oneof_nested_message = M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_NestedMessage_descriptor, prev, M.TestAllTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1))
             end
             result.oneof_uint32 = nil
             result.oneof_string = nil
@@ -7071,7 +7075,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             result.oneof_double = nil
         elseif id == 201 then
             local payload
-            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_Data_descriptor, buf, pos, 201)
+            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_Data_descriptor, buf, pos, 201, depth + 1)
             local prev = result.data
             if prev == nil then
                 result.data = payload
@@ -7080,7 +7084,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             end
         elseif id == 204 then
             local payload
-            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_MultiWordGroupField_descriptor, buf, pos, 204)
+            payload, pos = pb.codec.decode_group(M.TestAllTypesProto2_MultiWordGroupField_descriptor, buf, pos, 204, depth + 1)
             local prev = result.multiwordgroupfield
             if prev == nil then
                 result.multiwordgroupfield = payload
@@ -7279,7 +7283,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             _e["protobuf_test_messages.proto2.extension_int32"] = _val
         elseif id == 121 then
             local _payload
-            _payload, pos = pb.codec.decode_group(M.GroupField_descriptor, buf, pos, 121)
+            _payload, pos = pb.codec.decode_group(M.GroupField_descriptor, buf, pos, 121, depth + 1)
             local _e = result._extensions
             if _e == nil then _e = {}; result._extensions = _e end
             _e["protobuf_test_messages.proto2.groupfield"] = _payload
@@ -7299,7 +7303,7 @@ function M.TestAllTypesProto2_decode_unsafe(buf)
             local _ebid = M.TestAllTypesProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7647,7 +7651,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage
-function M.TestAllTypesProto2_NestedMessage_decode(buf)
+function M.TestAllTypesProto2_NestedMessage_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto2_NestedMessage_descriptor
     if pb.c_runtime ~= nil then
@@ -7657,6 +7661,8 @@ function M.TestAllTypesProto2_NestedMessage_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7694,15 +7700,15 @@ function M.TestAllTypesProto2_NestedMessage_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.corecursive
             if prev == nil then
-                result.corecursive = M.TestAllTypesProto2_decode(payload)
+                result.corecursive = M.TestAllTypesProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode(payload, depth + 1))
             end
         else
             local _ebid = M.TestAllTypesProto2_NestedMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7716,7 +7722,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage
-function M.TestAllTypesProto2_NestedMessage_decode_unsafe(buf)
+function M.TestAllTypesProto2_NestedMessage_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto2_NestedMessage_descriptor
     if pb.c_runtime ~= nil then
@@ -7726,6 +7732,8 @@ function M.TestAllTypesProto2_NestedMessage_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2.NestedMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7763,15 +7771,15 @@ function M.TestAllTypesProto2_NestedMessage_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.corecursive
             if prev == nil then
-                result.corecursive = M.TestAllTypesProto2_decode_unsafe(payload)
+                result.corecursive = M.TestAllTypesProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto2_descriptor, prev, M.TestAllTypesProto2_decode_unsafe(payload, depth + 1))
             end
         else
             local _ebid = M.TestAllTypesProto2_NestedMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7837,7 +7845,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.Data
-function M.TestAllTypesProto2_Data_decode(buf)
+function M.TestAllTypesProto2_Data_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto2_Data_descriptor
     if pb.c_runtime ~= nil then
@@ -7847,6 +7855,8 @@ function M.TestAllTypesProto2_Data_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2.Data decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7887,7 +7897,7 @@ function M.TestAllTypesProto2_Data_decode(buf)
             local _ebid = M.TestAllTypesProto2_Data_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7901,7 +7911,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.Data
-function M.TestAllTypesProto2_Data_decode_unsafe(buf)
+function M.TestAllTypesProto2_Data_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto2_Data_descriptor
     if pb.c_runtime ~= nil then
@@ -7911,6 +7921,8 @@ function M.TestAllTypesProto2_Data_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2.Data decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7951,7 +7963,7 @@ function M.TestAllTypesProto2_Data_decode_unsafe(buf)
             local _ebid = M.TestAllTypesProto2_Data_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8017,7 +8029,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField
-function M.TestAllTypesProto2_MultiWordGroupField_decode(buf)
+function M.TestAllTypesProto2_MultiWordGroupField_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto2_MultiWordGroupField_descriptor
     if pb.c_runtime ~= nil then
@@ -8027,6 +8039,8 @@ function M.TestAllTypesProto2_MultiWordGroupField_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8067,7 +8081,7 @@ function M.TestAllTypesProto2_MultiWordGroupField_decode(buf)
             local _ebid = M.TestAllTypesProto2_MultiWordGroupField_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8081,7 +8095,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField
-function M.TestAllTypesProto2_MultiWordGroupField_decode_unsafe(buf)
+function M.TestAllTypesProto2_MultiWordGroupField_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto2_MultiWordGroupField_descriptor
     if pb.c_runtime ~= nil then
@@ -8091,6 +8105,8 @@ function M.TestAllTypesProto2_MultiWordGroupField_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllTypesProto2.MultiWordGroupField decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8131,7 +8147,7 @@ function M.TestAllTypesProto2_MultiWordGroupField_decode_unsafe(buf)
             local _ebid = M.TestAllTypesProto2_MultiWordGroupField_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8191,7 +8207,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.ForeignMessageProto2
-function M.ForeignMessageProto2_decode(buf)
+function M.ForeignMessageProto2_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.ForeignMessageProto2_descriptor
     if pb.c_runtime ~= nil then
@@ -8201,6 +8217,8 @@ function M.ForeignMessageProto2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.ForeignMessageProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8237,7 +8255,7 @@ function M.ForeignMessageProto2_decode(buf)
             local _ebid = M.ForeignMessageProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8251,7 +8269,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.ForeignMessageProto2
-function M.ForeignMessageProto2_decode_unsafe(buf)
+function M.ForeignMessageProto2_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.ForeignMessageProto2_descriptor
     if pb.c_runtime ~= nil then
@@ -8261,6 +8279,8 @@ function M.ForeignMessageProto2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.ForeignMessageProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8297,7 +8317,7 @@ function M.ForeignMessageProto2_decode_unsafe(buf)
             local _ebid = M.ForeignMessageProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8358,7 +8378,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.GroupField
-function M.GroupField_decode(buf)
+function M.GroupField_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.GroupField_descriptor
     if pb.c_runtime ~= nil then
@@ -8368,6 +8388,8 @@ function M.GroupField_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.GroupField decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8408,7 +8430,7 @@ function M.GroupField_decode(buf)
             local _ebid = M.GroupField_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8422,7 +8444,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.GroupField
-function M.GroupField_decode_unsafe(buf)
+function M.GroupField_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.GroupField_descriptor
     if pb.c_runtime ~= nil then
@@ -8432,6 +8454,8 @@ function M.GroupField_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.GroupField decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8472,7 +8496,7 @@ function M.GroupField_decode_unsafe(buf)
             local _ebid = M.GroupField_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8581,7 +8605,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.UnknownToTestAllTypes
-function M.UnknownToTestAllTypes_decode(buf)
+function M.UnknownToTestAllTypes_decode(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
     local decode_string = wire.decode_string
@@ -8594,6 +8618,8 @@ function M.UnknownToTestAllTypes_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.UnknownToTestAllTypes decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8664,13 +8690,13 @@ function M.UnknownToTestAllTypes_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.nested_message
             if prev == nil then
-                result.nested_message = M.ForeignMessageProto2_decode(payload)
+                result.nested_message = M.ForeignMessageProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode(payload))
+                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode(payload, depth + 1))
             end
         elseif id == 1004 then
             local payload
-            payload, pos = pb.codec.decode_group(M.UnknownToTestAllTypes_OptionalGroup_descriptor, buf, pos, 1004)
+            payload, pos = pb.codec.decode_group(M.UnknownToTestAllTypes_OptionalGroup_descriptor, buf, pos, 1004, depth + 1)
             local prev = result.optionalgroup
             if prev == nil then
                 result.optionalgroup = payload
@@ -8719,7 +8745,7 @@ function M.UnknownToTestAllTypes_decode(buf)
             local _ebid = M.UnknownToTestAllTypes_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8733,7 +8759,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.UnknownToTestAllTypes
-function M.UnknownToTestAllTypes_decode_unsafe(buf)
+function M.UnknownToTestAllTypes_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
@@ -8746,6 +8772,8 @@ function M.UnknownToTestAllTypes_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.UnknownToTestAllTypes decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8814,13 +8842,13 @@ function M.UnknownToTestAllTypes_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.nested_message
             if prev == nil then
-                result.nested_message = M.ForeignMessageProto2_decode_unsafe(payload)
+                result.nested_message = M.ForeignMessageProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 1004 then
             local payload
-            payload, pos = pb.codec.decode_group(M.UnknownToTestAllTypes_OptionalGroup_descriptor, buf, pos, 1004)
+            payload, pos = pb.codec.decode_group(M.UnknownToTestAllTypes_OptionalGroup_descriptor, buf, pos, 1004, depth + 1)
             local prev = result.optionalgroup
             if prev == nil then
                 result.optionalgroup = payload
@@ -8869,7 +8897,7 @@ function M.UnknownToTestAllTypes_decode_unsafe(buf)
             local _ebid = M.UnknownToTestAllTypes_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8944,7 +8972,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.UnknownToTestAllTypes.OptionalGroup
-function M.UnknownToTestAllTypes_OptionalGroup_decode(buf)
+function M.UnknownToTestAllTypes_OptionalGroup_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.UnknownToTestAllTypes_OptionalGroup_descriptor
     if pb.c_runtime ~= nil then
@@ -8954,6 +8982,8 @@ function M.UnknownToTestAllTypes_OptionalGroup_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.UnknownToTestAllTypes.OptionalGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8990,7 +9020,7 @@ function M.UnknownToTestAllTypes_OptionalGroup_decode(buf)
             local _ebid = M.UnknownToTestAllTypes_OptionalGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9004,7 +9034,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.UnknownToTestAllTypes.OptionalGroup
-function M.UnknownToTestAllTypes_OptionalGroup_decode_unsafe(buf)
+function M.UnknownToTestAllTypes_OptionalGroup_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.UnknownToTestAllTypes_OptionalGroup_descriptor
     if pb.c_runtime ~= nil then
@@ -9014,6 +9044,8 @@ function M.UnknownToTestAllTypes_OptionalGroup_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.UnknownToTestAllTypes.OptionalGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9050,7 +9082,7 @@ function M.UnknownToTestAllTypes_OptionalGroup_decode_unsafe(buf)
             local _ebid = M.UnknownToTestAllTypes_OptionalGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9099,7 +9131,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.NullHypothesisProto2
-function M.NullHypothesisProto2_decode(buf)
+function M.NullHypothesisProto2_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.NullHypothesisProto2_descriptor
     if pb.c_runtime ~= nil then
@@ -9109,6 +9141,8 @@ function M.NullHypothesisProto2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.NullHypothesisProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9142,7 +9176,7 @@ function M.NullHypothesisProto2_decode(buf)
             local _ebid = M.NullHypothesisProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9156,7 +9190,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.NullHypothesisProto2
-function M.NullHypothesisProto2_decode_unsafe(buf)
+function M.NullHypothesisProto2_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.NullHypothesisProto2_descriptor
     if pb.c_runtime ~= nil then
@@ -9166,6 +9200,8 @@ function M.NullHypothesisProto2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.NullHypothesisProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9199,7 +9235,7 @@ function M.NullHypothesisProto2_decode_unsafe(buf)
             local _ebid = M.NullHypothesisProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9243,7 +9279,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.EnumOnlyProto2
-function M.EnumOnlyProto2_decode(buf)
+function M.EnumOnlyProto2_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.EnumOnlyProto2_descriptor
     if pb.c_runtime ~= nil then
@@ -9253,6 +9289,8 @@ function M.EnumOnlyProto2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.EnumOnlyProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9286,7 +9324,7 @@ function M.EnumOnlyProto2_decode(buf)
             local _ebid = M.EnumOnlyProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9300,7 +9338,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.EnumOnlyProto2
-function M.EnumOnlyProto2_decode_unsafe(buf)
+function M.EnumOnlyProto2_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.EnumOnlyProto2_descriptor
     if pb.c_runtime ~= nil then
@@ -9310,6 +9348,8 @@ function M.EnumOnlyProto2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.EnumOnlyProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9343,7 +9383,7 @@ function M.EnumOnlyProto2_decode_unsafe(buf)
             local _ebid = M.EnumOnlyProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9399,7 +9439,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.OneStringProto2
-function M.OneStringProto2_decode(buf)
+function M.OneStringProto2_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.OneStringProto2_descriptor
@@ -9410,6 +9450,8 @@ function M.OneStringProto2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.OneStringProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9474,7 +9516,7 @@ function M.OneStringProto2_decode(buf)
             local _ebid = M.OneStringProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9488,7 +9530,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.OneStringProto2
-function M.OneStringProto2_decode_unsafe(buf)
+function M.OneStringProto2_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.OneStringProto2_descriptor
@@ -9499,6 +9541,8 @@ function M.OneStringProto2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.OneStringProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9561,7 +9605,7 @@ function M.OneStringProto2_decode_unsafe(buf)
             local _ebid = M.OneStringProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9645,7 +9689,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.ProtoWithKeywords
-function M.ProtoWithKeywords_decode(buf)
+function M.ProtoWithKeywords_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.ProtoWithKeywords_descriptor
@@ -9656,6 +9700,8 @@ function M.ProtoWithKeywords_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.ProtoWithKeywords decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9759,7 +9805,7 @@ function M.ProtoWithKeywords_decode(buf)
             local _ebid = M.ProtoWithKeywords_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -9773,7 +9819,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.ProtoWithKeywords
-function M.ProtoWithKeywords_decode_unsafe(buf)
+function M.ProtoWithKeywords_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.ProtoWithKeywords_descriptor
@@ -9784,6 +9830,8 @@ function M.ProtoWithKeywords_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.ProtoWithKeywords decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -9883,7 +9931,7 @@ function M.ProtoWithKeywords_decode_unsafe(buf)
             local _ebid = M.ProtoWithKeywords_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -10308,7 +10356,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2
-function M.TestAllRequiredTypesProto2_decode(buf)
+function M.TestAllRequiredTypesProto2_decode(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -10336,6 +10384,8 @@ function M.TestAllRequiredTypesProto2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllRequiredTypesProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -10483,18 +10533,18 @@ function M.TestAllRequiredTypesProto2_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.required_nested_message
             if prev == nil then
-                result.required_nested_message = M.TestAllRequiredTypesProto2_NestedMessage_decode(payload)
+                result.required_nested_message = M.TestAllRequiredTypesProto2_NestedMessage_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_NestedMessage_descriptor, prev, M.TestAllRequiredTypesProto2_NestedMessage_decode(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_NestedMessage_descriptor, prev, M.TestAllRequiredTypesProto2_NestedMessage_decode(payload, depth + 1))
             end
         elseif id == 19 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.required_foreign_message
             if prev == nil then
-                result.required_foreign_message = M.ForeignMessageProto2_decode(payload)
+                result.required_foreign_message = M.ForeignMessageProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode(payload))
+                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode(payload, depth + 1))
             end
         elseif id == 21 then
             local u
@@ -10573,22 +10623,22 @@ function M.TestAllRequiredTypesProto2_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.recursive_message
             if prev == nil then
-                result.recursive_message = M.TestAllRequiredTypesProto2_decode(payload)
+                result.recursive_message = M.TestAllRequiredTypesProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload, depth + 1))
             end
         elseif id == 28 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_recursive_message
             if prev == nil then
-                result.optional_recursive_message = M.TestAllRequiredTypesProto2_decode(payload)
+                result.optional_recursive_message = M.TestAllRequiredTypesProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload, depth + 1))
             end
         elseif id == 201 then
             local payload
-            payload, pos = pb.codec.decode_group(M.TestAllRequiredTypesProto2_Data_descriptor, buf, pos, 201)
+            payload, pos = pb.codec.decode_group(M.TestAllRequiredTypesProto2_Data_descriptor, buf, pos, 201, depth + 1)
             local prev = result.data
             if prev == nil then
                 result.data = payload
@@ -10713,7 +10763,7 @@ function M.TestAllRequiredTypesProto2_decode(buf)
             local _ebid = M.TestAllRequiredTypesProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -10727,7 +10777,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2
-function M.TestAllRequiredTypesProto2_decode_unsafe(buf)
+function M.TestAllRequiredTypesProto2_decode_unsafe(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -10754,6 +10804,8 @@ function M.TestAllRequiredTypesProto2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllRequiredTypesProto2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -10899,18 +10951,18 @@ function M.TestAllRequiredTypesProto2_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.required_nested_message
             if prev == nil then
-                result.required_nested_message = M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(payload)
+                result.required_nested_message = M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_NestedMessage_descriptor, prev, M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_NestedMessage_descriptor, prev, M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(payload, depth + 1))
             end
         elseif id == 19 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.required_foreign_message
             if prev == nil then
-                result.required_foreign_message = M.ForeignMessageProto2_decode_unsafe(payload)
+                result.required_foreign_message = M.ForeignMessageProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.ForeignMessageProto2_descriptor, prev, M.ForeignMessageProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 21 then
             local u
@@ -10985,22 +11037,22 @@ function M.TestAllRequiredTypesProto2_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.recursive_message
             if prev == nil then
-                result.recursive_message = M.TestAllRequiredTypesProto2_decode_unsafe(payload)
+                result.recursive_message = M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 28 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_recursive_message
             if prev == nil then
-                result.optional_recursive_message = M.TestAllRequiredTypesProto2_decode_unsafe(payload)
+                result.optional_recursive_message = M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 201 then
             local payload
-            payload, pos = pb.codec.decode_group(M.TestAllRequiredTypesProto2_Data_descriptor, buf, pos, 201)
+            payload, pos = pb.codec.decode_group(M.TestAllRequiredTypesProto2_Data_descriptor, buf, pos, 201, depth + 1)
             local prev = result.data
             if prev == nil then
                 result.data = payload
@@ -11123,7 +11175,7 @@ function M.TestAllRequiredTypesProto2_decode_unsafe(buf)
             local _ebid = M.TestAllRequiredTypesProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11207,7 +11259,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.NestedMessage
-function M.TestAllRequiredTypesProto2_NestedMessage_decode(buf)
+function M.TestAllRequiredTypesProto2_NestedMessage_decode(buf, depth)
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
     local _d = M.TestAllRequiredTypesProto2_NestedMessage_descriptor
@@ -11218,6 +11270,8 @@ function M.TestAllRequiredTypesProto2_NestedMessage_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllRequiredTypesProto2.NestedMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11255,24 +11309,24 @@ function M.TestAllRequiredTypesProto2_NestedMessage_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.corecursive
             if prev == nil then
-                result.corecursive = M.TestAllRequiredTypesProto2_decode(payload)
+                result.corecursive = M.TestAllRequiredTypesProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload, depth + 1))
             end
         elseif id == 3 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_corecursive
             if prev == nil then
-                result.optional_corecursive = M.TestAllRequiredTypesProto2_decode(payload)
+                result.optional_corecursive = M.TestAllRequiredTypesProto2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode(payload, depth + 1))
             end
         else
             local _ebid = M.TestAllRequiredTypesProto2_NestedMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11286,7 +11340,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.NestedMessage
-function M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(buf)
+function M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(buf, depth)
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
     local _d = M.TestAllRequiredTypesProto2_NestedMessage_descriptor
@@ -11297,6 +11351,8 @@ function M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllRequiredTypesProto2.NestedMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11334,24 +11390,24 @@ function M.TestAllRequiredTypesProto2_NestedMessage_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.corecursive
             if prev == nil then
-                result.corecursive = M.TestAllRequiredTypesProto2_decode_unsafe(payload)
+                result.corecursive = M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1))
             end
         elseif id == 3 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_corecursive
             if prev == nil then
-                result.optional_corecursive = M.TestAllRequiredTypesProto2_decode_unsafe(payload)
+                result.optional_corecursive = M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllRequiredTypesProto2_descriptor, prev, M.TestAllRequiredTypesProto2_decode_unsafe(payload, depth + 1))
             end
         else
             local _ebid = M.TestAllRequiredTypesProto2_NestedMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11414,7 +11470,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.Data
-function M.TestAllRequiredTypesProto2_Data_decode(buf)
+function M.TestAllRequiredTypesProto2_Data_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllRequiredTypesProto2_Data_descriptor
     if pb.c_runtime ~= nil then
@@ -11424,6 +11480,8 @@ function M.TestAllRequiredTypesProto2_Data_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllRequiredTypesProto2.Data decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11464,7 +11522,7 @@ function M.TestAllRequiredTypesProto2_Data_decode(buf)
             local _ebid = M.TestAllRequiredTypesProto2_Data_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11478,7 +11536,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestAllRequiredTypesProto2.Data
-function M.TestAllRequiredTypesProto2_Data_decode_unsafe(buf)
+function M.TestAllRequiredTypesProto2_Data_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllRequiredTypesProto2_Data_descriptor
     if pb.c_runtime ~= nil then
@@ -11488,6 +11546,8 @@ function M.TestAllRequiredTypesProto2_Data_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestAllRequiredTypesProto2.Data decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11528,7 +11588,7 @@ function M.TestAllRequiredTypesProto2_Data_decode_unsafe(buf)
             local _ebid = M.TestAllRequiredTypesProto2_Data_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11644,7 +11704,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof
-function M.TestLargeOneof_decode(buf)
+function M.TestLargeOneof_decode(buf, depth)
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_descriptor
@@ -11655,6 +11715,8 @@ function M.TestLargeOneof_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11688,9 +11750,9 @@ function M.TestLargeOneof_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a1
             if prev == nil then
-                result.a1 = M.TestLargeOneof_A1_decode(payload)
+                result.a1 = M.TestLargeOneof_A1_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A1_descriptor, prev, M.TestLargeOneof_A1_decode(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A1_descriptor, prev, M.TestLargeOneof_A1_decode(payload, depth + 1))
             end
             result.a2 = nil
             result.a3 = nil
@@ -11701,9 +11763,9 @@ function M.TestLargeOneof_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a2
             if prev == nil then
-                result.a2 = M.TestLargeOneof_A2_decode(payload)
+                result.a2 = M.TestLargeOneof_A2_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A2_descriptor, prev, M.TestLargeOneof_A2_decode(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A2_descriptor, prev, M.TestLargeOneof_A2_decode(payload, depth + 1))
             end
             result.a1 = nil
             result.a3 = nil
@@ -11714,9 +11776,9 @@ function M.TestLargeOneof_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a3
             if prev == nil then
-                result.a3 = M.TestLargeOneof_A3_decode(payload)
+                result.a3 = M.TestLargeOneof_A3_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A3_descriptor, prev, M.TestLargeOneof_A3_decode(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A3_descriptor, prev, M.TestLargeOneof_A3_decode(payload, depth + 1))
             end
             result.a1 = nil
             result.a2 = nil
@@ -11727,9 +11789,9 @@ function M.TestLargeOneof_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a4
             if prev == nil then
-                result.a4 = M.TestLargeOneof_A4_decode(payload)
+                result.a4 = M.TestLargeOneof_A4_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A4_descriptor, prev, M.TestLargeOneof_A4_decode(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A4_descriptor, prev, M.TestLargeOneof_A4_decode(payload, depth + 1))
             end
             result.a1 = nil
             result.a2 = nil
@@ -11740,9 +11802,9 @@ function M.TestLargeOneof_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a5
             if prev == nil then
-                result.a5 = M.TestLargeOneof_A5_decode(payload)
+                result.a5 = M.TestLargeOneof_A5_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A5_descriptor, prev, M.TestLargeOneof_A5_decode(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A5_descriptor, prev, M.TestLargeOneof_A5_decode(payload, depth + 1))
             end
             result.a1 = nil
             result.a2 = nil
@@ -11752,7 +11814,7 @@ function M.TestLargeOneof_decode(buf)
             local _ebid = M.TestLargeOneof_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11766,7 +11828,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof
-function M.TestLargeOneof_decode_unsafe(buf)
+function M.TestLargeOneof_decode_unsafe(buf, depth)
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_descriptor
@@ -11777,6 +11839,8 @@ function M.TestLargeOneof_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11810,9 +11874,9 @@ function M.TestLargeOneof_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a1
             if prev == nil then
-                result.a1 = M.TestLargeOneof_A1_decode_unsafe(payload)
+                result.a1 = M.TestLargeOneof_A1_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A1_descriptor, prev, M.TestLargeOneof_A1_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A1_descriptor, prev, M.TestLargeOneof_A1_decode_unsafe(payload, depth + 1))
             end
             result.a2 = nil
             result.a3 = nil
@@ -11823,9 +11887,9 @@ function M.TestLargeOneof_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a2
             if prev == nil then
-                result.a2 = M.TestLargeOneof_A2_decode_unsafe(payload)
+                result.a2 = M.TestLargeOneof_A2_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A2_descriptor, prev, M.TestLargeOneof_A2_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A2_descriptor, prev, M.TestLargeOneof_A2_decode_unsafe(payload, depth + 1))
             end
             result.a1 = nil
             result.a3 = nil
@@ -11836,9 +11900,9 @@ function M.TestLargeOneof_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a3
             if prev == nil then
-                result.a3 = M.TestLargeOneof_A3_decode_unsafe(payload)
+                result.a3 = M.TestLargeOneof_A3_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A3_descriptor, prev, M.TestLargeOneof_A3_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A3_descriptor, prev, M.TestLargeOneof_A3_decode_unsafe(payload, depth + 1))
             end
             result.a1 = nil
             result.a2 = nil
@@ -11849,9 +11913,9 @@ function M.TestLargeOneof_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a4
             if prev == nil then
-                result.a4 = M.TestLargeOneof_A4_decode_unsafe(payload)
+                result.a4 = M.TestLargeOneof_A4_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A4_descriptor, prev, M.TestLargeOneof_A4_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A4_descriptor, prev, M.TestLargeOneof_A4_decode_unsafe(payload, depth + 1))
             end
             result.a1 = nil
             result.a2 = nil
@@ -11862,9 +11926,9 @@ function M.TestLargeOneof_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.a5
             if prev == nil then
-                result.a5 = M.TestLargeOneof_A5_decode_unsafe(payload)
+                result.a5 = M.TestLargeOneof_A5_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestLargeOneof_A5_descriptor, prev, M.TestLargeOneof_A5_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestLargeOneof_A5_descriptor, prev, M.TestLargeOneof_A5_decode_unsafe(payload, depth + 1))
             end
             result.a1 = nil
             result.a2 = nil
@@ -11874,7 +11938,7 @@ function M.TestLargeOneof_decode_unsafe(buf)
             local _ebid = M.TestLargeOneof_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11918,7 +11982,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A1
-function M.TestLargeOneof_A1_decode(buf)
+function M.TestLargeOneof_A1_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A1_descriptor
     if pb.c_runtime ~= nil then
@@ -11928,6 +11992,8 @@ function M.TestLargeOneof_A1_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A1 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -11961,7 +12027,7 @@ function M.TestLargeOneof_A1_decode(buf)
             local _ebid = M.TestLargeOneof_A1_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -11975,7 +12041,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A1
-function M.TestLargeOneof_A1_decode_unsafe(buf)
+function M.TestLargeOneof_A1_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A1_descriptor
     if pb.c_runtime ~= nil then
@@ -11985,6 +12051,8 @@ function M.TestLargeOneof_A1_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A1 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12018,7 +12086,7 @@ function M.TestLargeOneof_A1_decode_unsafe(buf)
             local _ebid = M.TestLargeOneof_A1_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12062,7 +12130,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A2
-function M.TestLargeOneof_A2_decode(buf)
+function M.TestLargeOneof_A2_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A2_descriptor
     if pb.c_runtime ~= nil then
@@ -12072,6 +12140,8 @@ function M.TestLargeOneof_A2_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12105,7 +12175,7 @@ function M.TestLargeOneof_A2_decode(buf)
             local _ebid = M.TestLargeOneof_A2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12119,7 +12189,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A2
-function M.TestLargeOneof_A2_decode_unsafe(buf)
+function M.TestLargeOneof_A2_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A2_descriptor
     if pb.c_runtime ~= nil then
@@ -12129,6 +12199,8 @@ function M.TestLargeOneof_A2_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A2 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12162,7 +12234,7 @@ function M.TestLargeOneof_A2_decode_unsafe(buf)
             local _ebid = M.TestLargeOneof_A2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12206,7 +12278,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A3
-function M.TestLargeOneof_A3_decode(buf)
+function M.TestLargeOneof_A3_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A3_descriptor
     if pb.c_runtime ~= nil then
@@ -12216,6 +12288,8 @@ function M.TestLargeOneof_A3_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12249,7 +12323,7 @@ function M.TestLargeOneof_A3_decode(buf)
             local _ebid = M.TestLargeOneof_A3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12263,7 +12337,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A3
-function M.TestLargeOneof_A3_decode_unsafe(buf)
+function M.TestLargeOneof_A3_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A3_descriptor
     if pb.c_runtime ~= nil then
@@ -12273,6 +12347,8 @@ function M.TestLargeOneof_A3_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12306,7 +12382,7 @@ function M.TestLargeOneof_A3_decode_unsafe(buf)
             local _ebid = M.TestLargeOneof_A3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12350,7 +12426,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A4
-function M.TestLargeOneof_A4_decode(buf)
+function M.TestLargeOneof_A4_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A4_descriptor
     if pb.c_runtime ~= nil then
@@ -12360,6 +12436,8 @@ function M.TestLargeOneof_A4_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A4 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12393,7 +12471,7 @@ function M.TestLargeOneof_A4_decode(buf)
             local _ebid = M.TestLargeOneof_A4_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12407,7 +12485,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A4
-function M.TestLargeOneof_A4_decode_unsafe(buf)
+function M.TestLargeOneof_A4_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A4_descriptor
     if pb.c_runtime ~= nil then
@@ -12417,6 +12495,8 @@ function M.TestLargeOneof_A4_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A4 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12450,7 +12530,7 @@ function M.TestLargeOneof_A4_decode_unsafe(buf)
             local _ebid = M.TestLargeOneof_A4_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12494,7 +12574,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A5
-function M.TestLargeOneof_A5_decode(buf)
+function M.TestLargeOneof_A5_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A5_descriptor
     if pb.c_runtime ~= nil then
@@ -12504,6 +12584,8 @@ function M.TestLargeOneof_A5_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A5 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12537,7 +12619,7 @@ function M.TestLargeOneof_A5_decode(buf)
             local _ebid = M.TestLargeOneof_A5_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -12551,7 +12633,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto2.TestLargeOneof.A5
-function M.TestLargeOneof_A5_decode_unsafe(buf)
+function M.TestLargeOneof_A5_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestLargeOneof_A5_descriptor
     if pb.c_runtime ~= nil then
@@ -12561,6 +12643,8 @@ function M.TestLargeOneof_A5_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto2.TestLargeOneof.A5 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -12594,7 +12678,7 @@ function M.TestLargeOneof_A5_decode_unsafe(buf)
             local _ebid = M.TestLargeOneof_A5_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

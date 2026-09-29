@@ -2882,7 +2882,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.TestAllTypesProto3
-function M.TestAllTypesProto3_decode(buf)
+function M.TestAllTypesProto3_decode(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -2911,6 +2911,8 @@ function M.TestAllTypesProto3_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.TestAllTypesProto3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -3124,18 +3126,18 @@ function M.TestAllTypesProto3_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_nested_message
             if prev == nil then
-                result.optional_nested_message = M.TestAllTypesProto3_NestedMessage_decode(payload)
+                result.optional_nested_message = M.TestAllTypesProto3_NestedMessage_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode(payload, depth + 1))
             end
         elseif id == 19 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_foreign_message
             if prev == nil then
-                result.optional_foreign_message = M.ForeignMessage_decode(payload)
+                result.optional_foreign_message = M.ForeignMessage_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessage_descriptor, prev, M.ForeignMessage_decode(payload))
+                pb.codec.merge_message(M.ForeignMessage_descriptor, prev, M.ForeignMessage_decode(payload, depth + 1))
             end
         elseif id == 21 then
             local u
@@ -3218,9 +3220,9 @@ function M.TestAllTypesProto3_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.recursive_message
             if prev == nil then
-                result.recursive_message = M.TestAllTypesProto3_decode(payload)
+                result.recursive_message = M.TestAllTypesProto3_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode(payload, depth + 1))
             end
         elseif id == 31 then
             if wt == 2 then
@@ -3576,13 +3578,13 @@ function M.TestAllTypesProto3_decode(buf)
             if list == nil then list = {}; result.repeated_nested_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto3_NestedMessage_decode(payload)
+            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto3_NestedMessage_decode(payload, depth + 1)
         elseif id == 49 then
             local list = result.repeated_foreign_message
             if list == nil then list = {}; result.repeated_foreign_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessage_decode(payload)
+            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessage_decode(payload, depth + 1)
         elseif id == 51 then
             if wt == 2 then
                 local payload
@@ -4676,7 +4678,7 @@ function M.TestAllTypesProto3_decode(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.TestAllTypesProto3_NestedMessage_decode(_payload)
+                    _val = M.TestAllTypesProto3_NestedMessage_decode(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -4697,7 +4699,7 @@ function M.TestAllTypesProto3_decode(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.ForeignMessage_decode(_payload)
+                    _val = M.ForeignMessage_decode(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -4763,9 +4765,9 @@ function M.TestAllTypesProto3_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.oneof_nested_message
             if prev == nil then
-                result.oneof_nested_message = M.TestAllTypesProto3_NestedMessage_decode(payload)
+                result.oneof_nested_message = M.TestAllTypesProto3_NestedMessage_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode(payload, depth + 1))
             end
             result.oneof_uint32 = nil
             result.oneof_string = nil
@@ -4937,117 +4939,117 @@ function M.TestAllTypesProto3_decode(buf)
         elseif id == 201 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_bool_wrapper = pb.wkt.BoolValue_decode(payload)
+            result.optional_bool_wrapper = pb.wkt.BoolValue_decode(payload, depth + 1)
         elseif id == 202 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_int32_wrapper = pb.wkt.Int32Value_decode(payload)
+            result.optional_int32_wrapper = pb.wkt.Int32Value_decode(payload, depth + 1)
         elseif id == 203 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_int64_wrapper = pb.wkt.Int64Value_decode(payload)
+            result.optional_int64_wrapper = pb.wkt.Int64Value_decode(payload, depth + 1)
         elseif id == 204 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_uint32_wrapper = pb.wkt.UInt32Value_decode(payload)
+            result.optional_uint32_wrapper = pb.wkt.UInt32Value_decode(payload, depth + 1)
         elseif id == 205 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_uint64_wrapper = pb.wkt.UInt64Value_decode(payload)
+            result.optional_uint64_wrapper = pb.wkt.UInt64Value_decode(payload, depth + 1)
         elseif id == 206 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_float_wrapper = pb.wkt.FloatValue_decode(payload)
+            result.optional_float_wrapper = pb.wkt.FloatValue_decode(payload, depth + 1)
         elseif id == 207 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_double_wrapper = pb.wkt.DoubleValue_decode(payload)
+            result.optional_double_wrapper = pb.wkt.DoubleValue_decode(payload, depth + 1)
         elseif id == 208 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_string_wrapper = pb.wkt.StringValue_decode(payload)
+            result.optional_string_wrapper = pb.wkt.StringValue_decode(payload, depth + 1)
         elseif id == 209 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_bytes_wrapper = pb.wkt.BytesValue_decode(payload)
+            result.optional_bytes_wrapper = pb.wkt.BytesValue_decode(payload, depth + 1)
         elseif id == 211 then
             local list = result.repeated_bool_wrapper
             if list == nil then list = {}; result.repeated_bool_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_bool_wrapper = _n_repeated_bool_wrapper + 1; list[_n_repeated_bool_wrapper] = pb.wkt.BoolValue_decode(payload)
+            _n_repeated_bool_wrapper = _n_repeated_bool_wrapper + 1; list[_n_repeated_bool_wrapper] = pb.wkt.BoolValue_decode(payload, depth + 1)
         elseif id == 212 then
             local list = result.repeated_int32_wrapper
             if list == nil then list = {}; result.repeated_int32_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_int32_wrapper = _n_repeated_int32_wrapper + 1; list[_n_repeated_int32_wrapper] = pb.wkt.Int32Value_decode(payload)
+            _n_repeated_int32_wrapper = _n_repeated_int32_wrapper + 1; list[_n_repeated_int32_wrapper] = pb.wkt.Int32Value_decode(payload, depth + 1)
         elseif id == 213 then
             local list = result.repeated_int64_wrapper
             if list == nil then list = {}; result.repeated_int64_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_int64_wrapper = _n_repeated_int64_wrapper + 1; list[_n_repeated_int64_wrapper] = pb.wkt.Int64Value_decode(payload)
+            _n_repeated_int64_wrapper = _n_repeated_int64_wrapper + 1; list[_n_repeated_int64_wrapper] = pb.wkt.Int64Value_decode(payload, depth + 1)
         elseif id == 214 then
             local list = result.repeated_uint32_wrapper
             if list == nil then list = {}; result.repeated_uint32_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_uint32_wrapper = _n_repeated_uint32_wrapper + 1; list[_n_repeated_uint32_wrapper] = pb.wkt.UInt32Value_decode(payload)
+            _n_repeated_uint32_wrapper = _n_repeated_uint32_wrapper + 1; list[_n_repeated_uint32_wrapper] = pb.wkt.UInt32Value_decode(payload, depth + 1)
         elseif id == 215 then
             local list = result.repeated_uint64_wrapper
             if list == nil then list = {}; result.repeated_uint64_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_uint64_wrapper = _n_repeated_uint64_wrapper + 1; list[_n_repeated_uint64_wrapper] = pb.wkt.UInt64Value_decode(payload)
+            _n_repeated_uint64_wrapper = _n_repeated_uint64_wrapper + 1; list[_n_repeated_uint64_wrapper] = pb.wkt.UInt64Value_decode(payload, depth + 1)
         elseif id == 216 then
             local list = result.repeated_float_wrapper
             if list == nil then list = {}; result.repeated_float_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_float_wrapper = _n_repeated_float_wrapper + 1; list[_n_repeated_float_wrapper] = pb.wkt.FloatValue_decode(payload)
+            _n_repeated_float_wrapper = _n_repeated_float_wrapper + 1; list[_n_repeated_float_wrapper] = pb.wkt.FloatValue_decode(payload, depth + 1)
         elseif id == 217 then
             local list = result.repeated_double_wrapper
             if list == nil then list = {}; result.repeated_double_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_double_wrapper = _n_repeated_double_wrapper + 1; list[_n_repeated_double_wrapper] = pb.wkt.DoubleValue_decode(payload)
+            _n_repeated_double_wrapper = _n_repeated_double_wrapper + 1; list[_n_repeated_double_wrapper] = pb.wkt.DoubleValue_decode(payload, depth + 1)
         elseif id == 218 then
             local list = result.repeated_string_wrapper
             if list == nil then list = {}; result.repeated_string_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_string_wrapper = _n_repeated_string_wrapper + 1; list[_n_repeated_string_wrapper] = pb.wkt.StringValue_decode(payload)
+            _n_repeated_string_wrapper = _n_repeated_string_wrapper + 1; list[_n_repeated_string_wrapper] = pb.wkt.StringValue_decode(payload, depth + 1)
         elseif id == 219 then
             local list = result.repeated_bytes_wrapper
             if list == nil then list = {}; result.repeated_bytes_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_bytes_wrapper = _n_repeated_bytes_wrapper + 1; list[_n_repeated_bytes_wrapper] = pb.wkt.BytesValue_decode(payload)
+            _n_repeated_bytes_wrapper = _n_repeated_bytes_wrapper + 1; list[_n_repeated_bytes_wrapper] = pb.wkt.BytesValue_decode(payload, depth + 1)
         elseif id == 301 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_duration = pb.wkt.Duration_decode(payload)
+            result.optional_duration = pb.wkt.Duration_decode(payload, depth + 1)
         elseif id == 302 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_timestamp = pb.wkt.Timestamp_decode(payload)
+            result.optional_timestamp = pb.wkt.Timestamp_decode(payload, depth + 1)
         elseif id == 303 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_field_mask = pb.wkt.FieldMask_decode(payload)
+            result.optional_field_mask = pb.wkt.FieldMask_decode(payload, depth + 1)
         elseif id == 304 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_struct = pb.wkt.Struct_decode(payload)
+            result.optional_struct = pb.wkt.Struct_decode(payload, depth + 1)
         elseif id == 305 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_any = pb.wkt.Any_decode(payload)
+            result.optional_any = pb.wkt.Any_decode(payload, depth + 1)
         elseif id == 306 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_value = pb.wkt.Value_decode(payload)
+            result.optional_value = pb.wkt.Value_decode(payload, depth + 1)
         elseif id == 307 then
             local u
             u, pos = decode_varint(buf, pos)
@@ -5055,55 +5057,55 @@ function M.TestAllTypesProto3_decode(buf)
         elseif id == 308 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_empty = pb.wkt.Empty_decode(payload)
+            result.optional_empty = pb.wkt.Empty_decode(payload, depth + 1)
         elseif id == 311 then
             local list = result.repeated_duration
             if list == nil then list = {}; result.repeated_duration = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_duration = _n_repeated_duration + 1; list[_n_repeated_duration] = pb.wkt.Duration_decode(payload)
+            _n_repeated_duration = _n_repeated_duration + 1; list[_n_repeated_duration] = pb.wkt.Duration_decode(payload, depth + 1)
         elseif id == 312 then
             local list = result.repeated_timestamp
             if list == nil then list = {}; result.repeated_timestamp = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_timestamp = _n_repeated_timestamp + 1; list[_n_repeated_timestamp] = pb.wkt.Timestamp_decode(payload)
+            _n_repeated_timestamp = _n_repeated_timestamp + 1; list[_n_repeated_timestamp] = pb.wkt.Timestamp_decode(payload, depth + 1)
         elseif id == 313 then
             local list = result.repeated_fieldmask
             if list == nil then list = {}; result.repeated_fieldmask = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_fieldmask = _n_repeated_fieldmask + 1; list[_n_repeated_fieldmask] = pb.wkt.FieldMask_decode(payload)
+            _n_repeated_fieldmask = _n_repeated_fieldmask + 1; list[_n_repeated_fieldmask] = pb.wkt.FieldMask_decode(payload, depth + 1)
         elseif id == 324 then
             local list = result.repeated_struct
             if list == nil then list = {}; result.repeated_struct = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_struct = _n_repeated_struct + 1; list[_n_repeated_struct] = pb.wkt.Struct_decode(payload)
+            _n_repeated_struct = _n_repeated_struct + 1; list[_n_repeated_struct] = pb.wkt.Struct_decode(payload, depth + 1)
         elseif id == 315 then
             local list = result.repeated_any
             if list == nil then list = {}; result.repeated_any = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_any = _n_repeated_any + 1; list[_n_repeated_any] = pb.wkt.Any_decode(payload)
+            _n_repeated_any = _n_repeated_any + 1; list[_n_repeated_any] = pb.wkt.Any_decode(payload, depth + 1)
         elseif id == 316 then
             local list = result.repeated_value
             if list == nil then list = {}; result.repeated_value = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_value = _n_repeated_value + 1; list[_n_repeated_value] = pb.wkt.Value_decode(payload)
+            _n_repeated_value = _n_repeated_value + 1; list[_n_repeated_value] = pb.wkt.Value_decode(payload, depth + 1)
         elseif id == 317 then
             local list = result.repeated_list_value
             if list == nil then list = {}; result.repeated_list_value = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_list_value = _n_repeated_list_value + 1; list[_n_repeated_list_value] = pb.wkt.ListValue_decode(payload)
+            _n_repeated_list_value = _n_repeated_list_value + 1; list[_n_repeated_list_value] = pb.wkt.ListValue_decode(payload, depth + 1)
         elseif id == 318 then
             local list = result.repeated_empty
             if list == nil then list = {}; result.repeated_empty = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_empty = _n_repeated_empty + 1; list[_n_repeated_empty] = pb.wkt.Empty_decode(payload)
+            _n_repeated_empty = _n_repeated_empty + 1; list[_n_repeated_empty] = pb.wkt.Empty_decode(payload, depth + 1)
         elseif id == 401 then
             local val
             val, pos = decode_int32(buf, pos)
@@ -5180,7 +5182,7 @@ function M.TestAllTypesProto3_decode(buf)
             local _ebid = M.TestAllTypesProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -5194,7 +5196,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.TestAllTypesProto3
-function M.TestAllTypesProto3_decode_unsafe(buf)
+function M.TestAllTypesProto3_decode_unsafe(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -5222,6 +5224,8 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.TestAllTypesProto3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -5433,18 +5437,18 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_nested_message
             if prev == nil then
-                result.optional_nested_message = M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload)
+                result.optional_nested_message = M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload, depth + 1))
             end
         elseif id == 19 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.optional_foreign_message
             if prev == nil then
-                result.optional_foreign_message = M.ForeignMessage_decode_unsafe(payload)
+                result.optional_foreign_message = M.ForeignMessage_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.ForeignMessage_descriptor, prev, M.ForeignMessage_decode_unsafe(payload))
+                pb.codec.merge_message(M.ForeignMessage_descriptor, prev, M.ForeignMessage_decode_unsafe(payload, depth + 1))
             end
         elseif id == 21 then
             local u
@@ -5523,9 +5527,9 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.recursive_message
             if prev == nil then
-                result.recursive_message = M.TestAllTypesProto3_decode_unsafe(payload)
+                result.recursive_message = M.TestAllTypesProto3_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode_unsafe(payload, depth + 1))
             end
         elseif id == 31 then
             if wt == 2 then
@@ -5879,13 +5883,13 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
             if list == nil then list = {}; result.repeated_nested_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload)
+            _n_repeated_nested_message = _n_repeated_nested_message + 1; list[_n_repeated_nested_message] = M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload, depth + 1)
         elseif id == 49 then
             local list = result.repeated_foreign_message
             if list == nil then list = {}; result.repeated_foreign_message = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessage_decode_unsafe(payload)
+            _n_repeated_foreign_message = _n_repeated_foreign_message + 1; list[_n_repeated_foreign_message] = M.ForeignMessage_decode_unsafe(payload, depth + 1)
         elseif id == 51 then
             if wt == 2 then
                 local payload
@@ -6975,7 +6979,7 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.TestAllTypesProto3_NestedMessage_decode_unsafe(_payload)
+                    _val = M.TestAllTypesProto3_NestedMessage_decode_unsafe(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -6996,7 +7000,7 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.ForeignMessage_decode_unsafe(_payload)
+                    _val = M.ForeignMessage_decode_unsafe(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -7062,9 +7066,9 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.oneof_nested_message
             if prev == nil then
-                result.oneof_nested_message = M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload)
+                result.oneof_nested_message = M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_NestedMessage_descriptor, prev, M.TestAllTypesProto3_NestedMessage_decode_unsafe(payload, depth + 1))
             end
             result.oneof_uint32 = nil
             result.oneof_string = nil
@@ -7234,117 +7238,117 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
         elseif id == 201 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_bool_wrapper = pb.wkt.BoolValue_decode(payload)
+            result.optional_bool_wrapper = pb.wkt.BoolValue_decode(payload, depth + 1)
         elseif id == 202 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_int32_wrapper = pb.wkt.Int32Value_decode(payload)
+            result.optional_int32_wrapper = pb.wkt.Int32Value_decode(payload, depth + 1)
         elseif id == 203 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_int64_wrapper = pb.wkt.Int64Value_decode(payload)
+            result.optional_int64_wrapper = pb.wkt.Int64Value_decode(payload, depth + 1)
         elseif id == 204 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_uint32_wrapper = pb.wkt.UInt32Value_decode(payload)
+            result.optional_uint32_wrapper = pb.wkt.UInt32Value_decode(payload, depth + 1)
         elseif id == 205 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_uint64_wrapper = pb.wkt.UInt64Value_decode(payload)
+            result.optional_uint64_wrapper = pb.wkt.UInt64Value_decode(payload, depth + 1)
         elseif id == 206 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_float_wrapper = pb.wkt.FloatValue_decode(payload)
+            result.optional_float_wrapper = pb.wkt.FloatValue_decode(payload, depth + 1)
         elseif id == 207 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_double_wrapper = pb.wkt.DoubleValue_decode(payload)
+            result.optional_double_wrapper = pb.wkt.DoubleValue_decode(payload, depth + 1)
         elseif id == 208 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_string_wrapper = pb.wkt.StringValue_decode(payload)
+            result.optional_string_wrapper = pb.wkt.StringValue_decode(payload, depth + 1)
         elseif id == 209 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_bytes_wrapper = pb.wkt.BytesValue_decode(payload)
+            result.optional_bytes_wrapper = pb.wkt.BytesValue_decode(payload, depth + 1)
         elseif id == 211 then
             local list = result.repeated_bool_wrapper
             if list == nil then list = {}; result.repeated_bool_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_bool_wrapper = _n_repeated_bool_wrapper + 1; list[_n_repeated_bool_wrapper] = pb.wkt.BoolValue_decode(payload)
+            _n_repeated_bool_wrapper = _n_repeated_bool_wrapper + 1; list[_n_repeated_bool_wrapper] = pb.wkt.BoolValue_decode(payload, depth + 1)
         elseif id == 212 then
             local list = result.repeated_int32_wrapper
             if list == nil then list = {}; result.repeated_int32_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_int32_wrapper = _n_repeated_int32_wrapper + 1; list[_n_repeated_int32_wrapper] = pb.wkt.Int32Value_decode(payload)
+            _n_repeated_int32_wrapper = _n_repeated_int32_wrapper + 1; list[_n_repeated_int32_wrapper] = pb.wkt.Int32Value_decode(payload, depth + 1)
         elseif id == 213 then
             local list = result.repeated_int64_wrapper
             if list == nil then list = {}; result.repeated_int64_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_int64_wrapper = _n_repeated_int64_wrapper + 1; list[_n_repeated_int64_wrapper] = pb.wkt.Int64Value_decode(payload)
+            _n_repeated_int64_wrapper = _n_repeated_int64_wrapper + 1; list[_n_repeated_int64_wrapper] = pb.wkt.Int64Value_decode(payload, depth + 1)
         elseif id == 214 then
             local list = result.repeated_uint32_wrapper
             if list == nil then list = {}; result.repeated_uint32_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_uint32_wrapper = _n_repeated_uint32_wrapper + 1; list[_n_repeated_uint32_wrapper] = pb.wkt.UInt32Value_decode(payload)
+            _n_repeated_uint32_wrapper = _n_repeated_uint32_wrapper + 1; list[_n_repeated_uint32_wrapper] = pb.wkt.UInt32Value_decode(payload, depth + 1)
         elseif id == 215 then
             local list = result.repeated_uint64_wrapper
             if list == nil then list = {}; result.repeated_uint64_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_uint64_wrapper = _n_repeated_uint64_wrapper + 1; list[_n_repeated_uint64_wrapper] = pb.wkt.UInt64Value_decode(payload)
+            _n_repeated_uint64_wrapper = _n_repeated_uint64_wrapper + 1; list[_n_repeated_uint64_wrapper] = pb.wkt.UInt64Value_decode(payload, depth + 1)
         elseif id == 216 then
             local list = result.repeated_float_wrapper
             if list == nil then list = {}; result.repeated_float_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_float_wrapper = _n_repeated_float_wrapper + 1; list[_n_repeated_float_wrapper] = pb.wkt.FloatValue_decode(payload)
+            _n_repeated_float_wrapper = _n_repeated_float_wrapper + 1; list[_n_repeated_float_wrapper] = pb.wkt.FloatValue_decode(payload, depth + 1)
         elseif id == 217 then
             local list = result.repeated_double_wrapper
             if list == nil then list = {}; result.repeated_double_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_double_wrapper = _n_repeated_double_wrapper + 1; list[_n_repeated_double_wrapper] = pb.wkt.DoubleValue_decode(payload)
+            _n_repeated_double_wrapper = _n_repeated_double_wrapper + 1; list[_n_repeated_double_wrapper] = pb.wkt.DoubleValue_decode(payload, depth + 1)
         elseif id == 218 then
             local list = result.repeated_string_wrapper
             if list == nil then list = {}; result.repeated_string_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_string_wrapper = _n_repeated_string_wrapper + 1; list[_n_repeated_string_wrapper] = pb.wkt.StringValue_decode(payload)
+            _n_repeated_string_wrapper = _n_repeated_string_wrapper + 1; list[_n_repeated_string_wrapper] = pb.wkt.StringValue_decode(payload, depth + 1)
         elseif id == 219 then
             local list = result.repeated_bytes_wrapper
             if list == nil then list = {}; result.repeated_bytes_wrapper = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_bytes_wrapper = _n_repeated_bytes_wrapper + 1; list[_n_repeated_bytes_wrapper] = pb.wkt.BytesValue_decode(payload)
+            _n_repeated_bytes_wrapper = _n_repeated_bytes_wrapper + 1; list[_n_repeated_bytes_wrapper] = pb.wkt.BytesValue_decode(payload, depth + 1)
         elseif id == 301 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_duration = pb.wkt.Duration_decode(payload)
+            result.optional_duration = pb.wkt.Duration_decode(payload, depth + 1)
         elseif id == 302 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_timestamp = pb.wkt.Timestamp_decode(payload)
+            result.optional_timestamp = pb.wkt.Timestamp_decode(payload, depth + 1)
         elseif id == 303 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_field_mask = pb.wkt.FieldMask_decode(payload)
+            result.optional_field_mask = pb.wkt.FieldMask_decode(payload, depth + 1)
         elseif id == 304 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_struct = pb.wkt.Struct_decode(payload)
+            result.optional_struct = pb.wkt.Struct_decode(payload, depth + 1)
         elseif id == 305 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_any = pb.wkt.Any_decode(payload)
+            result.optional_any = pb.wkt.Any_decode(payload, depth + 1)
         elseif id == 306 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_value = pb.wkt.Value_decode(payload)
+            result.optional_value = pb.wkt.Value_decode(payload, depth + 1)
         elseif id == 307 then
             local u
             u, pos = decode_varint(buf, pos)
@@ -7352,55 +7356,55 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
         elseif id == 308 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.optional_empty = pb.wkt.Empty_decode(payload)
+            result.optional_empty = pb.wkt.Empty_decode(payload, depth + 1)
         elseif id == 311 then
             local list = result.repeated_duration
             if list == nil then list = {}; result.repeated_duration = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_duration = _n_repeated_duration + 1; list[_n_repeated_duration] = pb.wkt.Duration_decode(payload)
+            _n_repeated_duration = _n_repeated_duration + 1; list[_n_repeated_duration] = pb.wkt.Duration_decode(payload, depth + 1)
         elseif id == 312 then
             local list = result.repeated_timestamp
             if list == nil then list = {}; result.repeated_timestamp = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_timestamp = _n_repeated_timestamp + 1; list[_n_repeated_timestamp] = pb.wkt.Timestamp_decode(payload)
+            _n_repeated_timestamp = _n_repeated_timestamp + 1; list[_n_repeated_timestamp] = pb.wkt.Timestamp_decode(payload, depth + 1)
         elseif id == 313 then
             local list = result.repeated_fieldmask
             if list == nil then list = {}; result.repeated_fieldmask = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_fieldmask = _n_repeated_fieldmask + 1; list[_n_repeated_fieldmask] = pb.wkt.FieldMask_decode(payload)
+            _n_repeated_fieldmask = _n_repeated_fieldmask + 1; list[_n_repeated_fieldmask] = pb.wkt.FieldMask_decode(payload, depth + 1)
         elseif id == 324 then
             local list = result.repeated_struct
             if list == nil then list = {}; result.repeated_struct = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_struct = _n_repeated_struct + 1; list[_n_repeated_struct] = pb.wkt.Struct_decode(payload)
+            _n_repeated_struct = _n_repeated_struct + 1; list[_n_repeated_struct] = pb.wkt.Struct_decode(payload, depth + 1)
         elseif id == 315 then
             local list = result.repeated_any
             if list == nil then list = {}; result.repeated_any = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_any = _n_repeated_any + 1; list[_n_repeated_any] = pb.wkt.Any_decode(payload)
+            _n_repeated_any = _n_repeated_any + 1; list[_n_repeated_any] = pb.wkt.Any_decode(payload, depth + 1)
         elseif id == 316 then
             local list = result.repeated_value
             if list == nil then list = {}; result.repeated_value = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_value = _n_repeated_value + 1; list[_n_repeated_value] = pb.wkt.Value_decode(payload)
+            _n_repeated_value = _n_repeated_value + 1; list[_n_repeated_value] = pb.wkt.Value_decode(payload, depth + 1)
         elseif id == 317 then
             local list = result.repeated_list_value
             if list == nil then list = {}; result.repeated_list_value = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_list_value = _n_repeated_list_value + 1; list[_n_repeated_list_value] = pb.wkt.ListValue_decode(payload)
+            _n_repeated_list_value = _n_repeated_list_value + 1; list[_n_repeated_list_value] = pb.wkt.ListValue_decode(payload, depth + 1)
         elseif id == 318 then
             local list = result.repeated_empty
             if list == nil then list = {}; result.repeated_empty = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_repeated_empty = _n_repeated_empty + 1; list[_n_repeated_empty] = pb.wkt.Empty_decode(payload)
+            _n_repeated_empty = _n_repeated_empty + 1; list[_n_repeated_empty] = pb.wkt.Empty_decode(payload, depth + 1)
         elseif id == 401 then
             local val
             val, pos = decode_int32(buf, pos)
@@ -7477,7 +7481,7 @@ function M.TestAllTypesProto3_decode_unsafe(buf)
             local _ebid = M.TestAllTypesProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7540,7 +7544,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.TestAllTypesProto3.NestedMessage
-function M.TestAllTypesProto3_NestedMessage_decode(buf)
+function M.TestAllTypesProto3_NestedMessage_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto3_NestedMessage_descriptor
     if pb.c_runtime ~= nil then
@@ -7550,6 +7554,8 @@ function M.TestAllTypesProto3_NestedMessage_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.TestAllTypesProto3.NestedMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7587,15 +7593,15 @@ function M.TestAllTypesProto3_NestedMessage_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.corecursive
             if prev == nil then
-                result.corecursive = M.TestAllTypesProto3_decode(payload)
+                result.corecursive = M.TestAllTypesProto3_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode(payload, depth + 1))
             end
         else
             local _ebid = M.TestAllTypesProto3_NestedMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7609,7 +7615,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.TestAllTypesProto3.NestedMessage
-function M.TestAllTypesProto3_NestedMessage_decode_unsafe(buf)
+function M.TestAllTypesProto3_NestedMessage_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.TestAllTypesProto3_NestedMessage_descriptor
     if pb.c_runtime ~= nil then
@@ -7619,6 +7625,8 @@ function M.TestAllTypesProto3_NestedMessage_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.TestAllTypesProto3.NestedMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7656,15 +7664,15 @@ function M.TestAllTypesProto3_NestedMessage_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.corecursive
             if prev == nil then
-                result.corecursive = M.TestAllTypesProto3_decode_unsafe(payload)
+                result.corecursive = M.TestAllTypesProto3_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode_unsafe(payload))
+                pb.codec.merge_message(M.TestAllTypesProto3_descriptor, prev, M.TestAllTypesProto3_decode_unsafe(payload, depth + 1))
             end
         else
             local _ebid = M.TestAllTypesProto3_NestedMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7714,7 +7722,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.ForeignMessage
-function M.ForeignMessage_decode(buf)
+function M.ForeignMessage_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.ForeignMessage_descriptor
     if pb.c_runtime ~= nil then
@@ -7724,6 +7732,8 @@ function M.ForeignMessage_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.ForeignMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7760,7 +7770,7 @@ function M.ForeignMessage_decode(buf)
             local _ebid = M.ForeignMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7774,7 +7784,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.ForeignMessage
-function M.ForeignMessage_decode_unsafe(buf)
+function M.ForeignMessage_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.ForeignMessage_descriptor
     if pb.c_runtime ~= nil then
@@ -7784,6 +7794,8 @@ function M.ForeignMessage_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.ForeignMessage decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7820,7 +7832,7 @@ function M.ForeignMessage_decode_unsafe(buf)
             local _ebid = M.ForeignMessage_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7864,7 +7876,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.NullHypothesisProto3
-function M.NullHypothesisProto3_decode(buf)
+function M.NullHypothesisProto3_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.NullHypothesisProto3_descriptor
     if pb.c_runtime ~= nil then
@@ -7874,6 +7886,8 @@ function M.NullHypothesisProto3_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.NullHypothesisProto3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7907,7 +7921,7 @@ function M.NullHypothesisProto3_decode(buf)
             local _ebid = M.NullHypothesisProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -7921,7 +7935,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.NullHypothesisProto3
-function M.NullHypothesisProto3_decode_unsafe(buf)
+function M.NullHypothesisProto3_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.NullHypothesisProto3_descriptor
     if pb.c_runtime ~= nil then
@@ -7931,6 +7945,8 @@ function M.NullHypothesisProto3_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.NullHypothesisProto3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -7964,7 +7980,7 @@ function M.NullHypothesisProto3_decode_unsafe(buf)
             local _ebid = M.NullHypothesisProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8008,7 +8024,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.EnumOnlyProto3
-function M.EnumOnlyProto3_decode(buf)
+function M.EnumOnlyProto3_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.EnumOnlyProto3_descriptor
     if pb.c_runtime ~= nil then
@@ -8018,6 +8034,8 @@ function M.EnumOnlyProto3_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.EnumOnlyProto3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8051,7 +8069,7 @@ function M.EnumOnlyProto3_decode(buf)
             local _ebid = M.EnumOnlyProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -8065,7 +8083,7 @@ end
 
 ---@param b string
 ---@return protobuf_test_messages.proto3.EnumOnlyProto3
-function M.EnumOnlyProto3_decode_unsafe(buf)
+function M.EnumOnlyProto3_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.EnumOnlyProto3_descriptor
     if pb.c_runtime ~= nil then
@@ -8075,6 +8093,8 @@ function M.EnumOnlyProto3_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for protobuf_test_messages.proto3.EnumOnlyProto3 decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -8108,7 +8128,7 @@ function M.EnumOnlyProto3_decode_unsafe(buf)
             local _ebid = M.EnumOnlyProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

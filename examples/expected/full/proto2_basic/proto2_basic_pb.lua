@@ -336,7 +336,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Defaults
-function M.Defaults_decode(buf)
+function M.Defaults_decode(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
@@ -348,6 +348,8 @@ function M.Defaults_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Defaults decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -470,7 +472,7 @@ function M.Defaults_decode(buf)
             local _ebid = M.Defaults_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -484,7 +486,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Defaults
-function M.Defaults_decode_unsafe(buf)
+function M.Defaults_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.Defaults_descriptor
@@ -495,6 +497,8 @@ function M.Defaults_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Defaults decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -615,7 +619,7 @@ function M.Defaults_decode_unsafe(buf)
             local _ebid = M.Defaults_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -759,7 +763,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Cardinality
-function M.Cardinality_decode(buf)
+function M.Cardinality_decode(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
@@ -771,6 +775,8 @@ function M.Cardinality_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Cardinality decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -916,7 +922,7 @@ function M.Cardinality_decode(buf)
             local _ebid = M.Cardinality_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -930,7 +936,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Cardinality
-function M.Cardinality_decode_unsafe(buf)
+function M.Cardinality_decode_unsafe(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
@@ -942,6 +948,8 @@ function M.Cardinality_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Cardinality decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1087,7 +1095,7 @@ function M.Cardinality_decode_unsafe(buf)
             local _ebid = M.Cardinality_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1164,7 +1172,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Nested
-function M.Nested_decode(buf)
+function M.Nested_decode(buf, depth)
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
     local _d = M.Nested_descriptor
@@ -1175,6 +1183,8 @@ function M.Nested_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Nested decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1208,24 +1218,24 @@ function M.Nested_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.inner
             if prev == nil then
-                result.inner = M.Nested_Inner_decode(payload)
+                result.inner = M.Nested_Inner_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode(payload))
+                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode(payload, depth + 1))
             end
         elseif id == 2 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.inner_opt
             if prev == nil then
-                result.inner_opt = M.Nested_Inner_decode(payload)
+                result.inner_opt = M.Nested_Inner_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode(payload))
+                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode(payload, depth + 1))
             end
         else
             local _ebid = M.Nested_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1239,7 +1249,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Nested
-function M.Nested_decode_unsafe(buf)
+function M.Nested_decode_unsafe(buf, depth)
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
     local _d = M.Nested_descriptor
@@ -1250,6 +1260,8 @@ function M.Nested_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Nested decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1283,24 +1295,24 @@ function M.Nested_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.inner
             if prev == nil then
-                result.inner = M.Nested_Inner_decode_unsafe(payload)
+                result.inner = M.Nested_Inner_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode_unsafe(payload))
+                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode_unsafe(payload, depth + 1))
             end
         elseif id == 2 then
             local payload
             payload, pos = decode_len(buf, pos)
             local prev = result.inner_opt
             if prev == nil then
-                result.inner_opt = M.Nested_Inner_decode_unsafe(payload)
+                result.inner_opt = M.Nested_Inner_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode_unsafe(payload))
+                pb.codec.merge_message(M.Nested_Inner_descriptor, prev, M.Nested_Inner_decode_unsafe(payload, depth + 1))
             end
         else
             local _ebid = M.Nested_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1356,7 +1368,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Nested.Inner
-function M.Nested_Inner_decode(buf)
+function M.Nested_Inner_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.Nested_Inner_descriptor
     if pb.c_runtime ~= nil then
@@ -1366,6 +1378,8 @@ function M.Nested_Inner_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Nested.Inner decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1402,7 +1416,7 @@ function M.Nested_Inner_decode(buf)
             local _ebid = M.Nested_Inner_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1416,7 +1430,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.Nested.Inner
-function M.Nested_Inner_decode_unsafe(buf)
+function M.Nested_Inner_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.Nested_Inner_descriptor
     if pb.c_runtime ~= nil then
@@ -1426,6 +1440,8 @@ function M.Nested_Inner_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.Nested.Inner decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1462,7 +1478,7 @@ function M.Nested_Inner_decode_unsafe(buf)
             local _ebid = M.Nested_Inner_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1524,7 +1540,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.WithGroup
-function M.WithGroup_decode(buf)
+function M.WithGroup_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.WithGroup_descriptor
     if pb.c_runtime ~= nil then
@@ -1534,6 +1550,8 @@ function M.WithGroup_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.WithGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1565,7 +1583,7 @@ function M.WithGroup_decode(buf)
         end
         if id == 1 then
             local payload
-            payload, pos = pb.codec.decode_group(M.WithGroup_SingleGroup_descriptor, buf, pos, 1)
+            payload, pos = pb.codec.decode_group(M.WithGroup_SingleGroup_descriptor, buf, pos, 1, depth + 1)
             local prev = result.singlegroup
             if prev == nil then
                 result.singlegroup = payload
@@ -1576,13 +1594,13 @@ function M.WithGroup_decode(buf)
             local list = result.repgroup
             if list == nil then list = {}; result.repgroup = list end
             local payload
-            payload, pos = pb.codec.decode_group(M.WithGroup_RepGroup_descriptor, buf, pos, 4)
+            payload, pos = pb.codec.decode_group(M.WithGroup_RepGroup_descriptor, buf, pos, 4, depth + 1)
             _n_repgroup = _n_repgroup + 1; list[_n_repgroup] = payload
         else
             local _ebid = M.WithGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1596,7 +1614,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.WithGroup
-function M.WithGroup_decode_unsafe(buf)
+function M.WithGroup_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.WithGroup_descriptor
     if pb.c_runtime ~= nil then
@@ -1606,6 +1624,8 @@ function M.WithGroup_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.WithGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1637,7 +1657,7 @@ function M.WithGroup_decode_unsafe(buf)
         end
         if id == 1 then
             local payload
-            payload, pos = pb.codec.decode_group(M.WithGroup_SingleGroup_descriptor, buf, pos, 1)
+            payload, pos = pb.codec.decode_group(M.WithGroup_SingleGroup_descriptor, buf, pos, 1, depth + 1)
             local prev = result.singlegroup
             if prev == nil then
                 result.singlegroup = payload
@@ -1648,13 +1668,13 @@ function M.WithGroup_decode_unsafe(buf)
             local list = result.repgroup
             if list == nil then list = {}; result.repgroup = list end
             local payload
-            payload, pos = pb.codec.decode_group(M.WithGroup_RepGroup_descriptor, buf, pos, 4)
+            payload, pos = pb.codec.decode_group(M.WithGroup_RepGroup_descriptor, buf, pos, 4, depth + 1)
             _n_repgroup = _n_repgroup + 1; list[_n_repgroup] = payload
         else
             local _ebid = M.WithGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1721,7 +1741,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.WithGroup.SingleGroup
-function M.WithGroup_SingleGroup_decode(buf)
+function M.WithGroup_SingleGroup_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.WithGroup_SingleGroup_descriptor
@@ -1732,6 +1752,8 @@ function M.WithGroup_SingleGroup_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.WithGroup.SingleGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1800,7 +1822,7 @@ function M.WithGroup_SingleGroup_decode(buf)
             local _ebid = M.WithGroup_SingleGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1814,7 +1836,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.WithGroup.SingleGroup
-function M.WithGroup_SingleGroup_decode_unsafe(buf)
+function M.WithGroup_SingleGroup_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.WithGroup_SingleGroup_descriptor
@@ -1825,6 +1847,8 @@ function M.WithGroup_SingleGroup_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.WithGroup.SingleGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1891,7 +1915,7 @@ function M.WithGroup_SingleGroup_decode_unsafe(buf)
             local _ebid = M.WithGroup_SingleGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1951,7 +1975,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.WithGroup.RepGroup
-function M.WithGroup_RepGroup_decode(buf)
+function M.WithGroup_RepGroup_decode(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.WithGroup_RepGroup_descriptor
     if pb.c_runtime ~= nil then
@@ -1961,6 +1985,8 @@ function M.WithGroup_RepGroup_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.WithGroup.RepGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1997,7 +2023,7 @@ function M.WithGroup_RepGroup_decode(buf)
             local _ebid = M.WithGroup_RepGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2011,7 +2037,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.WithGroup.RepGroup
-function M.WithGroup_RepGroup_decode_unsafe(buf)
+function M.WithGroup_RepGroup_decode_unsafe(buf, depth)
     local decode_tag = wire.decode_tag
     local _d = M.WithGroup_RepGroup_descriptor
     if pb.c_runtime ~= nil then
@@ -2021,6 +2047,8 @@ function M.WithGroup_RepGroup_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.WithGroup.RepGroup decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2057,7 +2085,7 @@ function M.WithGroup_RepGroup_decode_unsafe(buf)
             local _ebid = M.WithGroup_RepGroup_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2228,7 +2256,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.BenchPayload
-function M.BenchPayload_decode(buf)
+function M.BenchPayload_decode(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
     local decode_string = wire.decode_string
@@ -2241,6 +2269,8 @@ function M.BenchPayload_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.BenchPayload decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2384,13 +2414,13 @@ function M.BenchPayload_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.inner
             if prev == nil then
-                result.inner = M.BenchPayload_Inner_decode(payload)
+                result.inner = M.BenchPayload_Inner_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.BenchPayload_Inner_descriptor, prev, M.BenchPayload_Inner_decode(payload))
+                pb.codec.merge_message(M.BenchPayload_Inner_descriptor, prev, M.BenchPayload_Inner_decode(payload, depth + 1))
             end
         elseif id == 7 then
             local payload
-            payload, pos = pb.codec.decode_group(M.BenchPayload_Stats_descriptor, buf, pos, 7)
+            payload, pos = pb.codec.decode_group(M.BenchPayload_Stats_descriptor, buf, pos, 7, depth + 1)
             local prev = result.stats
             if prev == nil then
                 result.stats = payload
@@ -2413,7 +2443,7 @@ function M.BenchPayload_decode(buf)
             local _ebid = M.BenchPayload_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2427,7 +2457,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.BenchPayload
-function M.BenchPayload_decode_unsafe(buf)
+function M.BenchPayload_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
@@ -2440,6 +2470,8 @@ function M.BenchPayload_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.BenchPayload decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2579,13 +2611,13 @@ function M.BenchPayload_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.inner
             if prev == nil then
-                result.inner = M.BenchPayload_Inner_decode_unsafe(payload)
+                result.inner = M.BenchPayload_Inner_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.BenchPayload_Inner_descriptor, prev, M.BenchPayload_Inner_decode_unsafe(payload))
+                pb.codec.merge_message(M.BenchPayload_Inner_descriptor, prev, M.BenchPayload_Inner_decode_unsafe(payload, depth + 1))
             end
         elseif id == 7 then
             local payload
-            payload, pos = pb.codec.decode_group(M.BenchPayload_Stats_descriptor, buf, pos, 7)
+            payload, pos = pb.codec.decode_group(M.BenchPayload_Stats_descriptor, buf, pos, 7, depth + 1)
             local prev = result.stats
             if prev == nil then
                 result.stats = payload
@@ -2608,7 +2640,7 @@ function M.BenchPayload_decode_unsafe(buf)
             local _ebid = M.BenchPayload_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2685,7 +2717,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.BenchPayload.Stats
-function M.BenchPayload_Stats_decode(buf)
+function M.BenchPayload_Stats_decode(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_tag = wire.decode_tag
     local _d = M.BenchPayload_Stats_descriptor
@@ -2696,6 +2728,8 @@ function M.BenchPayload_Stats_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.BenchPayload.Stats decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2736,7 +2770,7 @@ function M.BenchPayload_Stats_decode(buf)
             local _ebid = M.BenchPayload_Stats_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2750,7 +2784,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.BenchPayload.Stats
-function M.BenchPayload_Stats_decode_unsafe(buf)
+function M.BenchPayload_Stats_decode_unsafe(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_tag = wire.decode_tag
     local _d = M.BenchPayload_Stats_descriptor
@@ -2761,6 +2795,8 @@ function M.BenchPayload_Stats_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.BenchPayload.Stats decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2801,7 +2837,7 @@ function M.BenchPayload_Stats_decode_unsafe(buf)
             local _ebid = M.BenchPayload_Stats_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2874,7 +2910,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.BenchPayload.Inner
-function M.BenchPayload_Inner_decode(buf)
+function M.BenchPayload_Inner_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.BenchPayload_Inner_descriptor
@@ -2885,6 +2921,8 @@ function M.BenchPayload_Inner_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.BenchPayload.Inner decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2953,7 +2991,7 @@ function M.BenchPayload_Inner_decode(buf)
             local _ebid = M.BenchPayload_Inner_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2967,7 +3005,7 @@ end
 
 ---@param b string
 ---@return proto2_basic.BenchPayload.Inner
-function M.BenchPayload_Inner_decode_unsafe(buf)
+function M.BenchPayload_Inner_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.BenchPayload_Inner_descriptor
@@ -2978,6 +3016,8 @@ function M.BenchPayload_Inner_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for proto2_basic.BenchPayload.Inner decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -3044,7 +3084,7 @@ function M.BenchPayload_Inner_decode_unsafe(buf)
             local _ebid = M.BenchPayload_Inner_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

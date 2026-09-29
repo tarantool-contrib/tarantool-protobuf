@@ -137,7 +137,7 @@ end
 
 ---@param b string
 ---@return c_repeated.Inner
-function M.Inner_decode(buf)
+function M.Inner_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.Inner_descriptor
@@ -148,6 +148,8 @@ function M.Inner_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_repeated.Inner decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -216,7 +218,7 @@ function M.Inner_decode(buf)
             local _ebid = M.Inner_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -230,7 +232,7 @@ end
 
 ---@param b string
 ---@return c_repeated.Inner
-function M.Inner_decode_unsafe(buf)
+function M.Inner_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.Inner_descriptor
@@ -241,6 +243,8 @@ function M.Inner_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_repeated.Inner decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -307,7 +311,7 @@ function M.Inner_decode_unsafe(buf)
             local _ebid = M.Inner_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -612,7 +616,7 @@ end
 
 ---@param b string
 ---@return c_repeated.Holder
-function M.Holder_decode(buf)
+function M.Holder_decode(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -634,6 +638,8 @@ function M.Holder_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_repeated.Holder decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1027,12 +1033,12 @@ function M.Holder_decode(buf)
             if list == nil then list = {}; result.messages = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_messages = _n_messages + 1; list[_n_messages] = M.Inner_decode(payload)
+            _n_messages = _n_messages + 1; list[_n_messages] = M.Inner_decode(payload, depth + 1)
         else
             local _ebid = M.Holder_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1046,7 +1052,7 @@ end
 
 ---@param b string
 ---@return c_repeated.Holder
-function M.Holder_decode_unsafe(buf)
+function M.Holder_decode_unsafe(buf, depth)
     local decode_bool = wire.decode_bool
     local decode_bytes = wire.decode_bytes
     local decode_double = wire.decode_double
@@ -1067,6 +1073,8 @@ function M.Holder_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for c_repeated.Holder decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1458,12 +1466,12 @@ function M.Holder_decode_unsafe(buf)
             if list == nil then list = {}; result.messages = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_messages = _n_messages + 1; list[_n_messages] = M.Inner_decode_unsafe(payload)
+            _n_messages = _n_messages + 1; list[_n_messages] = M.Inner_decode_unsafe(payload, depth + 1)
         else
             local _ebid = M.Holder_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

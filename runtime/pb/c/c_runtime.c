@@ -26,6 +26,20 @@
 #define PB_PLAN_MT      "pb.plan"
 #define PB_ABI_VERSION  "1"
 
+/* Maximum message / group nesting the decoder descends into (and the
+ * encoder emits). Must equal wire.RECURSION_LIMIT in runtime/pb/wire.lua;
+ * keeping recursion bounded is what keeps hostile input from running a
+ * 512KB fiber stack into the guard page. */
+#define PB_RECURSION_LIMIT 100
+
+static int
+recursion_limit_error(lua_State *L)
+{
+	return luaL_error(L,
+		"message nesting exceeds the recursion limit (%d)",
+		PB_RECURSION_LIMIT);
+}
+
 /* ---------------------------------------------------------------- *
  *  Kind / wire-type taxonomy.                                       *
  *                                                                  *
@@ -867,14 +881,21 @@ plan_sub_plan(lua_State *L)
  *  encode_submessage_field for the contract).                       *
  * ---------------------------------------------------------------- */
 
-#define ENC_STACK_BUF 4096
+/* Initial C-stack storage for an enc_buf. Only the top-level encode gets
+ * the large buffer: every nested message, group and map entry recurses
+ * with its own enc_buf, and at PB_RECURSION_LIMIT levels 4KB apiece
+ * would not fit a 512KB fiber stack. Nested bodies that outgrow the
+ * small buffer spill to a Lua userdata like any other. */
+#define ENC_TOP_BUF    4096
+#define ENC_NESTED_BUF 512
 
 typedef struct enc_buf {
-	uint8_t  stack[ENC_STACK_BUF];
+	uint8_t *stack;      /* caller-provided initial storage (C stack) */
 	uint8_t *heap;       /* pointer into Lua userdata when grown; NULL while on stack */
 	int      heap_idx;   /* stack slot of the userdata; 0 if not yet on heap */
 	size_t   cap;
 	size_t   used;
+	int      depth;      /* message nesting level, checked by encode_body */
 } enc_buf;
 
 static inline uint8_t *
@@ -884,12 +905,14 @@ ebuf_base(enc_buf *b)
 }
 
 static void
-ebuf_init(enc_buf *b)
+ebuf_init(enc_buf *b, uint8_t *storage, size_t size, int depth)
 {
+	b->stack = storage;
 	b->heap = NULL;
 	b->heap_idx = 0;
-	b->cap = ENC_STACK_BUF;
+	b->cap = size;
 	b->used = 0;
+	b->depth = depth;
 }
 
 static void
@@ -1501,8 +1524,9 @@ encode_repeated_field(lua_State *L, enc_buf *b, pb_plan *plan,
 			ebuf_grow(L, b, 1);
 		int saved_top = lua_gettop(L);
 
+		uint8_t sub_storage[ENC_NESTED_BUF];
 		enc_buf sub;
-		ebuf_init(&sub);
+		ebuf_init(&sub, sub_storage, sizeof(sub_storage), b->depth);
 		for (int i = 1; i <= n; i++) {
 			lua_rawgeti(L, val_idx, i);
 			encode_packed_element_at(L, &sub, f, lua_gettop(L));
@@ -1589,8 +1613,9 @@ encode_submessage_field(lua_State *L, enc_buf *b, pb_plan *plan,
 	if (lua_type(L, val_idx) != LUA_TTABLE)
 		luaL_error(L, "message field requires a table value");
 
+	uint8_t sub_storage[ENC_NESTED_BUF];
 	enc_buf sub;
-	ebuf_init(&sub);
+	ebuf_init(&sub, sub_storage, sizeof(sub_storage), b->depth + 1);
 	encode_body(L, &sub, subplan, val_idx);
 
 	/* Write tag + length-varint + body into parent. Parent regrowth
@@ -1633,8 +1658,9 @@ encode_group_field(lua_State *L, enc_buf *b, pb_plan *plan,
 	if (lua_type(L, val_idx) != LUA_TTABLE)
 		luaL_error(L, "group field requires a table value");
 
+	uint8_t sub_storage[ENC_NESTED_BUF];
 	enc_buf sub;
-	ebuf_init(&sub);
+	ebuf_init(&sub, sub_storage, sizeof(sub_storage), b->depth + 1);
 	encode_body(L, &sub, subplan, val_idx);
 
 	/* SGROUP tag + body + EGROUP tag (no length prefix). */
@@ -1740,8 +1766,10 @@ encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
 		int v_idx = saved_top + 2;
 
 		/* Build the entry payload in a stack-backed sub-buffer. */
+		uint8_t entry_storage[ENC_NESTED_BUF];
 		enc_buf entry;
-		ebuf_init(&entry);
+		ebuf_init(&entry, entry_storage, sizeof(entry_storage),
+		          b->depth);
 
 		/* Key (proto3-elide on default). */
 		if (!value_is_default_kind(L, f->map_key_kind, k_idx)) {
@@ -1777,8 +1805,10 @@ encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
 				if (lua_type(L, v_idx) != LUA_TTABLE)
 					luaL_error(L,
 						"map<,message> value must be a table");
+				uint8_t vbody_storage[ENC_NESTED_BUF];
 				enc_buf vbody;
-				ebuf_init(&vbody);
+				ebuf_init(&vbody, vbody_storage,
+				          sizeof(vbody_storage), b->depth + 1);
 				encode_body(L, &vbody, value_subplan, v_idx);
 				ebuf_reserve(L, &entry,
 					     1 + 10 + vbody.used);
@@ -1813,6 +1843,10 @@ static void
 encode_body(lua_State *L, enc_buf *b, pb_plan *plan, int msg_idx)
 {
 	msg_idx = abs_idx(L, msg_idx);
+	/* Also what stops a self-referencing table from recursing until
+	 * the C stack overflows. */
+	if (b->depth > PB_RECURSION_LIMIT)
+		recursion_limit_error(L);
 
 	if (plan->override_encode_ref != LUA_NOREF) {
 		/* Defensive: callers must dispatch via the override Lua-ref
@@ -1959,8 +1993,9 @@ encode_lua(lua_State *L)
 
 	luaL_checktype(L, 2, LUA_TTABLE);
 
+	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
-	ebuf_init(&b);
+	ebuf_init(&b, storage, sizeof(storage), 0);
 	encode_body(L, &b, plan, 2);
 
 	lua_pushlstring(L, (const char *)ebuf_base(&b), b.used);
@@ -1997,6 +2032,9 @@ typedef struct dec_ctx {
 	 * own encoder output, in-process typed RPC). Mirrors the Lua
 	 * scalar_unsafe.string = scalar.bytes swap in pb.codec. */
 	int           skip_utf8;
+	/* Nesting level of the message decode_body is working on: 0 for
+	 * the top level, bounded by PB_RECURSION_LIMIT. */
+	int           depth;
 } dec_ctx;
 
 static uint64_t
@@ -2081,21 +2119,33 @@ dec_skip_with_id(dec_ctx *c, uint8_t wt, uint32_t field_id)
 		if (field_id == 0)
 			luaL_error(c->L,
 				"skip SGROUP requires field id for EGROUP match");
+		/* Nested groups are tracked on an explicit stack of open ids
+		 * rather than by recursion, capped like message nesting —
+		 * mirrors wire.lua's skip_field. */
+		uint32_t open[PB_RECURSION_LIMIT];
+		int n = 0;
+		open[n++] = field_id;
 		while (c->pos < c->len) {
 			uint64_t itag = dec_varint(c);
 			uint32_t iid  = (uint32_t)(itag >> 3);
 			uint8_t  iwt  = (uint8_t)(itag & 0x07);
 			if (iwt == PB_WIRE_EGROUP) {
-				if (iid != field_id)
+				if (iid != open[n - 1])
 					luaL_error(c->L,
 						"EGROUP id %d does not match SGROUP id %d",
-						(int)iid, (int)field_id);
-				return;
+						(int)iid, (int)open[n - 1]);
+				if (--n == 0)
+					return;
+			} else if (iwt == PB_WIRE_SGROUP) {
+				if (n == PB_RECURSION_LIMIT)
+					recursion_limit_error(c->L);
+				open[n++] = iid;
+			} else {
+				dec_skip_with_id(c, iwt, iid);
 			}
-			dec_skip_with_id(c, iwt, iid);
 		}
 		luaL_error(c->L,
-			"unterminated SGROUP for field id %d", (int)field_id);
+			"unterminated SGROUP for field id %d", (int)open[n - 1]);
 		break;
 	}
 	case PB_WIRE_EGROUP:
@@ -2339,7 +2389,10 @@ decode_submessage_field(dec_ctx *c, pb_plan_field *f, int sub_plans_idx)
 		            subplan->override_decode_ref);
 		lua_pushlstring(L, (const char *)(c->buf + c->pos),
 		                (size_t)plen);
-		lua_call(L, 1, 1);
+		/* Struct / Value / ListValue recurse in Lua: hand them the
+		 * nesting level so the limit spans both codecs. */
+		lua_pushinteger(L, c->depth + 1);
+		lua_call(L, 2, 1);
 		c->pos += (size_t)plen;
 		return;
 	}
@@ -2564,7 +2617,8 @@ decode_map_entry(dec_ctx *c, pb_plan_field *f, int sub_plans_idx,
 					lua_pushlstring(L,
 						(const char *)(c->buf + c->pos),
 						(size_t)sub_len);
-					lua_call(L, 1, 1);
+					lua_pushinteger(L, c->depth + 1);
+					lua_call(L, 2, 1);
 					c->pos += (size_t)sub_len;
 					lua_replace(L, val_idx);
 				} else {
@@ -2810,6 +2864,11 @@ decode_body(dec_ctx *c, pb_plan *plan, int result_idx,
 			"internal: decode_body invoked on override plan '%s'",
 			plan->name != NULL ? plan->name : "?");
 	}
+	/* Every nested message, group and map value re-enters here, so this
+	 * is the one place the nesting bound has to be kept. No unwind on
+	 * error: a luaL_error abandons the whole dec_ctx. */
+	if (++c->depth > PB_RECURSION_LIMIT)
+		recursion_limit_error(L);
 
 	result_idx = abs_idx(L, result_idx);
 
@@ -2854,8 +2913,9 @@ decode_body(dec_ctx *c, pb_plan *plan, int result_idx,
 	 * tail. Mirrors codec.lua's `decode_message` behavior. Each recursive
 	 * `decode_body` call has its own `unknown` buffer — nested messages
 	 * carry their own _unknown_fields, isolated from the parent. */
+	uint8_t unknown_storage[256];
 	enc_buf unknown;
-	ebuf_init(&unknown);
+	ebuf_init(&unknown, unknown_storage, sizeof(unknown_storage), 0);
 
 	/* Track whether the EGROUP was actually observed when decoding a
 	 * group body, so an unterminated SGROUP fails loudly instead of
@@ -3146,6 +3206,7 @@ decode_body(dec_ctx *c, pb_plan *plan, int result_idx,
 	int top = lua_gettop(L);
 	int to_pop = top - names_idx + 1;
 	lua_pop(L, to_pop);
+	c->depth--;
 }
 
 static int
@@ -3177,6 +3238,7 @@ decode_impl(lua_State *L, int skip_utf8)
 	c.len       = buf_len;
 	c.pos       = 0;
 	c.skip_utf8 = skip_utf8;
+	c.depth     = -1;   /* decode_body enters the top level at 0 */
 
 	decode_body(&c, plan, result_idx, /* stop_group_id */ 0);
 	return 1;

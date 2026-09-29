@@ -279,7 +279,7 @@ end
 
 ---@param b string
 ---@return hello.Result
-function M.Result_decode(buf)
+function M.Result_decode(buf, depth)
     local decode_int32 = wire.decode_int32
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
@@ -291,6 +291,8 @@ function M.Result_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Result decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -368,9 +370,9 @@ function M.Result_decode(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.details
             if prev == nil then
-                result.details = M.Address_decode(payload)
+                result.details = M.Address_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode(payload))
+                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode(payload, depth + 1))
             end
             result.text = nil
             result.code = nil
@@ -378,7 +380,7 @@ function M.Result_decode(buf)
             local _ebid = M.Result_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -392,7 +394,7 @@ end
 
 ---@param b string
 ---@return hello.Result
-function M.Result_decode_unsafe(buf)
+function M.Result_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_int32 = wire.decode_int32
     local decode_tag = wire.decode_tag
@@ -404,6 +406,8 @@ function M.Result_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Result decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -479,9 +483,9 @@ function M.Result_decode_unsafe(buf)
             payload, pos = wire.decode_len(buf, pos)
             local prev = result.details
             if prev == nil then
-                result.details = M.Address_decode_unsafe(payload)
+                result.details = M.Address_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode_unsafe(payload))
+                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode_unsafe(payload, depth + 1))
             end
             result.text = nil
             result.code = nil
@@ -489,7 +493,7 @@ function M.Result_decode_unsafe(buf)
             local _ebid = M.Result_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -545,7 +549,7 @@ end
 
 ---@param b string
 ---@return hello.HelloRequest
-function M.HelloRequest_decode(buf)
+function M.HelloRequest_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.HelloRequest_descriptor
@@ -556,6 +560,8 @@ function M.HelloRequest_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.HelloRequest decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -620,7 +626,7 @@ function M.HelloRequest_decode(buf)
             local _ebid = M.HelloRequest_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -634,7 +640,7 @@ end
 
 ---@param b string
 ---@return hello.HelloRequest
-function M.HelloRequest_decode_unsafe(buf)
+function M.HelloRequest_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.HelloRequest_descriptor
@@ -645,6 +651,8 @@ function M.HelloRequest_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.HelloRequest decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -707,7 +715,7 @@ function M.HelloRequest_decode_unsafe(buf)
             local _ebid = M.HelloRequest_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -763,7 +771,7 @@ end
 
 ---@param b string
 ---@return hello.HelloReply
-function M.HelloReply_decode(buf)
+function M.HelloReply_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.HelloReply_descriptor
@@ -774,6 +782,8 @@ function M.HelloReply_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.HelloReply decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -838,7 +848,7 @@ function M.HelloReply_decode(buf)
             local _ebid = M.HelloReply_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -852,7 +862,7 @@ end
 
 ---@param b string
 ---@return hello.HelloReply
-function M.HelloReply_decode_unsafe(buf)
+function M.HelloReply_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.HelloReply_descriptor
@@ -863,6 +873,8 @@ function M.HelloReply_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.HelloReply decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -925,7 +937,7 @@ function M.HelloReply_decode_unsafe(buf)
             local _ebid = M.HelloReply_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1125,7 +1137,7 @@ end
 
 ---@param b string
 ---@return hello.Event
-function M.Event_decode(buf)
+function M.Event_decode(buf, depth)
     local decode_len = wire.decode_len
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
@@ -1137,6 +1149,8 @@ function M.Event_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Event decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1200,52 +1214,52 @@ function M.Event_decode(buf)
         elseif id == 2 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.created_at = pb.wkt.Timestamp_decode(payload)
+            result.created_at = pb.wkt.Timestamp_decode(payload, depth + 1)
         elseif id == 3 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.duration = pb.wkt.Duration_decode(payload)
+            result.duration = pb.wkt.Duration_decode(payload, depth + 1)
         elseif id == 4 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.ack = pb.wkt.Empty_decode(payload)
+            result.ack = pb.wkt.Empty_decode(payload, depth + 1)
         elseif id == 5 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.retry_count = pb.wkt.Int32Value_decode(payload)
+            result.retry_count = pb.wkt.Int32Value_decode(payload, depth + 1)
         elseif id == 6 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.note = pb.wkt.StringValue_decode(payload)
+            result.note = pb.wkt.StringValue_decode(payload, depth + 1)
         elseif id == 7 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.is_admin = pb.wkt.BoolValue_decode(payload)
+            result.is_admin = pb.wkt.BoolValue_decode(payload, depth + 1)
         elseif id == 8 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.payload = pb.wkt.Struct_decode(payload)
+            result.payload = pb.wkt.Struct_decode(payload, depth + 1)
         elseif id == 9 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.attribute = pb.wkt.Value_decode(payload)
+            result.attribute = pb.wkt.Value_decode(payload, depth + 1)
         elseif id == 10 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.tags = pb.wkt.ListValue_decode(payload)
+            result.tags = pb.wkt.ListValue_decode(payload, depth + 1)
         elseif id == 11 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.extension = pb.wkt.Any_decode(payload)
+            result.extension = pb.wkt.Any_decode(payload, depth + 1)
         elseif id == 12 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.update_mask = pb.wkt.FieldMask_decode(payload)
+            result.update_mask = pb.wkt.FieldMask_decode(payload, depth + 1)
         else
             local _ebid = M.Event_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1259,7 +1273,7 @@ end
 
 ---@param b string
 ---@return hello.Event
-function M.Event_decode_unsafe(buf)
+function M.Event_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_len = wire.decode_len
     local decode_tag = wire.decode_tag
@@ -1271,6 +1285,8 @@ function M.Event_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Event decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1332,52 +1348,52 @@ function M.Event_decode_unsafe(buf)
         elseif id == 2 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.created_at = pb.wkt.Timestamp_decode(payload)
+            result.created_at = pb.wkt.Timestamp_decode(payload, depth + 1)
         elseif id == 3 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.duration = pb.wkt.Duration_decode(payload)
+            result.duration = pb.wkt.Duration_decode(payload, depth + 1)
         elseif id == 4 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.ack = pb.wkt.Empty_decode(payload)
+            result.ack = pb.wkt.Empty_decode(payload, depth + 1)
         elseif id == 5 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.retry_count = pb.wkt.Int32Value_decode(payload)
+            result.retry_count = pb.wkt.Int32Value_decode(payload, depth + 1)
         elseif id == 6 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.note = pb.wkt.StringValue_decode(payload)
+            result.note = pb.wkt.StringValue_decode(payload, depth + 1)
         elseif id == 7 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.is_admin = pb.wkt.BoolValue_decode(payload)
+            result.is_admin = pb.wkt.BoolValue_decode(payload, depth + 1)
         elseif id == 8 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.payload = pb.wkt.Struct_decode(payload)
+            result.payload = pb.wkt.Struct_decode(payload, depth + 1)
         elseif id == 9 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.attribute = pb.wkt.Value_decode(payload)
+            result.attribute = pb.wkt.Value_decode(payload, depth + 1)
         elseif id == 10 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.tags = pb.wkt.ListValue_decode(payload)
+            result.tags = pb.wkt.ListValue_decode(payload, depth + 1)
         elseif id == 11 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.extension = pb.wkt.Any_decode(payload)
+            result.extension = pb.wkt.Any_decode(payload, depth + 1)
         elseif id == 12 then
             local payload
             payload, pos = decode_len(buf, pos)
-            result.update_mask = pb.wkt.FieldMask_decode(payload)
+            result.update_mask = pb.wkt.FieldMask_decode(payload, depth + 1)
         else
             local _ebid = M.Event_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1464,7 +1480,7 @@ end
 
 ---@param b string
 ---@return hello.Address
-function M.Address_decode(buf)
+function M.Address_decode(buf, depth)
     local decode_string = wire.decode_string
     local decode_tag = wire.decode_tag
     local _d = M.Address_descriptor
@@ -1475,6 +1491,8 @@ function M.Address_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Address decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1607,7 +1625,7 @@ function M.Address_decode(buf)
             local _ebid = M.Address_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -1621,7 +1639,7 @@ end
 
 ---@param b string
 ---@return hello.Address
-function M.Address_decode_unsafe(buf)
+function M.Address_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_tag = wire.decode_tag
     local _d = M.Address_descriptor
@@ -1632,6 +1650,8 @@ function M.Address_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Address decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -1758,7 +1778,7 @@ function M.Address_decode_unsafe(buf)
             local _ebid = M.Address_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = wire.skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2014,7 +2034,7 @@ end
 
 ---@param b string
 ---@return hello.Person
-function M.Person_decode(buf)
+function M.Person_decode(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
@@ -2029,6 +2049,8 @@ function M.Person_decode(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Person decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2139,16 +2161,16 @@ function M.Person_decode(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.address
             if prev == nil then
-                result.address = M.Address_decode(payload)
+                result.address = M.Address_decode(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode(payload))
+                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode(payload, depth + 1))
             end
         elseif id == 6 then
             local list = result.friends
             if list == nil then list = {}; result.friends = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_friends = _n_friends + 1; list[_n_friends] = M.Person_decode(payload)
+            _n_friends = _n_friends + 1; list[_n_friends] = M.Person_decode(payload, depth + 1)
         elseif id == 7 then
             if wt == 2 then
                 local payload
@@ -2278,7 +2300,7 @@ function M.Person_decode(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.Address_decode(_payload)
+                    _val = M.Address_decode(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -2288,7 +2310,7 @@ function M.Person_decode(buf)
             local _ebid = M.Person_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end
@@ -2302,7 +2324,7 @@ end
 
 ---@param b string
 ---@return hello.Person
-function M.Person_decode_unsafe(buf)
+function M.Person_decode_unsafe(buf, depth)
     local decode_bytes = wire.decode_bytes
     local decode_int32 = wire.decode_int32
     local decode_len = wire.decode_len
@@ -2316,6 +2338,8 @@ function M.Person_decode_unsafe(buf)
     if type(buf) ~= 'string' then
         error("expected string for hello.Person decode, got " .. type(buf), 0)
     end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = {}
     local pos, len = 1, #buf
     local _uf
@@ -2422,16 +2446,16 @@ function M.Person_decode_unsafe(buf)
             payload, pos = decode_len(buf, pos)
             local prev = result.address
             if prev == nil then
-                result.address = M.Address_decode_unsafe(payload)
+                result.address = M.Address_decode_unsafe(payload, depth + 1)
             else
-                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode_unsafe(payload))
+                pb.codec.merge_message(M.Address_descriptor, prev, M.Address_decode_unsafe(payload, depth + 1))
             end
         elseif id == 6 then
             local list = result.friends
             if list == nil then list = {}; result.friends = list end
             local payload
             payload, pos = decode_len(buf, pos)
-            _n_friends = _n_friends + 1; list[_n_friends] = M.Person_decode_unsafe(payload)
+            _n_friends = _n_friends + 1; list[_n_friends] = M.Person_decode_unsafe(payload, depth + 1)
         elseif id == 7 then
             if wt == 2 then
                 local payload
@@ -2561,7 +2585,7 @@ function M.Person_decode_unsafe(buf)
                 elseif eid == 2 then
                     local _payload
                     _payload, _ep = decode_len(payload, _ep)
-                    _val = M.Address_decode_unsafe(_payload)
+                    _val = M.Address_decode_unsafe(_payload, depth + 1)
                 else
                     _ep = skip_field(payload, _ep, ewt, eid)
                 end
@@ -2571,7 +2595,7 @@ function M.Person_decode_unsafe(buf)
             local _ebid = M.Person_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
             if _ext ~= nil then
-                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
             else
                 pos = skip_field(buf, pos, wt, id)
                 if _uf == nil then _uf = {} end

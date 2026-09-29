@@ -812,7 +812,7 @@ func emitInlineDecodeExtension(w *writer, ext *protogen.Extension, file *protoge
 		if ext.Desc.Kind() == protoreflect.GroupKind {
 			descRef := typeRef(file, ext.Message.Desc, selfPath, imports, "_descriptor", prefix)
 			w.line("            local _payload")
-			w.line("            _payload, pos = pb.codec.decode_group(%s, buf, pos, %d)",
+			w.line("            _payload, pos = pb.codec.decode_group(%s, buf, pos, %d, depth + 1)",
 				descRef, ext.Desc.Number())
 			w.line("            local _e = result._extensions")
 			w.line("            if _e == nil then _e = {}; result._extensions = _e end")
@@ -822,7 +822,7 @@ func emitInlineDecodeExtension(w *writer, ext *protogen.Extension, file *protoge
 			w.line("            _payload, pos = wire.decode_len(buf, pos)")
 			w.line("            local _e = result._extensions")
 			w.line("            if _e == nil then _e = {}; result._extensions = _e end")
-			w.line("            _e[%q] = %s(_payload)", full, ref)
+			w.line("            _e[%q] = %s(_payload, depth + 1)", full, ref)
 		}
 	case ext.Enum != nil:
 		w.line("            local _u")
@@ -865,13 +865,13 @@ func emitInlineDecodeExtensionRepeated(w *writer, ext *protogen.Extension, full 
 		if ext.Desc.Kind() == protoreflect.GroupKind {
 			descRef := typeRef(file, ext.Message.Desc, selfPath, imports, "_descriptor", prefix)
 			w.line("            local _payload")
-			w.line("            _payload, pos = pb.codec.decode_group(%s, buf, pos, %d)",
+			w.line("            _payload, pos = pb.codec.decode_group(%s, buf, pos, %d, depth + 1)",
 				descRef, ext.Desc.Number())
 			w.line("            _list[#_list + 1] = _payload")
 		} else {
 			w.line("            local _payload")
 			w.line("            _payload, pos = wire.decode_len(buf, pos)")
-			w.line("            _list[#_list + 1] = %s(_payload)", ref)
+			w.line("            _list[#_list + 1] = %s(_payload, depth + 1)", ref)
 		}
 	case ext.Enum != nil:
 		w.line("            if wt == 2 then")
@@ -935,7 +935,10 @@ func emitInlineDecode(w *writer, name string, m *protogen.Message, file *protoge
 		cEntry = "decode_unsafe"
 	}
 	emitEmmyWrapperAnnotations(w, name, emmyMessageFullName(m), wrapperDecode)
-	emitLocalizedFunction(w, fmt.Sprintf("function M.%s%s(buf)", name, suffix), func() {
+	// `depth` is the nesting level (nil for a top-level call); nested
+	// messages and groups are decoded at depth + 1, and input nested past
+	// wire.RECURSION_LIMIT is refused.
+	emitLocalizedFunction(w, fmt.Sprintf("function M.%s%s(buf, depth)", name, suffix), func() {
 		w.line("    local _d = M.%s_descriptor", name)
 		// C-acceleration: see emitInlineEncode for rationale and lazy-compile.
 		w.line("    if pb.c_runtime ~= nil then")
@@ -945,6 +948,8 @@ func emitInlineDecode(w *writer, name string, m *protogen.Message, file *protoge
 		w.line("    if type(buf) ~= 'string' then")
 		w.line("        error(\"expected string for %s decode, got \" .. type(buf), 0)", m.Desc.FullName())
 		w.line("    end")
+		w.line("    depth = depth or 0")
+		w.line("    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end")
 		w.line("    local result = {}")
 		w.line("    local pos, len = 1, #buf")
 		w.line("    local _uf")
@@ -1026,7 +1031,7 @@ func emitInlineDecode(w *writer, name string, m *protogen.Message, file *protoge
 		w.line("            local _ebid = M.%s_descriptor.extensions_by_id", name)
 		w.line("            local _ext = _ebid and _ebid[id] or nil")
 		w.line("            if _ext ~= nil then")
-		w.line("                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result)")
+		w.line("                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)")
 		w.line("            else")
 		w.line("                pos = wire.skip_field(buf, pos, wt, id)")
 		w.line("                if _uf == nil then _uf = {} end")
@@ -1065,7 +1070,7 @@ func emitInlineDecodeFieldBody(w *writer, f *protogen.Field, file *protogen.File
 			// it hits an EGROUP tag matching this field's id; returns the
 			// decoded table and the new position.
 			w.line("            local payload")
-			w.line("            payload, pos = pb.codec.decode_group(%s, buf, pos, %d)",
+			w.line("            payload, pos = pb.codec.decode_group(%s, buf, pos, %d, depth + 1)",
 				descRef, f.Desc.Number())
 			w.line("            local prev = %s", dst)
 			w.line("            if prev == nil then")
@@ -1079,16 +1084,16 @@ func emitInlineDecodeFieldBody(w *writer, f *protogen.Field, file *protogen.File
 			if isWellKnownTypeFile(f.Message.Desc.ParentFile()) {
 				// WKT decoders return unwrapped values (datetime, number, string),
 				// not Lua tables — there is nothing to merge into. Replace.
-				w.line("            %s = %s(payload)", dst, ref)
+				w.line("            %s = %s(payload, depth + 1)", dst, ref)
 			} else {
 				// Per proto3 spec, repeated occurrences of a singular message
 				// field merge recursively. This holds for oneof branches too;
 				// sibling clearing below enforces oneof exclusivity.
 				w.line("            local prev = %s", dst)
 				w.line("            if prev == nil then")
-				w.line("                %s = %s(payload)", dst, ref)
+				w.line("                %s = %s(payload, depth + 1)", dst, ref)
 				w.line("            else")
-				w.line("                pb.codec.merge_message(%s, prev, %s(payload))",
+				w.line("                pb.codec.merge_message(%s, prev, %s(payload, depth + 1))",
 					descRef, ref)
 				w.line("            end")
 			}
@@ -1172,13 +1177,13 @@ func emitInlineDecodeRepeated(w *writer, f *protogen.Field, fname string, file *
 		if f.Desc.Kind() == protoreflect.GroupKind {
 			descRef := typeRef(file, f.Message.Desc, selfPath, imports, "_descriptor", prefix)
 			w.line("            local payload")
-			w.line("            payload, pos = pb.codec.decode_group(%s, buf, pos, %d)",
+			w.line("            payload, pos = pb.codec.decode_group(%s, buf, pos, %d, depth + 1)",
 				descRef, f.Desc.Number())
 			w.line("            %s = %s + 1; list[%s] = payload", cnt, cnt, cnt)
 		} else {
 			w.line("            local payload")
 			w.line("            payload, pos = wire.decode_len(buf, pos)")
-			w.line("            %s = %s + 1; list[%s] = %s(payload)", cnt, cnt, cnt, ref)
+			w.line("            %s = %s + 1; list[%s] = %s(payload, depth + 1)", cnt, cnt, cnt, ref)
 		}
 	case f.Enum != nil:
 		// Enums are packable (proto3 default). Accept both packed and per-element.
@@ -1547,7 +1552,7 @@ func emitMapDecode(w *writer, dst string, f *protogen.Field, file *protogen.File
 		ref := typeRef(file, f.Message.Desc, selfPath, imports, decodeSuffix, prefix)
 		w.line("                    local _payload")
 		w.line("                    _payload, _ep = wire.decode_len(payload, _ep)")
-		w.line("                    %s = %s(_payload)", dst, ref)
+		w.line("                    %s = %s(_payload, depth + 1)", dst, ref)
 	case f.Enum != nil:
 		w.line("                    local _u")
 		w.line("                    _u, _ep = wire.decode_varint(payload, _ep)")

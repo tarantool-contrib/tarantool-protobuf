@@ -359,7 +359,12 @@ list_encode = function(t)
     return table.concat(out)
 end
 
-value_decode = function(buf)
+-- Value / Struct / ListValue recurse into each other, so they take the
+-- nesting `depth` from the codec (nil at the top level) and enforce the
+-- same limit as message decoding.
+value_decode = function(buf, depth)
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     -- Empty Value (no kind set on wire) → null per common impl convention.
     if #buf == 0 then return NULL end
     local pos, len = 1, #buf
@@ -386,11 +391,11 @@ value_decode = function(buf)
         elseif id == 5 then
             local payload
             payload, pos = wire.decode_len(buf, pos)
-            result = struct_decode(payload)
+            result = struct_decode(payload, depth + 1)
         elseif id == 6 then
             local payload
             payload, pos = wire.decode_len(buf, pos)
-            result = list_decode(payload)
+            result = list_decode(payload, depth + 1)
         else
             pos = wire.skip_field(buf, pos, wt, id)
         end
@@ -398,7 +403,9 @@ value_decode = function(buf)
     return result
 end
 
-struct_decode = function(buf)
+struct_decode = function(buf, depth)
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = setmetatable({}, STRUCT_MT)
     local pos, len = 1, #buf
     while pos <= len do
@@ -417,7 +424,7 @@ struct_decode = function(buf)
                 elseif eid == 2 then
                     local vbuf
                     vbuf, ep = wire.decode_len(payload, ep)
-                    val = value_decode(vbuf)
+                    val = value_decode(vbuf, depth + 1)
                 else
                     ep = wire.skip_field(payload, ep, ewt, eid)
                 end
@@ -430,7 +437,9 @@ struct_decode = function(buf)
     return result
 end
 
-list_decode = function(buf)
+list_decode = function(buf, depth)
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
     local result = setmetatable({}, LIST_MT)
     local pos, len = 1, #buf
     while pos <= len do
@@ -439,7 +448,7 @@ list_decode = function(buf)
         if id == 1 then
             local payload
             payload, pos = wire.decode_len(buf, pos)
-            result[#result + 1] = value_decode(payload)
+            result[#result + 1] = value_decode(payload, depth + 1)
         else
             pos = wire.skip_field(buf, pos, wt, id)
         end

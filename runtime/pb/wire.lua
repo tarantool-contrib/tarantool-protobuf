@@ -16,6 +16,20 @@ M.WIRE_SGROUP = 3
 M.WIRE_EGROUP = 4
 M.WIRE_I32    = 5
 
+-- Maximum nesting of messages and groups a binary decoder descends into,
+-- the same default as protobuf's C++ and upb parsers. Every decoder
+-- threads a `depth` argument (0 for the top-level message) and refuses
+-- input nested deeper than this, so hostile bytes fail with a parse
+-- error instead of exhausting the Lua stack or, in the C codec, the
+-- fiber's C stack. The C codec mirrors this value as PB_RECURSION_LIMIT.
+M.RECURSION_LIMIT = 100
+
+-- Raises the error every decoder reports for input nested too deeply.
+function M.recursion_limit_error()
+    error(('message nesting exceeds the recursion limit (%d)'):format(
+        M.RECURSION_LIMIT), 0)
+end
+
 -- Precomputed 1-byte string for every possible byte value (0-255).
 -- Replaces `string.char(b)` at length-prefix and tag-emit sites in the
 -- codegen-emitted hot path. Profile attributed ~28% of Person_encode 1KB
@@ -751,22 +765,31 @@ local function skip_field(buf, pos, wire_type, field_id)
         if np > #buf + 1 then error("truncated I32 at offset " .. pos, 0) end
         return np
     elseif wire_type == M.WIRE_SGROUP then
-        -- Read inner tags until the matching EGROUP; recurse on nested
-        -- groups. EGROUP id mismatch is a hard error per spec.
+        -- Read inner tags until the matching EGROUP. Nested groups are
+        -- tracked on an explicit stack of open ids rather than by
+        -- recursion, capped at RECURSION_LIMIT like message nesting.
+        -- EGROUP id mismatch is a hard error per spec.
         if field_id == nil then
             error("skip_field SGROUP requires field_id", 0)
         end
+        local open, n = {field_id}, 1
         while true do
             local iid, iwt
             iid, iwt, pos = decode_tag(buf, pos)
             if iwt == M.WIRE_EGROUP then
-                if iid ~= field_id then
+                if iid ~= open[n] then
                     error(("EGROUP id %d does not match SGROUP id %d"):
-                        format(iid, field_id), 0)
+                        format(iid, open[n]), 0)
                 end
-                return pos
+                n = n - 1
+                if n == 0 then return pos end
+            elseif iwt == M.WIRE_SGROUP then
+                n = n + 1
+                if n > M.RECURSION_LIMIT then M.recursion_limit_error() end
+                open[n] = iid
+            else
+                pos = skip_field(buf, pos, iwt, iid)
             end
-            pos = skip_field(buf, pos, iwt, iid)
         end
     elseif wire_type == M.WIRE_EGROUP then
         error("unexpected EGROUP for field " .. tostring(field_id), 0)
