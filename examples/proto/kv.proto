@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package kv;
+
+import "google/protobuf/timestamp.proto";
+
+// Messages for the tuple bridge (`pb.tuple`): converting box.tuples to
+// protobuf wire bytes and back without a Lua table per row.
+//
+//   local kv = require('kv.kv_pb')
+//   local conv = pb.tuple.bind(kv.KeyValue_descriptor, box.space.kv,
+//                              {columns = {lease = 'lease_id'}})
+
+// The key/value record of an etcd-compatible store — field for field the
+// shape of etcd's mvccpb.KeyValue.
+message KeyValue {
+  bytes key = 1;
+  int64 create_revision = 2;
+  int64 mod_revision = 3;
+  int64 version = 4;
+  bytes value = 5;
+  int64 lease = 6;
+}
+
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_PERSON = 1;
+  KIND_COMPANY = 2;
+}
+
+// Dense enough for the array representation; field 3 is a hole.
+message Address {
+  string street = 1;
+  string city = 2;
+  uint32 zip = 4;
+}
+
+message Phone {
+  string number = 1;
+  Kind kind = 2;
+}
+
+// Too sparse for the array representation: field number 9 over two
+// fields would leave the array mostly holes.
+message Label {
+  string text = 1;
+  int32 weight = 9;
+}
+
+// One field per tuple representation: nested message (map, array or raw
+// bytes, per the column type), repeated message, map, explicit-optional
+// scalar, enum, Timestamp, uuid carried as string and as bytes, and
+// sparse field numbers.
+message Record {
+  uint64 id = 1;
+  string name = 2;
+  Address address = 3;
+  repeated Phone phones = 4;
+  map<string, int32> scores = 5;
+  optional string nickname = 6;
+  Kind kind = 7;
+  google.protobuf.Timestamp created_at = 8;
+  string owner = 9;
+  bytes token = 10;
+  bytes payload = 11;
+  double weight = 12;
+  bool active = 13;
+  Label label = 20;
+  sint64 balance = 100;
+}
