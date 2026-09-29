@@ -145,15 +145,16 @@ local DTS = {
 
 local MAP_MT = {__serialize = 'map'}
 
--- Values of every msgpack class and of the extensions Tarantool's Lua
--- msgpack decoder knows, for the wrong-type checks. (The Lua path skips
--- values with msgpack.decode, which raises on an extension type it does
--- not know; see test_unknown_extension_type.)
+-- Values of every msgpack class and extension, including extension types
+-- Tarantool's Lua msgpack decoder does not know, for the wrong-type
+-- checks.
 local ANY = {NULL, true, false, 0, 1, -1, 4294967296, 18446744073709551615ULL,
              I64_MIN, 1.5, raw('\xca\x3f\xc0\x00\x00'), '', 'x',
              varbinary.new('y'), U, DTS[1], decimal.new('1.5'),
              datetime.interval.new({day = 1}), {}, {1, 2},
-             setmetatable({a = 1}, MAP_MT)}
+             setmetatable({a = 1}, MAP_MT),
+             raw('\xd4\x2a\x00'), raw('\xd4\xff\x00'),
+             raw('\xc7\x03\x2a\x01\x02\x03')}
 
 local function pick(list) return list[math.random(#list)] end
 
@@ -785,31 +786,33 @@ for _, mode in ipairs({'full', 'runtime'}) do
         check_parity(conv, row)
     end
 
-    -- The Lua path skips a value with msgpack.decode, which raises on an
-    -- extension type Tarantool's Lua decoder does not know, even in a
-    -- column no field binds to. The C encoder skips by the msgpack
-    -- structure alone and checks only the values it converts.
+    -- An extension type Tarantool's Lua msgpack decoder does not know is
+    -- skipped where no field reads it (an unbound column, the value of a
+    -- key that is about to be refused) and named where one does.
     g.test_unknown_extension_type = function()
         local desc = all_desc()
         local format = any_format(desc)
         local conv = bind(desc, 'ctup_all', format)
-        for _, ext in ipairs({raw('\xd4\x2a\x00'), raw('\xd4\xff\x00')}) do
-            local want = lua.encode(conv, row_of(format, {i32 = 5,
-                                                          leaf = {s = 'x'}}))
-            local got = c.tuple_encode(conv._tplan, row_of(format, {
-                i32 = 5, leaf = {s = 'x'}, unbound = ext}))
-            t.assert_equals(hex(got), hex(want))
+        local base = row_of(format, {i32 = 5, leaf = {s = 'x'}})
+        for _, ext in ipairs({raw('\xd4\x2a\x00'), raw('\xd4\xff\x00'),
+                              raw('\xc7\x03\x2a\x01\x02\x03')}) do
+            local res = check_parity(conv, row_of(format, {
+                i32 = 5, leaf = {s = 'x'}, unbound = ext}), 'unbound')
+            t.assert_equals(res.bytes, hex(lua.encode(conv, base)))
+            check_parity(conv, row_of(format, {
+                r_leaf = {{s = 'x'}, {i = 1}},
+                self = omap({{'i32', 1}, {'unbound_key', {ext}}})}),
+                'skipped under a refused key')
+            check_parity(conv, row_of(format, {i32 = ext}), 'bound')
+            check_parity(conv, row_of(format, {leaf = {s = ext}}), 'nested')
+            check_parity(conv, row_of(format, {r_str = {'a', ext}}),
+                         'element')
         end
         t.assert_error_msg_equals(
             "pb.tuple: field 'i32' of ck.All (column 'i32'): expected an "
                 .. 'integer, got extension type 42',
             c.tuple_encode, conv._tplan,
             row_of(format, {i32 = raw('\xd4\x2a\x00')}))
-        t.assert_error_msg_equals(
-            "pb.tuple: field 'leaf' of ck.All (column 'leaf'): unknown key "
-                .. "'x' in a ck.Leaf map",
-            c.tuple_encode, conv._tplan,
-            row_of(format, {leaf = omap({{'x', raw('\xd4\xff\x00')}})}))
     end
 end
 

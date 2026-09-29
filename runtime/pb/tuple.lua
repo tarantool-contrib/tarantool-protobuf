@@ -853,10 +853,36 @@ local function mp_head(s, p)
     error(string.format('pb.tuple: invalid msgpack byte 0x%02x', c), 0)
 end
 
--- Position just past the msgpack value at s[p].
+-- Byte size of a msgpack scalar by its first byte, for the codes whose
+-- size is not in their head (fixints, nil and booleans are 1 byte).
+local MP_SCALAR_SIZE = {
+    [0xca] = 5, [0xcb] = 9,
+    [0xcc] = 2, [0xcd] = 3, [0xce] = 5, [0xcf] = 9,
+    [0xd0] = 2, [0xd1] = 3, [0xd2] = 5, [0xd3] = 9,
+}
+
+-- Position just past the msgpack value at s[p]. Walks the structure
+-- without decoding anything: a value no field reads is never
+-- materialized, and an extension type Tarantool's Lua decoder does not
+-- know is as skippable as any other.
 local function mp_next(s, p)
-    local _, np = msgpack.decode(s, p)
-    return np
+    local pending = 1
+    while pending > 0 do
+        pending = pending - 1
+        local cls, n, body = mp_head(s, p)
+        if cls == MP_ARRAY then
+            pending = pending + n
+            p = body
+        elseif cls == MP_MAP then
+            pending = pending + 2 * n
+            p = body
+        elseif cls == MP_STR or cls == MP_BIN or cls == MP_EXT then
+            p = body + n
+        else
+            p = p + (MP_SCALAR_SIZE[byte(s, p)] or 1)
+        end
+    end
+    return p
 end
 
 local function class_name(cls, ext)

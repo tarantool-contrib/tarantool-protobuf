@@ -722,6 +722,35 @@ for _, mode in ipairs({'full', 'runtime'}) do
                                               {lease = 5}))[7], 5)
     end
 
+    -- A msgpack extension type Tarantool's Lua decoder does not know is
+    -- still valid in a tuple: encode skips it where no field reads it and
+    -- names it where one does.
+    g.test_unknown_extension_type = function()
+        local ext = msgpack.object_from_raw('\xd4\x2a\x00')
+        local format = table.deepcopy(KV_FORMAT)
+        format[2].type = 'any'
+        table.insert(format, {name = 'extra', type = 'any',
+                              is_nullable = true})
+        local conv = kv_conv(format)
+        t.assert_equals(
+            hex(conv:encode(box.tuple.new({'k', 1, 2, 3, 'v', 7, ext}))),
+            hex(pb.encode(kv.KeyValue_descriptor, {
+                key = 'k', create_revision = 1, mod_revision = 2,
+                version = 3, value = 'v', lease = 7})))
+        t.assert_error_msg_equals(
+            "pb.tuple: field 'create_revision' of kv.KeyValue (column "
+                .. "'create_revision'): expected an integer, got extension "
+                .. 'type 42',
+            conv.encode, conv, box.tuple.new({'k', ext, 2, 3, 'v', 7}))
+        local rconv = record_conv()
+        local row = record_row()
+        row[3] = {street = ext, city = 'Town'}
+        t.assert_error_msg_equals(
+            "pb.tuple: field 'street' of kv.Address: expected a string, "
+                .. 'got extension type 42',
+            rconv.encode, rconv, box.tuple.new(row))
+    end
+
     g.test_encode_needs_a_tuple = function()
         local conv = kv_conv()
         t.assert_error_msg_contains('expected a box.tuple, got table',
