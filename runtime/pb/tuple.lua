@@ -37,8 +37,8 @@
 --   A `number` column is checked per value too: besides integers and
 --   floats it holds decimals, which a double/float field refuses.
 --
--- The plan (IF2)
--- --------------
+-- The plan
+-- --------
 -- One node per message level. Per-field data is held in parallel arrays,
 -- 1-based, in ascending field-number order, dense (no nil holes: an
 -- absent value is `false`, `''` or 0 as noted):

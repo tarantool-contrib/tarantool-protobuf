@@ -2,8 +2,8 @@
  * tuple.c -- box.tuple -> protobuf wire encoder for pb.tuple.
  *
  * pb.tuple.bind (runtime/pb/tuple.lua) compiles a descriptor and a space
- * format into a plan: a graph of Lua nodes, one per message level (IF2,
- * documented in the header of tuple.lua). This unit compiles that graph
+ * format into a plan: a graph of Lua nodes, one per message level (its
+ * shape is documented in the header of tuple.lua, "The plan"). This unit compiles that graph
  * into a flat array of C nodes and encodes tuples against it, reading the
  * tuple's msgpack in place:
  *

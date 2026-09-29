@@ -974,7 +974,7 @@ gre.test_finalizer_encoding_with_the_same_plan = function()
 end
 
 -- ---------------------------------------------------------------------
--- IV3: the C path allocates the result string and nothing per row
+-- The C encode path allocates the result string and nothing per row
 -- ---------------------------------------------------------------------
 
 local ga = t.group('c_runtime_tuple.alloc')
@@ -1892,7 +1892,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
     end
 end
 
--- IV3 for decode: no Lua value per field or per row, only the tuple.
+-- The C decode path allocates no Lua value per field or per row, only
+-- the tuple.
 ga.test_decode_allocates_the_tuple = function()
     local kv = require('full.kv.kv_pb')
     local s = format_space('ctd_alloc', KV_DECODE_FORMAT)
