@@ -470,6 +470,138 @@ for _, mode in ipairs({'full', 'runtime'}) do
 end
 
 -- ---------------------------------------------------------------------
+-- The compatibility table, cell by cell
+--
+-- Every proto kind against every column type Tarantool accepts in a
+-- space format. The expectation is written out here rather than derived
+-- from the table under test: a cell missing below must be refused.
+-- ---------------------------------------------------------------------
+
+local gc = t.group('tuple_bind.compat')
+
+local COLUMN_TYPES = {
+    'any', 'unsigned', 'string', 'number', 'double', 'integer', 'boolean',
+    'varbinary', 'scalar', 'decimal', 'uuid', 'datetime', 'interval',
+    'array', 'map',
+    'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64',
+    'uint64', 'float32', 'float64',
+}
+
+-- [kind] = {[column type] = {repr, conv}}
+local S = 'scalar'
+local EXPECTED = {
+    int32    = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    int64    = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    uint32   = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    uint64   = {unsigned = {S, 'direct'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    sint32   = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    sint64   = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    fixed32  = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    fixed64  = {unsigned = {S, 'direct'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    sfixed32 = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    sfixed64 = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    enum     = {unsigned = {S, 'range'}, integer = {S, 'range'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    double   = {double = {S, 'direct'}, number = {S, 'number'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    float    = {double = {S, 'direct'}, number = {S, 'number'},
+                any = {S, 'any'}, scalar = {S, 'any'}},
+    bool     = {boolean = {S, 'direct'}, any = {S, 'any'},
+                scalar = {S, 'any'}},
+    string   = {string = {S, 'direct'}, varbinary = {S, 'str_bin'},
+                uuid = {S, 'uuid_text'}, any = {S, 'any'},
+                scalar = {S, 'any'}},
+    bytes    = {varbinary = {S, 'direct'}, string = {S, 'str_bin'},
+                uuid = {S, 'uuid_bin'}, any = {S, 'any'},
+                scalar = {S, 'any'}},
+    timestamp = {datetime = {S, 'direct'}, any = {S, 'any'},
+                 varbinary = {'raw', 'direct'}},
+    message  = {map = {'msg_map', 'direct'}, any = {'msg_map', 'any'},
+                array = {'msg_array', 'direct'},
+                varbinary = {'raw', 'direct'}},
+    opaque   = {varbinary = {'raw', 'direct'}},
+    ['repeated'] = {array = {'list', 'direct'}, any = {'list', 'any'}},
+    map      = {map = {'dict', 'direct'}, any = {'dict', 'any'}},
+}
+
+local function kind_field(kind)
+    local kv = require('runtime.kv.kv_pb')
+    if kind == 'enum' then
+        return {name = 'f', id = 1, kind = 'enum', enum = kv.Kind_descriptor}
+    elseif kind == 'timestamp' then
+        return {name = 'f', id = 1, kind = 'message',
+                message = pb.wkt.Timestamp_descriptor}
+    elseif kind == 'message' then
+        return {name = 'f', id = 1, kind = 'message',
+                message = kv.Address_descriptor}
+    elseif kind == 'opaque' then
+        return {name = 'f', id = 1, kind = 'message',
+                message = pb.wkt.Duration_descriptor}
+    elseif kind == 'repeated' then
+        return {name = 'f', id = 1, kind = 'scalar', proto_type = 'int32',
+                ['repeated'] = true}
+    elseif kind == 'map' then
+        return {name = 'f', id = 1, kind = 'map',
+                key = {kind = 'scalar', proto_type = 'string'},
+                value = {kind = 'scalar', proto_type = 'int32'}}
+    end
+    return {name = 'f', id = 1, kind = 'scalar', proto_type = kind}
+end
+
+gc.test_every_kind_against_every_column_type = function()
+    local kinds = {}
+    for kind in pairs(EXPECTED) do kinds[#kinds + 1] = kind end
+    table.sort(kinds)
+    t.assert_equals(#kinds, 21)
+    local mismatches = {}
+    for _, kind in ipairs(kinds) do
+        local f = kind_field(kind)
+        for _, ctype in ipairs(COLUMN_TYPES) do
+            local want = EXPECTED[kind][ctype]
+            local repr, conv = pb.tuple.check_compat(f, ctype)
+            local got = repr ~= nil and {repr, conv} or nil
+            if want == nil and got ~= nil then
+                mismatches[#mismatches + 1] = string.format(
+                    '%s x %s: accepted as %s/%s, expected refusal',
+                    kind, ctype, repr, conv)
+            elseif want ~= nil and got == nil then
+                mismatches[#mismatches + 1] = string.format(
+                    '%s x %s: refused, expected %s/%s',
+                    kind, ctype, want[1], want[2])
+            elseif want ~= nil and (want[1] ~= got[1] or want[2] ~= got[2]) then
+                mismatches[#mismatches + 1] = string.format(
+                    '%s x %s: %s/%s, expected %s/%s',
+                    kind, ctype, got[1], got[2], want[1], want[2])
+            end
+        end
+    end
+    t.assert_equals(mismatches, {})
+end
+
+-- Every column type in the matrix is one Tarantool accepts in a format,
+-- so the matrix is not testing names no space can have.
+gc.test_column_types_are_real = function()
+    helper.ensure_box()
+    for _, ctype in ipairs(COLUMN_TYPES) do
+        local s = helper.make_space('tuple_types', {
+            {name = 'id', type = 'unsigned'},
+            {name = 'c',  type = ctype, is_nullable = true},
+        })
+        t.assert_equals(s:format()[2].type, ctype)
+    end
+end
+
+-- ---------------------------------------------------------------------
 -- Descriptors built at run time
 -- ---------------------------------------------------------------------
 
