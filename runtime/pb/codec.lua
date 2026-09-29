@@ -94,31 +94,68 @@ local decode_group_unsafe
 --   - repeated fields: concatenate (append decoded elements)
 --   - map fields: last-wins per key
 --   - sub-message fields: recursive merge
+--   - oneof members: setting one clears the siblings already in `prev`
+--   - proto2 extensions (`_extensions`): the same rules, per extension
+--   - unknown fields (`_unknown_fields`): appended after `prev`'s, so a
+--     re-encode emits both occurrences' unknown bytes in wire order
 -- Sub-messages whose descriptor carries a custom decode (WKT) are replaced
 -- wholesale because their decoded value is not a generic Lua table.
+local merge_message
+
+-- merge_value merges one decoded value `v` of field shape `f` into
+-- `tbl[key]`. Shared by regular fields (tbl = prev, key = f.name) and
+-- extensions (tbl = prev._extensions, key = f.full_name).
+local function merge_value(f, tbl, key, v)
+    local pv = tbl[key]
+    if pv == nil then
+        tbl[key] = v
+    elseif f.kind == 'map' then
+        for mk, mv in pairs(v) do pv[mk] = mv end
+    elseif f.repeated then
+        local n = #pv
+        for j = 1, #v do pv[n + j] = v[j] end
+    elseif f.kind == 'message' and not f.message.decode then
+        merge_message(f.message, pv, v)
+    else
+        tbl[key] = v
+    end
+end
+
 ---@param desc    pb.Descriptor
 ---@param prev    table  decoded message being accumulated
 ---@param decoded table  newly-decoded copy to merge into `prev` in place
-local function merge_message(desc, prev, decoded)
-    for i = 1, #desc.fields do
-        local f = desc.fields[i]
+merge_message = function(desc, prev, decoded)
+    local fields = desc.fields
+    for i = 1, #fields do
+        local f = fields[i]
         local fname = f.name
         local v = decoded[fname]
         if v ~= nil then
-            local pv = prev[fname]
-            if pv == nil then
-                prev[fname] = v
-            elseif f.kind == 'map' then
-                for mk, mv in pairs(v) do pv[mk] = mv end
-            elseif f.repeated then
-                local n = #pv
-                for j = 1, #v do pv[n + j] = v[j] end
-            elseif f.kind == 'message' and not f.message.decode then
-                merge_message(f.message, pv, v)
-            else
-                prev[fname] = v
+            merge_value(f, prev, fname, v)
+            local sibs = f.oneof_siblings
+            if sibs ~= nil then
+                for j = 1, #sibs do prev[sibs[j]] = nil end
             end
         end
+    end
+    local exts = decoded._extensions
+    if exts ~= nil then
+        local pexts = prev._extensions
+        if pexts == nil then
+            prev._extensions = exts
+        else
+            local elist = desc.extensions_list or {}
+            for i = 1, #elist do
+                local ext = elist[i]
+                local v = exts[ext.full_name]
+                if v ~= nil then merge_value(ext, pexts, ext.full_name, v) end
+            end
+        end
+    end
+    local uf = decoded._unknown_fields
+    if uf ~= nil then
+        local puf = prev._unknown_fields
+        prev._unknown_fields = puf == nil and uf or puf .. uf
     end
 end
 M.merge_message = merge_message

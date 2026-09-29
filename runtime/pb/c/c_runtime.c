@@ -2622,6 +2622,77 @@ field_is_packable(const pb_plan_field *f)
 	}
 }
 
+/* Merge one decoded value into tbl[key] (see merge_subresult_into for
+ * the rules). Expects the stack to end with `key, v, pv`, where pv is
+ * tbl[key] or nil; pops all three. `sub_plans_idx` is the sub_plans
+ * table of the plan that owns `f`. Shared by regular fields (tbl is the
+ * message, key the field name) and proto2 extensions (tbl is
+ * `_extensions`, key the extension's full name). */
+static void
+merge_value_into(lua_State *L, pb_plan_field *f, int sub_plans_idx,
+                 int tbl_idx)
+{
+	if (lua_isnil(L, -1)) {
+		/* tbl[key] absent — assign. */
+		lua_pop(L, 1);                             /* pop nil */
+		lua_rawset(L, tbl_idx);                    /* tbl[key] = v */
+		return;
+	}
+
+	if (f->kind == PB_KIND_MAP && lua_istable(L, -1) &&
+	    lua_istable(L, -2)) {
+		/* Map: copy v's pairs into pv, last-wins per key. */
+		int v_idx = lua_gettop(L) - 1;
+		int pv_idx = lua_gettop(L);
+		lua_pushnil(L);
+		while (lua_next(L, v_idx) != 0) {
+			/* stack: ..., key, val */
+			lua_pushvalue(L, -2);              /* key */
+			lua_pushvalue(L, -2);              /* val */
+			lua_rawset(L, pv_idx);
+			lua_pop(L, 1);                     /* pop val */
+		}
+		lua_pop(L, 3);                             /* pv, v, key */
+	} else if (f->repeated && lua_istable(L, -1) &&
+	           lua_istable(L, -2)) {
+		/* Repeated: concat v[1..#v] onto pv. */
+		int v_idx = lua_gettop(L) - 1;
+		int pv_idx = lua_gettop(L);
+		int pv_len = (int)lua_objlen(L, pv_idx);
+		int v_len = (int)lua_objlen(L, v_idx);
+		for (int j = 1; j <= v_len; j++) {
+			lua_rawgeti(L, v_idx, j);
+			lua_rawseti(L, pv_idx, pv_len + j);
+		}
+		lua_pop(L, 3);                             /* pv, v, key */
+	} else if (f->kind == PB_KIND_MESSAGE &&
+	           lua_istable(L, -1) && lua_istable(L, -2)) {
+		/* Singular message: recurse, unless WKT (custom
+		 * decode value is opaque — fall through to replace). */
+		pb_plan *sub_desc = NULL;
+		if (f->sub_plan_idx > 0) {
+			lua_rawgeti(L, sub_plans_idx, f->sub_plan_idx);
+			sub_desc = (pb_plan *)lua_touserdata(L, -1);
+			lua_pop(L, 1);
+		}
+		if (sub_desc != NULL &&
+		    sub_desc->override_decode_ref == LUA_NOREF) {
+			int v_idx = lua_gettop(L) - 1;
+			int pv_idx = lua_gettop(L);
+			merge_subresult_into(L, sub_desc, pv_idx, v_idx);
+			lua_pop(L, 3);                     /* pv, v, key */
+		} else {
+			/* WKT — last-wins; replace tbl[key] with v. */
+			lua_pop(L, 1);                     /* pop pv */
+			lua_rawset(L, tbl_idx);            /* key, v */
+		}
+	} else {
+		/* Scalar / enum / type mismatch: last-wins. */
+		lua_pop(L, 1);                             /* pop pv */
+		lua_rawset(L, tbl_idx);                    /* key, v */
+	}
+}
+
 /* Merge `sub_idx` (a freshly-decoded sub-table) into `prev_idx` (the
  * sub-table already at result[name] from a prior wire occurrence) per
  * proto3 spec:
@@ -2629,6 +2700,9 @@ field_is_packable(const pb_plan_field *f)
  *   - repeated fields: concatenate (append decoded elements)
  *   - map fields: last-wins per key
  *   - sub-message fields: recursive merge (unless WKT override)
+ *   - oneof members: setting one clears the siblings already in prev
+ *   - proto2 extensions (`_extensions`): the same rules, per extension
+ *   - unknown fields (`_unknown_fields`): appended after prev's
  * Mirrors runtime/pb/codec.lua's merge_message — exercised on the wire
  * when a singular message field (including a oneof message branch)
  * appears more than once. `prev_idx` is modified in-place; `sub_idx` is
@@ -2658,69 +2732,67 @@ merge_subresult_into(lua_State *L, pb_plan *desc, int prev_idx, int sub_idx)
 		/* prev[name] */
 		lua_pushvalue(L, -2);                      /* dup name */
 		lua_rawget(L, prev_idx);                   /* name, v, pv */
+		merge_value_into(L, f, sub_plans_idx, prev_idx);
 
-		if (lua_isnil(L, -1)) {
-			/* prev[name] absent — assign. */
-			lua_pop(L, 1);                     /* pop nil */
-			lua_rawset(L, prev_idx);           /* prev[name] = v */
-			continue;
+		/* Oneof: the member just merged wins over whatever sibling
+		 * an earlier occurrence left in prev. */
+		if (f->oneof_idx >= 0) {
+			pb_plan_oneof *oo = &desc->oneofs[f->oneof_idx];
+			for (int k = 0; k < oo->n_members; k++) {
+				int m_idx = oo->member_indices[k];
+				if (m_idx == i) continue;
+				lua_rawgeti(L, names_idx, m_idx + 1);
+				lua_pushnil(L);
+				lua_rawset(L, prev_idx);
+			}
 		}
+	}
 
-		if (f->kind == PB_KIND_MAP && lua_istable(L, -1) &&
-		    lua_istable(L, -2)) {
-			/* Map: copy v's pairs into pv, last-wins per key. */
-			int v_idx = lua_gettop(L) - 1;
-			int pv_idx = lua_gettop(L);
-			lua_pushnil(L);
-			while (lua_next(L, v_idx) != 0) {
-				/* stack: ..., key, val */
-				lua_pushvalue(L, -2);      /* key */
-				lua_pushvalue(L, -2);      /* val */
-				lua_rawset(L, pv_idx);
-				lua_pop(L, 1);             /* pop val */
-			}
-			lua_pop(L, 3);                     /* pv, v, name */
-		} else if (f->repeated && lua_istable(L, -1) &&
-		           lua_istable(L, -2)) {
-			/* Repeated: concat v[1..#v] onto pv. */
-			int v_idx = lua_gettop(L) - 1;
-			int pv_idx = lua_gettop(L);
-			int pv_len = (int)lua_objlen(L, pv_idx);
-			int v_len = (int)lua_objlen(L, v_idx);
-			for (int j = 1; j <= v_len; j++) {
-				lua_rawgeti(L, v_idx, j);
-				lua_rawseti(L, pv_idx, pv_len + j);
-			}
-			lua_pop(L, 3);                     /* pv, v, name */
-		} else if (f->kind == PB_KIND_MESSAGE &&
-		           lua_istable(L, -1) && lua_istable(L, -2)) {
-			/* Singular message: recurse, unless WKT (custom
-			 * decode value is opaque — fall through to replace). */
-			pb_plan *sub_desc = NULL;
-			if (f->sub_plan_idx > 0) {
-				lua_rawgeti(L, sub_plans_idx,
-				            f->sub_plan_idx);
-				sub_desc = (pb_plan *)lua_touserdata(L, -1);
+	if (desc->n_extensions > 0) {
+		lua_getfield(L, sub_idx, "_extensions");
+		if (lua_istable(L, -1)) {
+			int sexts_idx = lua_gettop(L);
+			lua_getfield(L, prev_idx, "_extensions");
+			if (!lua_istable(L, -1)) {
 				lua_pop(L, 1);
-			}
-			if (sub_desc != NULL &&
-			    sub_desc->override_decode_ref == LUA_NOREF) {
-				int v_idx = lua_gettop(L) - 1;
-				int pv_idx = lua_gettop(L);
-				merge_subresult_into(L, sub_desc,
-				                     pv_idx, v_idx);
-				lua_pop(L, 3);             /* pv, v, name */
+				lua_pushvalue(L, sexts_idx);
+				lua_setfield(L, prev_idx, "_extensions");
 			} else {
-				/* WKT — last-wins; replace prev[name] with v. */
-				lua_pop(L, 1);             /* pop pv */
-				lua_rawset(L, prev_idx);   /* name, v */
+				int pexts_idx = lua_gettop(L);
+				for (int i = 0; i < desc->n_extensions; i++) {
+					pb_plan_field *ext = &desc->extensions[i];
+					if (ext->full_name == NULL)
+						continue;
+					lua_pushstring(L, ext->full_name);
+					lua_pushvalue(L, -1);
+					lua_rawget(L, sexts_idx);  /* key, v */
+					if (lua_isnil(L, -1)) {
+						lua_pop(L, 2);
+						continue;
+					}
+					lua_pushvalue(L, -2);
+					lua_rawget(L, pexts_idx);  /* key, v, pv */
+					merge_value_into(L, ext, sub_plans_idx,
+					                 pexts_idx);
+				}
+				lua_pop(L, 1);             /* prev._extensions */
 			}
-		} else {
-			/* Scalar / enum / oneof-cleared / type mismatch:
-			 * last-wins. Replace prev[name] with v. */
-			lua_pop(L, 1);                     /* pop pv */
-			lua_rawset(L, prev_idx);           /* name, v */
 		}
+		lua_pop(L, 1);                             /* sub._extensions */
+	}
+
+	lua_getfield(L, sub_idx, "_unknown_fields");
+	if (lua_type(L, -1) == LUA_TSTRING) {
+		lua_getfield(L, prev_idx, "_unknown_fields");
+		if (lua_type(L, -1) == LUA_TSTRING) {
+			lua_insert(L, -2);                 /* prev_uf, sub_uf */
+			lua_concat(L, 2);
+		} else {
+			lua_pop(L, 1);
+		}
+		lua_setfield(L, prev_idx, "_unknown_fields");
+	} else {
+		lua_pop(L, 1);
 	}
 
 	lua_pop(L, 2);                                     /* sub_plans, names */
