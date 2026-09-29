@@ -817,3 +817,62 @@ gr.test_encode_repeated_after_a_header = function()
     t.assert_error_msg_contains('tuples must be an array',
         conv.encode_repeated, conv, 2, nil)
 end
+
+-- ---------------------------------------------------------------------
+-- A raw (varbinary) message inside a oneof
+-- ---------------------------------------------------------------------
+
+local go = t.group('tuple_convert.oneof_raw')
+
+go.before_all(function() helper.ensure_box() end)
+
+go.test_raw_member_follows_oneof_semantics = function()
+    local m = pb.parse([[
+        syntax = "proto3";
+        package oneof_raw;
+        message C { int32 x = 1; }
+        message M { oneof pick { C a = 1; int32 b = 2; } uint64 id = 3; }
+    ]])
+    local s = helper.make_space('tuple_oneof_raw', {
+        {name = 'id', type = 'unsigned'},
+        {name = 'a',  type = 'varbinary', is_nullable = true},
+        {name = 'b',  type = 'integer',   is_nullable = true},
+    })
+    local conv = pb.tuple.bind(m.M_descriptor, s)
+    local function unhex(h)
+        return (h:gsub('%x%x', function(x)
+            return string.char(tonumber(x, 16))
+        end))
+    end
+    local function decode(h)
+        local row = pb.tuple._lua.decode(conv, unhex(h))
+        local a = row[2]
+        if a ~= NULL then a = hex(tostring(a)) end
+        return {a, row[3]}
+    end
+    local cases = {
+        -- a sibling after the raw member clears it: the last member wins
+        {'0a0208071009', {NULL, 9}, '1009'},
+        -- the raw member back after a sibling starts fresh
+        {'0a02080710090a00', {'', NULL}, '0a00'},
+        {'0a02080710090a020801', {'0801', NULL}, '0a020801'},
+        -- the raw member after the sibling wins
+        {'10090a020807', {'0807', NULL}, '0a020807'},
+        -- the same member given twice merges: the payloads join
+        {'0a0208070a020801', {'08070801', NULL}, '0a0408070801'},
+        {'0a02080710090a0208050a020806', {'08050806', NULL},
+         '0a0408050806'},
+    }
+    for _, c in ipairs(cases) do
+        t.assert_equals(decode(c[1]), c[2], c[1])
+        -- the result is a valid row that encodes back
+        local row = pb.tuple._lua.decode(conv, unhex(c[1]))
+        t.assert_equals(hex(conv:encode(box.tuple.new(row))), c[3], c[1])
+        s:replace(row)
+    end
+    -- the codec agrees on which member wins
+    t.assert_equals(pb.decode(m.M_descriptor, unhex('0a0208071009')),
+                    {b = 9})
+    t.assert_equals(pb.decode(m.M_descriptor, unhex('0a02080710090a00')),
+                    {a = {}})
+end

@@ -152,7 +152,8 @@
 --   wins and the others are NULL.
 -- * A `raw` column receives the field's payload bytes verbatim; a field
 --   given more than once receives the payloads joined, which is protobuf's
---   merge.
+--   merge. In a oneof, a later sibling on the wire unsets a raw member,
+--   and a raw member that comes back after a sibling starts over.
 -- * Values are written in the msgpack type their column needs (bin for
 --   varbinary, a double for `double`, a uuid for `uuid`); in untyped
 --   slots `bytes` becomes bin and `string` str. An integer that does not
@@ -1056,6 +1057,7 @@ local function aux_of(node)
         index = {},    -- map layout: field name -> i
         at = {},       -- array layout: array position -> i
         raw_at = {},   -- field number -> i, for `raw` fields
+        oneof_at = {}, -- field number -> i, for oneof members
         has_raw = false,
         width = 0,     -- tuple/array layout: largest column/position
     }
@@ -1080,6 +1082,7 @@ local function aux_of(node)
             a.has_raw = true
             a.raw_at[node.field_no[i]] = i
         end
+        if node.oneof[i] ~= 0 then a.oneof_at[node.field_no[i]] = i end
         if node.column[i] > a.width then a.width = node.column[i] end
     end
     AUX[node] = a
@@ -1456,11 +1459,25 @@ end
 
 -- Payload bytes of every `raw` field, verbatim: {[i] = bytes}. A field
 -- present more than once gets its payloads joined (protobuf's merge).
-local function collect_raw(a, bytes)
+--
+-- A oneof keeps the member that comes last on the wire, as the codec
+-- does: a member clears the payloads collected for the group's previous
+-- member, so a raw member followed by a sibling is unset, and a raw
+-- member that comes back after a sibling starts over.
+local function collect_raw(node, a, bytes)
     local parts = {}
+    local active  -- {[oneof group] = i of the member last seen}
     local pos, len = 1, #bytes
     while pos <= len do
         local id, wt, np = wire.decode_tag(bytes, pos)
+        local j = a.oneof_at[id]
+        if j ~= nil then
+            if active == nil then active = {} end
+            local grp = node.oneof[j]
+            local prev = active[grp]
+            if prev ~= nil and prev ~= j then parts[prev] = nil end
+            active[grp] = j
+        end
         local i = a.raw_at[id]
         if i ~= nil and wt == WIRE_LEN then
             local payload
@@ -1495,7 +1512,7 @@ local function lua_decode(conv, bytes)
     end
     local msg = codec.decode(conv.desc, bytes)
     local a = aux_of(plan)
-    local raw = a.has_raw and collect_raw(a, bytes) or nil
+    local raw = a.has_raw and collect_raw(plan, a, bytes) or nil
     local row = {}
     for c = 1, a.width do row[c] = NULL end
     for i = 1, plan.n do
