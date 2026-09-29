@@ -1,0 +1,33 @@
+syntax = "proto2";
+
+package c_grow_proto2;
+
+// Proto2 companion to c_grow.proto: groups and extensions, which the C
+// encoder builds in their own sub-buffers, around large payloads so the
+// output buffer grows while they are being encoded.
+
+message KV {
+  optional bytes key   = 1;
+  optional bytes value = 2;
+}
+
+message Holder {
+  optional KV first = 1;
+  repeated group Entry = 2 {
+    optional bytes blob = 3;
+    optional KV kv      = 4;
+  }
+  optional group Single = 5 {
+    optional KV kv      = 6;
+    repeated KV kvs     = 7;
+  }
+  optional KV last = 8;
+
+  extensions 100 to 199;
+}
+
+extend Holder {
+  optional KV    ext_kv   = 100;
+  repeated KV    ext_kvs  = 101;
+  optional bytes ext_blob = 102;
+}

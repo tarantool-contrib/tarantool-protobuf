@@ -2319,7 +2319,7 @@ pb_tuple_encode(lua_State *L)
 
 	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
-	ebuf_init(&b, storage, sizeof(storage), 0);
+	ebuf_init(L, &b, storage, sizeof(storage), 0);
 	tp_ctx ctx;
 	ctx.L = L;
 	ctx.plan = tp;
@@ -2355,7 +2355,7 @@ pb_tuple_encode_repeated(lua_State *L)
 
 	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
-	ebuf_init(&b, storage, sizeof(storage), 0);
+	ebuf_init(L, &b, storage, sizeof(storage), 0);
 	tp_ctx ctx;
 	ctx.L = L;
 	ctx.plan = tp;

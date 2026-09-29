@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package c_grow;
+
+// Fixture for C-runtime output-buffer growth.
+//
+// The C encoder writes into a stack-backed buffer that moves to a Lua
+// userdata once it overflows and doubles from there. Every message here
+// mixes singular sub-messages, large repeated fields, maps and packed
+// scalars, so the top-level buffer and the nested ones grow several times
+// while sub-message encodes run in between.
+
+message KV {
+  bytes key   = 1;
+  bytes value = 5;
+}
+
+message Header {
+  uint64 a = 1;
+}
+
+// The singular message field before, after, and between large repeated
+// fields.
+message Before {
+  Header header  = 1;
+  repeated KV kvs = 2;
+}
+
+message After {
+  repeated KV kvs = 1;
+  Header header  = 2;
+}
+
+message Between {
+  repeated KV head = 1;
+  Header header    = 2;
+  repeated KV tail = 3;
+}
+
+// A large scalar ahead of a repeated message field: the first growth
+// happens in a scalar encode rather than in a sub-message.
+message BigFirst {
+  bytes big       = 1;
+  repeated KV kvs = 2;
+  string name     = 3;
+}
+
+// Three levels, each with a singular message and a large repeated field.
+message Level3 {
+  Header header   = 1;
+  repeated KV kvs = 2;
+}
+
+message Level2 {
+  Header header         = 1;
+  repeated Level3 items = 2;
+  repeated KV kvs       = 3;
+  Header trailer        = 4;
+}
+
+message Level1 {
+  Header header         = 1;
+  repeated Level2 items = 2;
+  repeated KV kvs       = 3;
+  Header trailer        = 4;
+}
+
+// Maps with message values next to singular message fields.
+message WithMap {
+  Header header             = 1;
+  map<string, KV> by_key    = 2;
+  map<int32, Level3> nested = 3;
+  Header trailer            = 4;
+}
+
+// Packed scalars between sub-messages.
+message WithPacked {
+  Header header          = 1;
+  repeated uint64 nums   = 2;
+  repeated KV kvs        = 3;
+  repeated sint32 more   = 4;
+  Header trailer         = 5;
+}

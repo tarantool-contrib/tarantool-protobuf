@@ -162,6 +162,17 @@ encode_tag(uint32_t field_number, uint8_t wire_type,
  *  doesn't leak — the userdata is still on the stack at the unwind  *
  *  point and gets collected normally.                               *
  *                                                                  *
+ *  Anchoring: ebuf_init pushes one Lua stack slot (nil) that the    *
+ *  buffer owns for its whole life. Every growth stores the new      *
+ *  userdata into that slot with lua_replace, so growing never       *
+ *  changes the stack height: callers' relative lua_pop calls and    *
+ *  lua_settop cleanups can neither drop the userdata (leaving the   *
+ *  buffer to the GC while it is still written) nor hand its slot to *
+ *  some other value that the next growth would overwrite. The slot  *
+ *  is released with the rest of the owner's frame by lua_settop.    *
+ *  Pushing nil allocates nothing, so an encode that fits the stack  *
+ *  buffers still allocates only its result string.                 *
+ *                                                                  *
  *  Callers reserve before they write: ebuf_reserve() guarantees     *
  *  room, the ebuf_put_* writers do no bounds checking of their own. *
  * ---------------------------------------------------------------- */
@@ -177,7 +188,7 @@ encode_tag(uint32_t field_number, uint8_t wire_type,
 typedef struct enc_buf {
 	uint8_t *stack;      /* caller-provided initial storage (C stack) */
 	uint8_t *heap;       /* pointer into Lua userdata when grown; NULL while on stack */
-	int      heap_idx;   /* stack slot of the userdata; 0 if not yet on heap */
+	int      anchor_idx; /* stack slot owned by the buffer; holds the userdata once grown */
 	size_t   cap;
 	size_t   used;
 	int      depth;      /* message nesting level, checked by encode_body */
@@ -189,17 +200,24 @@ ebuf_base(enc_buf *b)
 	return b->heap != NULL ? b->heap : b->stack;
 }
 
+/* Pushes the buffer's anchor slot (see the section comment). The caller
+ * owns that slot like any other value it pushed: it must not pop past it
+ * while the buffer is in use, and releases it with its own lua_settop. */
 static inline void
-ebuf_init(enc_buf *b, uint8_t *storage, size_t size, int depth)
+ebuf_init(lua_State *L, enc_buf *b, uint8_t *storage, size_t size, int depth)
 {
+	lua_pushnil(L);
+	b->anchor_idx = lua_gettop(L);
 	b->stack = storage;
 	b->heap = NULL;
-	b->heap_idx = 0;
 	b->cap = size;
 	b->used = 0;
 	b->depth = depth;
 }
 
+/* Net stack effect is zero: the new userdata replaces the old one (or
+ * the initial nil) in the anchor slot, which also leaves the old
+ * userdata to the GC once its contents have been copied. */
 static inline void
 ebuf_grow(lua_State *L, enc_buf *b, size_t needed)
 {
@@ -209,11 +227,7 @@ ebuf_grow(lua_State *L, enc_buf *b, size_t needed)
 
 	uint8_t *new_buf = (uint8_t *)lua_newuserdata(L, new_cap);
 	memcpy(new_buf, ebuf_base(b), b->used);
-	if (b->heap_idx == 0) {
-		b->heap_idx = lua_gettop(L);
-	} else {
-		lua_replace(L, b->heap_idx);
-	}
+	lua_replace(L, b->anchor_idx);
 	b->heap = new_buf;
 	b->cap = new_cap;
 }

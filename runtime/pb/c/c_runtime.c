@@ -751,14 +751,16 @@ plan_sub_plan(lua_State *L)
  *  fields, and maps (see encode_repeated_field / encode_map_field   *
  *  below).                                                          *
  *                                                                  *
- *  Buffer strategy: enc_buf and its ebuf_* writers (c_plan.h).      *
+ *  Buffer strategy: enc_buf and its ebuf_* writers (c_plan.h),      *
+ *  including how a buffer anchors its growth userdata to a stack    *
+ *  slot of its own.                                                 *
  *                                                                  *
  *  Recursion shape: encode_body is called once per message; sub-    *
  *  message fields recurse by allocating a fresh enc_buf on the C    *
- *  stack and re-entering encode_body with the sub-plan. The parent's *
- *  heap_idx is force-established before recursing so it survives    *
- *  the lua_settop cleanup at sub-encode exit (see                   *
- *  encode_submessage_field for the contract).                       *
+ *  stack and re-entering encode_body with the sub-plan. The sub-    *
+ *  buffer's anchor sits above the parent's, and the sub-encode's    *
+ *  lua_settop cleanup drops it only after its bytes have been       *
+ *  copied into the parent.                                          *
  * ---------------------------------------------------------------- */
 
 /* Read a Lua value as uint64. Mirrors wire.lua's to_uint64: negative
@@ -1222,10 +1224,8 @@ static void encode_extension(lua_State *L, enc_buf *b, pb_plan *plan,
  * Empty arrays produce nothing — proto3 wire spec treats an absent
  * repeated field and an empty one identically.
  *
- * Sub-buffer cleanup follows encode_submessage_field's contract: the
- * parent's heap is force-established before allocating the sub-buffer
- * so the parent's heap_idx sits below saved_top and survives the final
- * lua_settop. */
+ * The packed sub-buffer's anchor is pushed above saved_top and released
+ * by the final lua_settop, after its bytes are in the parent. */
 static void
 encode_repeated_field(lua_State *L, enc_buf *b, pb_plan *plan,
                       pb_plan_field *f, int val_idx)
@@ -1255,13 +1255,11 @@ encode_repeated_field(lua_State *L, enc_buf *b, pb_plan *plan,
 	}
 
 	if (f->packed) {
-		if (b->heap_idx == 0)
-			ebuf_grow(L, b, 1);
 		int saved_top = lua_gettop(L);
 
 		uint8_t sub_storage[ENC_NESTED_BUF];
 		enc_buf sub;
-		ebuf_init(&sub, sub_storage, sizeof(sub_storage), b->depth);
+		ebuf_init(L, &sub, sub_storage, sizeof(sub_storage), b->depth);
 		for (int i = 1; i <= n; i++) {
 			lua_rawgeti(L, val_idx, i);
 			encode_packed_element_at(L, &sub, f, lua_gettop(L));
@@ -1291,15 +1289,12 @@ encode_repeated_field(lua_State *L, enc_buf *b, pb_plan *plan,
 
 /* Encode one singular sub-message field into the parent buffer `b`.
  * Lifecycle / stack-management contract:
- *   - Parent's heap is force-established (one 8KB grow) BEFORE recursing
- *     so b->heap_idx is below the saved_top. This way the final
- *     ebuf_reserve on the parent can only either re-use b->heap_idx via
- *     lua_replace (no new stack slot) or — if no further grow is
- *     needed — leave the stack alone. Either way, lua_settop(L,
- *     saved_top) at the end is safe.
- *   - sub-buf is a fresh stack-backed enc_buf; its potential heap
- *     userdata is on the Lua stack above saved_top and is dropped by
- *     the lua_settop. */
+ *   - The parent's anchor slot is below saved_top, so growing the parent
+ *     here only replaces that slot and lua_settop(L, saved_top) at the
+ *     end cannot touch it.
+ *   - sub-buf is a fresh stack-backed enc_buf; its anchor (and any heap
+ *     userdata in it) is on the Lua stack above saved_top and is dropped
+ *     by the lua_settop once its bytes are in the parent. */
 static void
 encode_submessage_field(lua_State *L, enc_buf *b, pb_plan *plan,
                         pb_plan_field *f, int val_idx)
@@ -1307,10 +1302,6 @@ encode_submessage_field(lua_State *L, enc_buf *b, pb_plan *plan,
 	if (plan->sub_plans_ref == LUA_NOREF)
 		luaL_error(L, "plan '%s' has no sub-plans table",
 		           plan->name != NULL ? plan->name : "?");
-
-	/* Force parent's heap to exist before the sub-encode allocates. */
-	if (b->heap_idx == 0)
-		ebuf_grow(L, b, 1);
 
 	val_idx = abs_idx(L, val_idx);
 	int saved_top = lua_gettop(L);
@@ -1350,12 +1341,12 @@ encode_submessage_field(lua_State *L, enc_buf *b, pb_plan *plan,
 
 	uint8_t sub_storage[ENC_NESTED_BUF];
 	enc_buf sub;
-	ebuf_init(&sub, sub_storage, sizeof(sub_storage), b->depth + 1);
+	ebuf_init(L, &sub, sub_storage, sizeof(sub_storage), b->depth + 1);
 	encode_body(L, &sub, subplan, val_idx);
 
 	/* Write tag + length-varint + body into parent. Parent regrowth
-	 * here goes through lua_replace at b->heap_idx (safely below
-	 * saved_top) — no stack-frame disruption. */
+	 * here goes through lua_replace at b->anchor_idx (below saved_top)
+	 * — no stack-frame disruption. */
 	ebuf_reserve(L, b, f->tag_len + 10 + sub.used);
 	ebuf_put_tag(b, f);
 	ebuf_put_varint(b, (uint64_t)sub.used);
@@ -1377,9 +1368,6 @@ encode_group_field(lua_State *L, enc_buf *b, pb_plan *plan,
 		luaL_error(L, "plan '%s' has no sub-plans table",
 		           plan->name != NULL ? plan->name : "?");
 
-	if (b->heap_idx == 0)
-		ebuf_grow(L, b, 1);
-
 	val_idx = abs_idx(L, val_idx);
 	int saved_top = lua_gettop(L);
 
@@ -1395,7 +1383,7 @@ encode_group_field(lua_State *L, enc_buf *b, pb_plan *plan,
 
 	uint8_t sub_storage[ENC_NESTED_BUF];
 	enc_buf sub;
-	ebuf_init(&sub, sub_storage, sizeof(sub_storage), b->depth + 1);
+	ebuf_init(L, &sub, sub_storage, sizeof(sub_storage), b->depth + 1);
 	encode_body(L, &sub, subplan, val_idx);
 
 	/* SGROUP tag + body + EGROUP tag (no length prefix). */
@@ -1468,8 +1456,9 @@ encode_extension(lua_State *L, enc_buf *b, pb_plan *plan,
  * walk user-provided table keys.
  *
  * Stack/buffer lifecycle mirrors encode_submessage_field: the parent's
- * heap is force-established before any per-entry sub-buffer can allocate,
- * so the parent's heap_idx survives the per-iter `lua_settop` cleanup. */
+ * anchor slot is below saved_top, and each entry's sub-buffer anchors
+ * sit above the lua_next key/value pair, so the per-iter `lua_settop`
+ * cleanup drops exactly the entry's slots. */
 static void
 encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
                   pb_plan_field *f, int val_idx)
@@ -1483,10 +1472,6 @@ encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
 	if (lua_next(L, val_idx) == 0)
 		return;
 	lua_pop(L, 2);  /* drop probe k+v */
-
-	/* Force parent's heap to exist before per-entry sub-bufs allocate. */
-	if (b->heap_idx == 0)
-		ebuf_grow(L, b, 1);
 
 	/* Pre-compute entry-internal tags. Both ids are < 16 so they fit
 	 * in a single varint byte. */
@@ -1519,7 +1504,7 @@ encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
 		/* Build the entry payload in a stack-backed sub-buffer. */
 		uint8_t entry_storage[ENC_NESTED_BUF];
 		enc_buf entry;
-		ebuf_init(&entry, entry_storage, sizeof(entry_storage),
+		ebuf_init(L, &entry, entry_storage, sizeof(entry_storage),
 		          b->depth);
 
 		/* Key (proto3-elide on default). */
@@ -1558,7 +1543,7 @@ encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
 						"map<,message> value must be a table");
 				uint8_t vbody_storage[ENC_NESTED_BUF];
 				enc_buf vbody;
-				ebuf_init(&vbody, vbody_storage,
+				ebuf_init(L, &vbody, vbody_storage,
 				          sizeof(vbody_storage), b->depth + 1);
 				encode_body(L, &vbody, value_subplan, v_idx);
 				ebuf_reserve(L, &entry,
@@ -1584,7 +1569,8 @@ encode_map_field(lua_State *L, enc_buf *b, pb_plan *plan,
 		if (entry.used > 0)
 			ebuf_put_bytes(b, ebuf_base(&entry), entry.used);
 
-		/* Drop per-entry userdata frames, leave key for lua_next. */
+		/* Drop the entry's buffer anchors and value, leave the key for
+		 * lua_next. */
 		lua_settop(L, saved_top + 1);
 	}
 	/* lua_next returned 0 — it has already popped the final key. */
@@ -1749,7 +1735,7 @@ encode_lua(lua_State *L)
 
 	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
-	ebuf_init(&b, storage, sizeof(storage), 0);
+	ebuf_init(L, &b, storage, sizeof(storage), 0);
 	encode_body(L, &b, plan, 2);
 
 	lua_pushlstring(L, (const char *)ebuf_base(&b), b.used);
@@ -2729,7 +2715,7 @@ decode_body(dec_ctx *c, pb_plan *plan, int result_idx,
 	 * carry their own _unknown_fields, isolated from the parent. */
 	uint8_t unknown_storage[256];
 	enc_buf unknown;
-	ebuf_init(&unknown, unknown_storage, sizeof(unknown_storage), 0);
+	ebuf_init(L, &unknown, unknown_storage, sizeof(unknown_storage), 0);
 
 	/* Track whether the EGROUP was actually observed when decoding a
 	 * group body, so an unterminated SGROUP fails loudly instead of
@@ -3022,10 +3008,9 @@ decode_body(dec_ctx *c, pb_plan *plan, int result_idx,
 	}
 
 	/* Pop everything we pushed: per-field list tables (one per repeated
-	 * field that appeared), then sub_plans and names. Walk list_stack_idx
-	 * to count list-table pushes — equals lua_gettop(L) - sub_plans_idx.
-	 * Also pops any userdata `unknown` allocated when it outgrew its
-	 * stack[] buffer (heap_idx > 0). */
+	 * field that appeared), the `unknown` buffer's anchor slot (holding
+	 * its userdata if it outgrew its stack[] storage), then sub_plans
+	 * and names. */
 	int top = lua_gettop(L);
 	int to_pop = top - names_idx + 1;
 	lua_pop(L, to_pop);
