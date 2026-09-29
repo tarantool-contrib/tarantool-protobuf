@@ -540,13 +540,32 @@ local function normalize_opts(desc, opts)
         end
     end
     if opts.omit ~= nil then
-        if type(opts.omit) ~= 'table' then
-            bind_error('omit must be an array, got %s', type(opts.omit))
+        local list = opts.omit
+        if type(list) ~= 'table' then
+            bind_error('omit must be an array of field names, got %s',
+                       type(list))
         end
-        for _, field in ipairs(opts.omit) do
+        -- A proper sequence: keys exactly 1..n. A hash key or a hole
+        -- would otherwise be skipped by ipairs without a word.
+        local count = 0
+        for _ in pairs(list) do count = count + 1 end
+        for i = 1, count do
+            if list[i] == nil then
+                bind_error('omit must be an array of field names '
+                           .. '(keys 1..n with no holes)')
+            end
+        end
+        for i = 1, count do
+            local field = list[i]
+            if type(field) ~= 'string' then
+                bind_error('omit: field names must be strings, got %s',
+                           type(field))
+            end
             if known[field] == nil then
-                bind_error("omit: %s has no field '%s'", desc.name,
-                           tostring(field))
+                bind_error("omit: %s has no field '%s'", desc.name, field)
+            end
+            if omit[field] then
+                bind_error("omit: field '%s' is listed twice", field)
             end
             if columns[field] ~= nil then
                 bind_error("field '%s' is both renamed and omitted", field)

@@ -342,6 +342,46 @@ for _, mode in ipairs({'full', 'runtime'}) do
             pb.tuple.bind, d, s, {columns = {lease = 'version'}})
     end
 
+    g.test_omit_must_be_a_sequence_of_names = function()
+        local format = table.deepcopy(KV_FORMAT)
+        format[5].is_nullable = true
+        format[4].is_nullable = true
+        local s = helper.make_space('tuple_kv', format)
+        local d = kv.KeyValue_descriptor
+        local cols = {lease = 'lease_id'}
+        local cases = {
+            {{value = true}, "omit must be an array of field names"},
+            {{'value', value = true}, "omit must be an array of field names"},
+            {{[1] = 'value', [3] = 'version'},
+                "omit must be an array of field names"},
+            {{[2] = 'value'}, "omit must be an array of field names"},
+            {{'value', 'version', 'value'}, "omit: field 'value' is listed twice"},
+            {{1}, "omit: field names must be strings, got number"},
+        }
+        for _, c in ipairs(cases) do
+            t.assert_error_msg_contains(c[2], pb.tuple.bind, d, s,
+                                        {columns = cols, omit = c[1]})
+        end
+        -- The proper form still works.
+        local p = pb.tuple.bind(d, s, {columns = cols,
+                                       omit = {'value', 'version'}}).plan
+        t.assert_equals(p.name, {'key', 'create_revision', 'mod_revision',
+                                 'lease'})
+    end
+
+    g.test_columns_values_must_be_names = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local d = kv.KeyValue_descriptor
+        for _, bad in ipairs({6, true, '', {'lease_id'}}) do
+            t.assert_error_msg_contains(
+                "columns: column name for field 'lease' must be a "
+                    .. 'non-empty string',
+                pb.tuple.bind, d, s, {columns = {lease = bad}})
+        end
+        t.assert_error_msg_contains("columns: kv.KeyValue has no field '1'",
+            pb.tuple.bind, d, s, {columns = {'lease_id'}})
+    end
+
     g.test_bad_arguments_raise = function()
         local s = helper.make_space('tuple_kv', KV_FORMAT)
         t.assert_error_msg_contains('expected a message descriptor',
