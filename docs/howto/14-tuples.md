@@ -355,11 +355,11 @@ encode does not depend on the order.
 
 - Column types `decimal`, `interval` and the fixed-size numeric types
   (`int8` .. `uint64`, `float32`, `float64`) bind to no field type.
-- Well-known types other than Timestamp (Duration, Struct, Value,
-  ListValue, Any, Empty, FieldMask, the wrappers) have no layout of
-  their own. Bind them raw, to a top-level `varbinary` column. They
-  cannot be elements of a repeated field, values of a map, or fields
-  of a message laid out as a map or an array.
+- Other than Timestamp, well-known types (Any, Duration, Struct,
+  Value, ListValue, FieldMask, the wrappers, Empty) bind only to a
+  top-level `varbinary` column, as raw bytes. They cannot be elements
+  of a repeated field, values of a map, or fields of a message laid
+  out as a map or an array.
 - On the Lua path the key order of the maps decode writes is
   unspecified (see above).
 - Decoding into a binary slot needs the `varbinary` module, so
