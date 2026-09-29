@@ -94,6 +94,7 @@
 ---@field fileset     table
 ---@field json        pb.Json
 ---@field text        pb.Text
+---@field tuple       pb.Tuple
 ---@field WIRE_VARINT integer
 ---@field WIRE_I64    integer
 ---@field WIRE_LEN    integer
@@ -135,6 +136,24 @@
 
 ---@class pb.Text
 ---@field encode fun(desc: pb.Descriptor, t: table, opts?: pb.TextOpts): string
+
+---@class pb.TupleBindOpts
+---@field columns? table<string, string>   proto field name -> column name
+---@field omit?    string[]                proto fields left out of the projection
+
+-- Converter between the tuples of one space and one message type; see
+-- runtime/pb/tuple.lua for the binding and conversion rules.
+---@class pb.TupleConverter
+---@field plan            table                         the compiled plan (internal)
+---@field schema_version  integer
+---@field encode          fun(self: pb.TupleConverter, tuple: box.tuple): string
+---@field encode_repeated fun(self: pb.TupleConverter, field_no: integer, tuples: box.tuple[]): string
+---@field decode          fun(self: pb.TupleConverter, bytes: string): box.tuple
+---@field insert          fun(self: pb.TupleConverter, bytes: string): box.tuple
+---@field replace         fun(self: pb.TupleConverter, bytes: string): box.tuple
+
+---@class pb.Tuple
+---@field bind fun(desc: pb.Descriptor, space: table, opts?: pb.TupleBindOpts): pb.TupleConverter
 
 ---@class pb.Wire
 ---@field WIRE_VARINT     integer

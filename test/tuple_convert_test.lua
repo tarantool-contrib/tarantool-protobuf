@@ -640,6 +640,9 @@ for _, mode in ipairs({'full', 'runtime'}) do
             conv.encode, conv, box.tuple.new(row))
         row[10] = NULL
         t.assert_str_contains(conv:encode(box.tuple.new(row)), '\x48\x05')
+        -- a member holding its default is still written: it is set
+        row[9] = 0
+        t.assert_str_contains(conv:encode(box.tuple.new(row)), '\x48\x00')
     end
 
     g.test_oneof_last_member_on_the_wire_wins = function()
