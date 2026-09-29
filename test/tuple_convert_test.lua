@@ -997,3 +997,41 @@ go.test_raw_member_follows_oneof_semantics = function()
     t.assert_equals(pb.decode(m.M_descriptor, unhex('0a02080710090a00')),
                     {a = {}})
 end
+
+-- A member no column binds to still takes part in the oneof: it unsets
+-- the bound raw member it follows on the wire.
+go.test_unbound_member_clears_a_raw_member = function()
+    local m = pb.parse([[
+        syntax = "proto3";
+        package oneof_raw_omit;
+        message C { int32 x = 1; }
+        message M { oneof pick { C a = 1; int32 b = 2; } uint64 id = 3; }
+    ]])
+    local s = helper.make_space('tuple_oneof_raw', {
+        {name = 'id', type = 'unsigned'},
+        {name = 'a',  type = 'varbinary', is_nullable = true},
+    })
+    local conv = pb.tuple.bind(m.M_descriptor, s, {omit = {'b'}})
+    local function unhex(h)
+        return (h:gsub('%x%x', function(x)
+            return string.char(tonumber(x, 16))
+        end))
+    end
+    local cases = {
+        {'0a0208071009', NULL},
+        {'10090a020807', '0807'},
+        {'0a02080710090a0208011005', NULL},
+        {'10090a02080710050a020801', '0801'},
+        {'0a0208070a02080110091005' .. '0a0208030a020804', '08030804'},
+    }
+    for _, c in ipairs(cases) do
+        local row = pb.tuple._lua.decode(conv, unhex(c[1]))
+        local a = row[2]
+        if a ~= NULL then a = hex(tostring(a)) end
+        t.assert_equals(a, c[2], c[1])
+        s:replace(row)
+        -- the codec keeps the same member
+        local msg = pb.decode(m.M_descriptor, unhex(c[1]))
+        t.assert_equals(msg.a ~= nil, c[2] ~= NULL, c[1])
+    end
+end

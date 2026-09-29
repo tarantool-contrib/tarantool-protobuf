@@ -92,6 +92,11 @@
 --                                  -- 1-based index into oneof_names of its group
 --     oneof_names = {<string>},   -- per node: the oneof groups' names, in
 --                                  -- order of their lowest-numbered member
+--     oneof_member_no    = {<int>}, -- every member of those groups, bound
+--                                    -- or not (an omitted member still
+--                                    -- unsets its siblings on decode), by
+--                                    -- field number, ascending
+--     oneof_member_group = {<int>}, -- its 1-based index into oneof_names
 --     unbound_nonnull      = {<int>},    -- tuple layout: non-nullable columns
 --                                         -- with no proto field; else {}
 --     unbound_nonnull_name = {<string>}, -- their names
@@ -406,8 +411,28 @@ local function new_node(desc, layout)
         repr = {}, conv = {}, nullable = {}, optional = {},
         key_kind = {}, value_kind = {}, sub = {},
         oneof = {}, oneof_names = {},
+        oneof_member_no = {}, oneof_member_group = {},
         unbound_nonnull = {}, unbound_nonnull_name = {},
     }
+end
+
+-- Record every member of the node's oneof groups, bound or not: on
+-- decode, any member on the wire unsets the others. Groups with no bound
+-- member have nothing to unset and are left out.
+local function add_oneof_members(node, desc)
+    local names = node.oneof_names
+    for _, f in ipairs(sorted_fields(desc)) do
+        if f.oneof ~= nil then
+            for j = 1, #names do
+                if names[j] == f.oneof then
+                    local k = #node.oneof_member_no + 1
+                    node.oneof_member_no[k] = f.id
+                    node.oneof_member_group[k] = j
+                    break
+                end
+            end
+        end
+    end
 end
 
 -- 1-based index of oneof `name` in node.oneof_names, registering it on
@@ -552,6 +577,7 @@ compile_node = function(desc, format, depth, layout, cache, opts)
                 nullable    = true,
             }, cache)
         end
+        add_oneof_members(node, desc)
         return node
     end
 
@@ -584,6 +610,7 @@ compile_node = function(desc, format, depth, layout, cache, opts)
             }, cache)
         end
     end
+    add_oneof_members(node, desc)
     for i, e in ipairs(format) do
         if bound[i] == nil and e.is_nullable ~= true then
             local k = #node.unbound_nonnull + 1
@@ -1069,7 +1096,7 @@ local function aux_of(node)
         index = {},    -- map layout: field name -> i
         at = {},       -- array layout: array position -> i
         raw_at = {},   -- field number -> i, for `raw` fields
-        oneof_at = {}, -- field number -> i, for oneof members
+        oneof_at = {}, -- field number -> oneof group, for every member
         has_raw = false,
         width = 0,     -- tuple/array layout: largest column/position
     }
@@ -1094,9 +1121,10 @@ local function aux_of(node)
             a.has_raw = true
             a.raw_at[node.field_no[i]] = i
         end
-        if node.oneof[i] ~= 0 then a.oneof_at[node.field_no[i]] = i end
         if node.column[i] > a.width then a.width = node.column[i] end
     end
+    local member_no, member_group = node.oneof_member_no, node.oneof_member_group
+    for k = 1, #member_no do a.oneof_at[member_no[k]] = member_group[k] end
     AUX[node] = a
     return a
 end
@@ -1474,19 +1502,21 @@ end
 -- does: a member clears the payloads collected for the group's previous
 -- member, so a raw member followed by a sibling is unset, and a raw
 -- member that comes back after a sibling starts over.
-local function collect_raw(node, a, bytes)
+local function collect_raw(a, bytes)
     local parts = {}
-    local active  -- {[oneof group] = i of the member last seen}
+    local active  -- {[oneof group] = field number of the member last seen}
     local pos, len = 1, #bytes
     while pos <= len do
         local id, wt, np = wire.decode_tag(bytes, pos)
-        local j = a.oneof_at[id]
-        if j ~= nil then
+        local grp = a.oneof_at[id]
+        if grp ~= nil then
             if active == nil then active = {} end
-            local grp = node.oneof[j]
             local prev = active[grp]
-            if prev ~= nil and prev ~= j then parts[prev] = nil end
-            active[grp] = j
+            if prev ~= nil and prev ~= id then
+                local r = a.raw_at[prev]
+                if r ~= nil then parts[r] = nil end
+            end
+            active[grp] = id
         end
         local i = a.raw_at[id]
         if i ~= nil and wt == WIRE_LEN then
@@ -1522,7 +1552,7 @@ local function lua_decode(conv, bytes)
     end
     local msg = codec.decode(conv.desc, bytes)
     local a = aux_of(plan)
-    local raw = a.has_raw and collect_raw(plan, a, bytes) or nil
+    local raw = a.has_raw and collect_raw(a, bytes) or nil
     local row = {}
     for c = 1, a.width do row[c] = NULL end
     for i = 1, plan.n do
