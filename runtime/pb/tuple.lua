@@ -108,24 +108,34 @@
 -- The converter
 -- -------------
 --   conv.plan            the top-level node
---   conv._tplan          the plan compiled for the C encoder
+--   conv._tplan          the plan compiled for the C converter
 --                        (pb.c_runtime.tuple_compile); present when the C
---                        runtime is loaded (PB_ENABLE_C=1), and then
---                        conv:encode / conv:encode_repeated run in C
+--                        runtime is loaded (PB_ENABLE_C=1), and then every
+--                        method below converts in C
 --   conv.schema_version  box schema version the plan was compiled against
 --   conv:_check_schema() rebinds when the schema version moved; raises when
 --                        the space is gone (a space is its id and name
 --                        together: another space that reuses the id is
 --                        not the bound one) or its new format no longer
 --                        binds
---   conv:encode(tuple)   -> wire bytes of the message the tuple holds
+--   conv:encode(tuple)   -> wire bytes of the message the tuple holds. Any
+--                           box.tuple is accepted, not only a row of the
+--                           bound space: the plan reads it by column
+--                           number, and each value is checked on its own
+--                           (see Conversion rules)
 --   conv:encode_repeated(field_no, tuples)
 --                        -> for each tuple: the tag of `field_no` (LEN), the
 --                           length, the encoded tuple. Splices rows into an
 --                           enclosing message as a `repeated` field.
---   conv:decode(bytes)   -> box.tuple laid out per the space format
+--   conv:decode(bytes)   -> box.tuple laid out per the space format, made
+--                           with box.tuple.new(row): it carries no format,
+--                           so its fields are reached by number only
+--                           (t[1]; t.key is nil). It ends at the last
+--                           bound column: unbound nullable columns after
+--                           it are left out, not written as NULL.
 --   conv:insert(bytes), conv:replace(bytes)
---                        -> decode, then space:insert / space:replace
+--                        -> decode, then space:insert / space:replace; the
+--                           tuple returned is the space's, with its format
 -- Every method first calls _check_schema.
 --
 -- Conversion rules
@@ -145,12 +155,14 @@
 -- * Per-value checks: the msgpack type must suit the proto type (integers
 --   for integer kinds, integers or floats for double/float (a decimal,
 --   which a `number` or `any` column can hold, is refused rather than
---   rounded), str or bin for
---   string/bytes, a uuid for a uuid column, a datetime for Timestamp, a
---   map / array for a message or repeated field); integers must fit the
---   proto type; a key in a message map must name a field; an array
---   position with no field must be NULL; NULL is not allowed as an
---   element of a repeated field or as a map key or value.
+--   rounded), str or bin for string/bytes whatever the column type, a
+--   uuid for a uuid column, a datetime for Timestamp, a map / array for a
+--   message or repeated field); integers must fit the proto type; a key
+--   in a message map must name a field; an array position with no field
+--   must be NULL; NULL is not allowed as an element of a repeated field
+--   or as a map key or value. Encode checks the value it reads, not the
+--   tuple's format: a tuple from another space, or one made with
+--   box.tuple.new, converts as long as each value passes.
 --
 -- Wire -> tuple (decode) goes through the descriptor codec, then lays the
 -- decoded message out per the plan:
