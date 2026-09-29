@@ -264,14 +264,31 @@ bench-go: gen-go
 conformance-build:
     docker build -t {{image}} -f docker/conformance.Dockerfile docker/
 
-# Run the conformance suite with --enforce_recommended (strictest mode).
+# Runner flags shared by the strict conformance recipes.
+conformance_flags := "--enforce_recommended --failure_list test/conformance/known_failures.txt --text_format_failure_list test/conformance/known_failures_text.txt"
+conformance_testee := "/usr/bin/tarantool cmd/conformance-runner.lua"
+
+# The --performance pass is not a stricter setting but a disjoint set of
+# tests the default run never executes: merging 50000 occurrences of a
+# message field in the binary and text formats, and messages nested
+# 20000 levels deep against the recursion limit. The runner stops after
+# the first failing suite, so a binary failure hides the text results of
+# the same pass.
+#
+# Run the conformance suite with --enforce_recommended, default + --performance.
 conformance: conformance-build gen
     docker run --rm -v "$(pwd):/work" -w /work {{image}}
+    docker run --rm -v "$(pwd):/work" -w /work {{image}} {{conformance_flags}} --performance {{conformance_testee}}
 
-# Same as `conformance`, but exercises the C-acceleration path
-# (require('pb.c_runtime')). Builds runtime/pb/c_runtime.so inside the
-# container (host .dylib won't load there), then re-runs the suite with
-# PB_ENABLE_C=1 so pb/init.lua dispatches to the C codec.
+# Only the --performance pass of `conformance`.
+conformance-perf: conformance-build gen
+    docker run --rm -v "$(pwd):/work" -w /work {{image}} {{conformance_flags}} --performance {{conformance_testee}}
+
+# Builds runtime/pb/c_runtime.so inside the container (host .dylib won't
+# load there), then runs both passes with PB_ENABLE_C=1 so pb/init.lua
+# dispatches to the C codec.
+#
+# Same as `conformance`, but through the C-acceleration path.
 conformance-c: conformance-build gen
     docker run --rm -v "$(pwd):/work" -w /work -e PB_ENABLE_C=1 \
         --entrypoint bash {{image}} -c '\
@@ -279,10 +296,10 @@ conformance-c: conformance-build gen
             make -C runtime/pb/c clean >/dev/null; \
             make -C runtime/pb/c >/dev/null; \
             rc=0; \
-            conformance_test_runner --enforce_recommended \
-                --failure_list test/conformance/known_failures.txt \
-                --text_format_failure_list test/conformance/known_failures_text.txt \
-                /usr/bin/tarantool cmd/conformance-runner.lua || rc=$?; \
+            for pass in "" --performance; do \
+                conformance_test_runner {{conformance_flags}} $pass \
+                    {{conformance_testee}} || rc=$?; \
+            done; \
             make -C runtime/pb/c clean >/dev/null; \
             exit $rc'
 

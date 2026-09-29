@@ -48,6 +48,7 @@ wire format. Only editions are out of scope for now.
 | Byte-for-byte interop with `protoc` (10 fixtures) | ✅ |
 | **Google conformance suite — binary + JSON**       | **2817 ✓ / 0 failures** |
 | **Google conformance suite — text format**         | **445 ✓ / 0 failures** |
+| **Google conformance suite — `--performance`**     | **55 ✓ / 0 failures** (1 editions test skipped) |
 | Runtime `.proto` parsing (`pb.parse`) | ✅       |
 | Runtime `FileDescriptorSet` ingest (`pb.from_pb`) | ✅ |
 | Markdown doc generator (`protoc-gen-tarantool-doc`) | ✅ |
@@ -371,14 +372,27 @@ just conformance
 host is what gets tested.) Known failures live in
 `test/conformance/known_failures.txt` (binary + JSON suite) and
 `test/conformance/known_failures_text.txt` (text-format suite); both are
-empty for the proto3 suites as of 2026-05-16.
+empty.
 
-Current baseline (2026-09-29, protobuf v36.2, `--enforce_recommended`):
+`just conformance` runs the suite twice. The second pass adds
+`--performance`, which is not a stricter setting but a separate set of
+tests the default run never executes: merging 50000 occurrences of a
+message field (binary and text format) and rejecting messages nested
+20000 levels deep (`EnforceDepthLimit.*`).
+
+Current baseline (2026-09-29, protobuf v36.2, `--enforce_recommended`,
+identical with `just conformance-c`):
 
 | Suite | Successes | Skipped | Expected failures | Unexpected |
 |-------|-----------|---------|-------------------|------------|
 | Binary + JSON | **2817** | 0 | 0 | 0 |
 | Text-format   |  **445** | 0 | 0 | 0 |
+| Binary, `--performance`      | **31** | 1 | 0 | 0 |
+| Text-format, `--performance` | **24** | 0 | 0 | 0 |
+
+The skipped test, `EnforceDepthLimit.Map`, is written against an editions
+test message. Editions (`--maximum_edition 2023`, which adds another 3296
+tests) are not supported yet.
 
 Both proto2 and proto3 test messages run through the same dispatcher in
 `cmd/conformance/core.lua`. The test protos in `test/conformance/proto/`
