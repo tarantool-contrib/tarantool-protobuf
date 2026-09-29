@@ -156,10 +156,11 @@
 --   and a raw member that comes back after a sibling starts over.
 -- * Values are written in the msgpack type their column needs (bin for
 --   varbinary, a double for `double`, a uuid for `uuid`); in untyped
---   slots `bytes` becomes bin and `string` str. An integer that does not
---   fit its column (a negative one in `unsigned`, one above 2^63-1 in
---   `integer`) is an error, as is a Timestamp outside the datetime range
---   or a string/bytes value that is not a uuid for a uuid column.
+--   slots `bytes` becomes bin and `string` str. A negative integer in an
+--   `unsigned` column is an error (an `integer` column holds -2^63 ..
+--   2^64-1, so every proto integer fits it), as is a Timestamp outside
+--   the datetime range or a string/bytes value that is not a uuid for a
+--   uuid column.
 -- * A map<K,V> is written in the order `pairs` yields the decoded map, so
 --   a multi-key map is not guaranteed to come back in wire order.
 -- * A non-nullable column with no proto field makes decode raise.
@@ -1348,13 +1349,11 @@ local DEFAULT = {
 local function tuple_scalar(node, i, elem, kind, conv, ctype, v)
     local range = INT_RANGE[kind]
     if range ~= nil then
+        -- An `integer` column holds int64 and uint64 alike, so every
+        -- proto integer fits it; only `unsigned` refuses negatives.
         if ctype == 'unsigned' and v < 0 then
             value_error(node, i, elem, 'value %s does not fit column type '
                         .. 'unsigned', tostring(v))
-        end
-        if ctype == 'integer' and range == 'u64' and v > I64_MAX then
-            value_error(node, i, elem, 'value %s does not fit column type '
-                        .. 'integer', tostring(v))
         end
         return v
     elseif kind == 'double' or kind == 'float' then

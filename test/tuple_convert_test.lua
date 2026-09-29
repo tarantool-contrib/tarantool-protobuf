@@ -819,6 +819,106 @@ gr.test_encode_repeated_after_a_header = function()
 end
 
 -- ---------------------------------------------------------------------
+-- Integer kinds against `unsigned` and `integer` columns, at the ends of
+-- every range, through a real space in both directions. An `integer`
+-- column holds int64 and uint64 alike: -2^63 .. 2^64-1.
+-- ---------------------------------------------------------------------
+
+local gi = t.group('tuple_convert.int_columns')
+
+gi.before_all(function() helper.ensure_box() end)
+
+local INT_VALUES = {
+    I64MIN = -9223372036854775807LL - 1,
+    I32MIN = -2147483648,
+    ZERO   = 0,
+    I32MAX = 2147483647,
+    U32MAX = 4294967295,
+    I64MAX = 9223372036854775807LL,
+    U64MAX = 18446744073709551615ULL,
+}
+local NEGATIVE = {I64MIN = true, I32MIN = true}
+local RANGE_VALUES = {
+    s32 = {'I32MIN', 'ZERO', 'I32MAX'},
+    u32 = {'ZERO', 'I32MAX', 'U32MAX'},
+    s64 = {'I64MIN', 'I32MIN', 'ZERO', 'I32MAX', 'U32MAX', 'I64MAX'},
+    u64 = {'ZERO', 'I32MAX', 'U32MAX', 'I64MAX', 'U64MAX'},
+}
+local KIND_RANGE = {
+    int32 = 's32', sint32 = 's32', sfixed32 = 's32', enum = 's32',
+    uint32 = 'u32', fixed32 = 'u32',
+    int64 = 's64', sint64 = 's64', sfixed64 = 's64',
+    uint64 = 'u64', fixed64 = 'u64',
+}
+local INT_KINDS = {'int32', 'sint32', 'sfixed32', 'enum', 'uint32',
+                   'fixed32', 'int64', 'sint64', 'sfixed64', 'uint64',
+                   'fixed64'}
+local COLUMN_VALUES = {
+    unsigned = {'ZERO', 'I32MAX', 'U32MAX', 'I64MAX', 'U64MAX'},
+    integer  = {'I64MIN', 'I32MIN', 'ZERO', 'I32MAX', 'U32MAX', 'I64MAX',
+                'U64MAX'},
+}
+
+gi.test_integer_ranges_through_a_space = function()
+    for _, kind in ipairs(INT_KINDS) do
+        local ptype = kind == 'enum' and 'E' or kind
+        local m = pb.parse(string.format([[
+            syntax = "proto3";
+            package int_columns;
+            enum E { E0 = 0; }
+            message V { %s v = 1; uint64 id = 2; }
+        ]], ptype))
+        local desc = m.V_descriptor
+        local in_kind = {}
+        for _, label in ipairs(RANGE_VALUES[KIND_RANGE[kind]]) do
+            in_kind[label] = true
+        end
+        for _, ctype in ipairs({'unsigned', 'integer'}) do
+            if box.space.tuple_int_columns ~= nil then
+                box.space.tuple_int_columns:drop()
+            end
+            local s = box.schema.space.create('tuple_int_columns', {format = {
+                {name = 'v',  type = ctype},
+                {name = 'id', type = 'unsigned'},
+            }})
+            s:create_index('pk', {parts = {'id'}})
+            local conv = pb.tuple.bind(desc, s)
+            local what = kind .. ' in ' .. ctype
+            -- wire -> tuple: every value of the kind's range
+            for n, label in ipairs(RANGE_VALUES[KIND_RANGE[kind]]) do
+                local v = INT_VALUES[label]
+                local bytes = pb.encode(desc, {v = v, id = n})
+                if ctype == 'unsigned' and NEGATIVE[label] then
+                    t.assert_error_msg_contains(
+                        'does not fit column type unsigned',
+                        conv.insert, conv, bytes)
+                else
+                    local ok, row = pcall(conv.insert, conv, bytes)
+                    t.assert(ok, what .. ' ' .. label .. ': '
+                             .. tostring(row))
+                    t.assert(row[1] == v, what .. ' ' .. label)
+                end
+            end
+            -- tuple -> wire: every value the column holds
+            for n, label in ipairs(COLUMN_VALUES[ctype]) do
+                local v = INT_VALUES[label]
+                local row = s:replace({v, 100 + n})
+                if in_kind[label] then
+                    t.assert_equals(hex(conv:encode(row)),
+                        hex(pb.encode(desc, {v = v, id = 100 + n})),
+                        what .. ' ' .. label)
+                else
+                    t.assert_error_msg_contains(
+                        'is out of range for ' .. kind,
+                        conv.encode, conv, row)
+                end
+            end
+            s:drop()
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------
 -- A raw (varbinary) message inside a oneof
 -- ---------------------------------------------------------------------
 
