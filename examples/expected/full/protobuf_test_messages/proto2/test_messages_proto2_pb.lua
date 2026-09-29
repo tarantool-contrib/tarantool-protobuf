@@ -9171,7 +9171,7 @@ function M.NullHypothesisProto2_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.NullHypothesisProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -9230,7 +9230,7 @@ function M.NullHypothesisProto2_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.NullHypothesisProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -9319,7 +9319,7 @@ function M.EnumOnlyProto2_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.EnumOnlyProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -9378,7 +9378,7 @@ function M.EnumOnlyProto2_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.EnumOnlyProto2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12022,7 +12022,7 @@ function M.TestLargeOneof_A1_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A1_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12081,7 +12081,7 @@ function M.TestLargeOneof_A1_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A1_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12170,7 +12170,7 @@ function M.TestLargeOneof_A2_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12229,7 +12229,7 @@ function M.TestLargeOneof_A2_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A2_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12318,7 +12318,7 @@ function M.TestLargeOneof_A3_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12377,7 +12377,7 @@ function M.TestLargeOneof_A3_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12466,7 +12466,7 @@ function M.TestLargeOneof_A4_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A4_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12525,7 +12525,7 @@ function M.TestLargeOneof_A4_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A4_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12614,7 +12614,7 @@ function M.TestLargeOneof_A5_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A5_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -12673,7 +12673,7 @@ function M.TestLargeOneof_A5_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.TestLargeOneof_A5_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil

@@ -7916,7 +7916,7 @@ function M.NullHypothesisProto3_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.NullHypothesisProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -7975,7 +7975,7 @@ function M.NullHypothesisProto3_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.NullHypothesisProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -8064,7 +8064,7 @@ function M.EnumOnlyProto3_decode(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.EnumOnlyProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil
@@ -8123,7 +8123,7 @@ function M.EnumOnlyProto3_decode_unsafe(buf, depth)
         else
             id, wt, pos = decode_tag(buf, pos)
         end
-        if true then
+        if false then
         else
             local _ebid = M.EnumOnlyProto3_descriptor.extensions_by_id
             local _ext = _ebid and _ebid[id] or nil

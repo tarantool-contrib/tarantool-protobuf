@@ -1021,8 +1021,9 @@ func emitInlineDecode(w *writer, name string, m *protogen.Message, file *protoge
 			emitInlineDecodeExtension(w, ext, file, selfPath, imports, prefix, validateUTF8)
 		}
 		if first {
-			// No fields — every wire byte is unknown.
-			w.line("        if true then")
+			// No fields — every tag takes the `else` arm below, which
+			// resolves extensions and keeps the rest as unknown bytes.
+			w.line("        if false then")
 		}
 		w.line("        else")
 		// Proto2 extensions registered at runtime (past the static set):

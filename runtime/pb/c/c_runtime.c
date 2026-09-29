@@ -1856,7 +1856,10 @@ encode_body(lua_State *L, enc_buf *b, pb_plan *plan, int msg_idx)
 			plan->name != NULL ? plan->name : "?");
 	}
 
-	if (plan->field_names_ref == LUA_NOREF || plan->n_fields == 0)
+	/* A message without fields still carries extensions (a MessageSet
+	 * has nothing else) and unknown fields, so only a plan that never
+	 * got its tables built returns early. */
+	if (plan->field_names_ref == LUA_NOREF)
 		return;
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, plan->field_names_ref);

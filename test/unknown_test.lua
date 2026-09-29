@@ -3,6 +3,7 @@
 -- encode must re-emit them verbatim. Mirrors Tarantool's built-in `protobuf`
 -- module convention.
 local t = require('luatest')
+local pb = require('pb')
 
 local function hex(s)
     local out = {}
@@ -124,4 +125,26 @@ g_parity.test_reencode_identical_across_modes = function()
     t.assert_equals(
         hex(hello_full.Address_encode(table_with_unknowns)),
         hex(hello_runtime.Address_encode(table_with_unknowns)))
+end
+
+-- A message that declares no fields still carries unknown fields. The C
+-- encoder used to return early on a plan without fields and dropped them.
+for _, mode in ipairs(MODES) do
+    local g = t.group('unknown.empty_message.' .. mode)
+    local p3 = require(mode .. '.protobuf_test_messages.proto3.test_messages_proto3_pb')
+
+    g.test_unknown_fields_survive_a_message_without_fields = function()
+        local d = p3.NullHypothesisProto3_descriptor
+        t.assert_equals(#d.fields, 0)
+        for _, codec in ipairs({
+            {p3.NullHypothesisProto3_decode, p3.NullHypothesisProto3_encode},
+            {function(b) return pb.decode(d, b) end,
+             function(m) return pb.encode(d, m) end},
+        }) do
+            local decode, encode = codec[1], codec[2]
+            local msg = decode(ALL_UNK)
+            t.assert_equals(hex(msg._unknown_fields), hex(ALL_UNK))
+            t.assert_equals(hex(encode(msg)), hex(ALL_UNK))
+        end
+    end
 end
