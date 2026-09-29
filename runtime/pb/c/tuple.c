@@ -795,6 +795,7 @@ static const char *const tp_class_names[] = {
 	"string", "binary", "array", "map",
 };
 
+#define TP_EXT_DECIMAL  1
 #define TP_EXT_UUID     2
 #define TP_EXT_DATETIME 4
 
@@ -1217,6 +1218,13 @@ tp_read_scalar(tp_ctx *ctx, const tp_node *node, int i, int elem,
 			v->d = (double)mp_decode_uint(&p);
 		} else if (h.cls == TP_MP_INT) {
 			v->d = (double)mp_decode_int(&p);
+		} else if (h.cls == TP_MP_EXT && h.ext == TP_EXT_DECIMAL) {
+			/* A `number` column holds decimals as well; rounding one
+			 * to a double would lose digits without a word. */
+			tp_push_where(L, node, i, elem);
+			lua_pushliteral(L, "expected a number, got decimal (a "
+			                "decimal is not converted to floating point)");
+			tp_raise(L, 2);
 		} else {
 			tp_type_error(L, node, i, elem, "a number", &h);
 		}

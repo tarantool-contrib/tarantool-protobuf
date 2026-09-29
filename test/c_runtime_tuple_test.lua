@@ -571,6 +571,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
                 {11, ''}, {11, 'as string'}, {11, 1},
                 {12, 0}, {12, -7}, {12, raw('\xcb\x80\x00\x00\x00\x00\x00\x00\x00')},
                 {12, 18446744073709551615ULL}, {12, true},
+                {12, decimal.new('1.5')}, {12, decimal.new('0')},
                 {13, false}, {13, NULL}, {13, 0},
                 {14, {text = '', weight = 0}}, {14, {weight = -1}},
                 {15, I64_MIN}, {15, 9223372036854775807LL},

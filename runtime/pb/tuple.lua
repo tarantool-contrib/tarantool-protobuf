@@ -34,6 +34,8 @@
 --   default '' is stored as NULL.
 -- * Nested slots are untyped, so a nested field is checked as if its
 --   column were `any`: its values are checked one by one at conversion.
+--   A `number` column is checked per value too: besides integers and
+--   floats it holds decimals, which a double/float field refuses.
 --
 -- The plan (IF2)
 -- --------------
@@ -136,7 +138,9 @@
 --   is left out of the entry (message values are always written).
 -- * A `raw` message is written as tag + length + the stored bytes verbatim.
 -- * Per-value checks: the msgpack type must suit the proto type (integers
---   for integer kinds, integers or floats for double/float, str or bin for
+--   for integer kinds, integers or floats for double/float (a decimal,
+--   which a `number` or `any` column can hold, is refused rather than
+--   rounded), str or bin for
 --   string/bytes, a uuid for a uuid column, a datetime for Timestamp, a
 --   map / array for a message or repeated field); integers must fit the
 --   proto type; a key in a message map must name a field; an array
@@ -196,7 +200,9 @@ local COLUMN_TYPE_ALIAS = {
 --   'range'      integer both sides; per-value check that the value fits
 --                both the proto type's and the column type's range
 --   'number'     `number` column <-> double/float: the column holds integers
---                as well as floats; encode converts integers to double
+--                as well as floats; encode converts integers to double. It
+--                holds decimals too, and encode refuses one per value:
+--                a decimal is not rounded to floating point
 --   'str_bin'    string <-> bytes: same wire bytes, the column holds the
 --                other msgpack type (MP_STR vs MP_BIN)
 --   'uuid_text'  uuid column <-> proto string, canonical 36-character text
@@ -799,7 +805,7 @@ local MP_NIL, MP_BOOL, MP_UINT, MP_INT, MP_FLOAT, MP_STR, MP_BIN, MP_ARRAY,
       MP_MAP, MP_EXT = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 local MP_CLASS_NAME = {'nil', 'boolean', 'unsigned integer', 'integer',
                        'float', 'string', 'binary', 'array', 'map'}
-local MP_EXT_UUID, MP_EXT_DATETIME = 2, 4
+local MP_EXT_DECIMAL, MP_EXT_UUID, MP_EXT_DATETIME = 1, 2, 4
 local MP_EXT_NAME = {[1] = 'decimal', [2] = 'uuid', [3] = 'error',
                      [4] = 'datetime', [6] = 'interval'}
 
@@ -979,6 +985,11 @@ local function read_scalar(node, i, elem, kind, conv, s, p)
         elseif cls == MP_UINT or cls == MP_INT then
             local v, np = msgpack.decode(s, p)
             return tonumber(v), np
+        elseif cls == MP_EXT and ext == MP_EXT_DECIMAL then
+            -- A `number` column holds decimals as well; rounding one to
+            -- a double would lose digits without a word.
+            value_error(node, i, elem, 'expected a number, got decimal (a '
+                        .. 'decimal is not converted to floating point)')
         end
         type_error(node, i, elem, 'a number', cls, ext)
     elseif kind == 'bool' then

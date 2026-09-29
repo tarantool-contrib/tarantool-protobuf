@@ -6,6 +6,7 @@ local msgpack = require('msgpack')
 local uuid = require('uuid')
 local datetime = require('datetime')
 local varbinary = require('varbinary')
+local decimal = require('decimal')
 local pb = require('pb')
 local helper = require('tuple_helper')
 
@@ -318,6 +319,26 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_error_msg_contains(
             "field 'zip' of kv.Address: value -1 is out of range for uint32",
             conv.encode, conv, box.tuple.new(row))
+    end
+
+    -- A `number` column holds decimals too; one is not turned into a
+    -- double behind the caller's back.
+    g.test_decimal_in_a_number_column_raises = function()
+        local conv, s = record_conv()
+        local row = record_row()
+        row[12] = decimal.new('1.5')
+        local tuple = s:insert(row)
+        t.assert(decimal.is_decimal(tuple[12]))
+        t.assert_error_msg_equals(
+            "pb.tuple: field 'weight' of kv.Record (column 'weight'): "
+                .. 'expected a number, got decimal (a decimal is not '
+                .. 'converted to floating point)',
+            conv.encode, conv, tuple)
+        t.assert_error_msg_equals(
+            "pb.tuple: field 'weight' of kv.Record (column 'weight'): "
+                .. 'expected a number, got decimal (a decimal is not '
+                .. 'converted to floating point)',
+            pb.tuple._lua.encode, conv, tuple)
     end
 
     g.test_double_column_gets_a_double = function()
