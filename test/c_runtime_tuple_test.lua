@@ -1530,6 +1530,43 @@ for _, mode in ipairs({'full', 'runtime'}) do
             wtag(1000, 0) .. '\1' .. wtag(2000, 1) .. '12345678'
                 .. wtag(2001, 5) .. '1234' .. wlen(2002, 'xyz'),
         }
+        -- Maps with 64-bit keys, merged. The codec keys a map with the
+        -- key it decodes: a key given on the wire is a fresh int64/uint64
+        -- cdata (a key of its own in a Lua table, whatever its value), a
+        -- key missing from its entry is the number 0 (the same key in
+        -- every entry that omits it). Within one message the entries are
+        -- deduplicated by value, across merged messages by that identity.
+        local KEY64 = {
+            -- field, key tag and zero/five bytes, value tag and two values
+            {37, wtag(1, 0), '\0', '\5', wtag(2, 0), '\1', '\2'},
+            {44, wtag(1, 0), '\0', '\5', wtag(2, 5), '\0\0\128\63',
+             '\0\0\0\64'},
+            {39, wtag(1, 1), '\0\0\0\0\0\0\0\0', '\5\0\0\0\0\0\0\0',
+             wtag(2, 0), '\1', '\0'},
+            {47, wtag(1, 1), '\0\0\0\0\0\0\0\0', '\5\0\0\0\0\0\0\0',
+             wtag(2, 1), '\1\0\0\0\0\0\0\0', '\2\0\0\0\0\0\0\0'},
+            {48, wtag(1, 0), '\0', '\10', wtag(2, 0), '\1', '\2'},
+        }
+        for _, k in ipairs(KEY64) do
+            local function entry(key, v)
+                return wlen(k[1], (key ~= nil and k[2] .. key or '')
+                            .. k[5] .. v)
+            end
+            local omit1, omit2 = entry(nil, k[6]), entry(nil, k[7])
+            local zero1, five1 = entry(k[3], k[6]), entry(k[4], k[6])
+            local zero2 = entry(k[3], k[7])
+            for _, occurrences in ipairs({
+                {omit1, omit2}, {omit1, zero2}, {zero1, omit2},
+                {zero1, zero2}, {omit1 .. zero2, omit1}, {zero1 .. omit2, zero1},
+                {omit1, omit2, omit1}, {five1, omit1}, {omit1, five1},
+                {omit1 .. omit2}, {zero1 .. omit2}, {omit1 .. zero2},
+            }) do
+                local b = {}
+                for n, o in ipairs(occurrences) do b[n] = wlen(60, o) end
+                cases[#cases + 1] = table.concat(b)
+                cases[#cases + 1] = occurrences[1]
+            end
+        end
         -- nesting at and past the recursion limit
         for _, levels in ipairs({99, 100, 101}) do
             local b = wtag(1, 0) .. '\1'
@@ -1588,6 +1625,38 @@ for _, mode in ipairs({'full', 'runtime'}) do
         for k, bytes in ipairs(p2cases) do
             check_decode(convs.p2.conv, bytes, 'p2 #' .. k .. ' ' .. hex(bytes))
         end
+        -- a message given twice whose map entries omit their int64 key
+        local nm = pb.parse([[
+            syntax = "proto3";
+            package decode_map_merge;
+            message N { map<int64, int32> m = 1; }
+            message R { N n = 1; }
+        ]])
+        local nconv = pb.tuple.bind(nm.R_descriptor, format_space('ctd_nm', {
+            {name = 'n', type = 'map', is_nullable = true},
+        }))
+        local function unhex(h)
+            return (h:gsub('%x%x', function(x)
+                return string.char(tonumber(x, 16))
+            end))
+        end
+        for _, h in ipairs({'0a040a0210010a040a021002',
+                            '0a060a0408001001' .. '0a040a021002',
+                            '0a040a021001' .. '0a060a0408001002'}) do
+            check_decode(nconv, unhex(h), 'map merge ' .. h)
+        end
+        -- the same through Mixed.child (random wire, seed 987654321,
+        -- 12000 iterations, mixed #2565)
+        local child = '5e288194ebdc034800122336626137623831302d396461642d3131'
+            .. '64312d383062342d303063303466643433306322251223a99601b62afa'
+            .. '087caa22bc0a036800690a000a0f020202020202020202020202020202'
+            .. '28ffffffffffffffff7f32080880e2cfaa061001aab70102ac624274cd'
+            .. '920153456630226b088194ebdc03126310ffffffff0f0a243662613762'
+            .. '3831302d396461642d313164312d383062342d30306330346664343330'
+            .. '6338108094ebdc0312808080808080808080010a0f0202020202020202'
+            .. '0202020202020210ac020a1001010101010101010101010101010101'
+        check_decode(convs.mixed.conv, unhex('42' .. child .. '42' .. child),
+                     'mixed #2565')
         -- a raw member of a oneof, its sibling bound or not
         local om = pb.parse([[
             syntax = "proto3";

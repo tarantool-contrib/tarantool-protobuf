@@ -2424,6 +2424,9 @@ typedef struct tv_node {
 	tv_val          key;
 	tv_val          v;
 	uint8_t         has_v;   /* map: the value was given */
+	uint8_t         key_num; /* map: the key is the number the codec
+	                          * defaults a missing key to, not a cdata
+	                          * (see td_cdata_key) */
 } tv_node;
 
 typedef struct tv_field {
@@ -2845,10 +2848,11 @@ tv_index_find(const tv_field *f, uint8_t kind, const tv_val *key)
 	return NULL;
 }
 
-/* map_t[key] = value: a key already present keeps its place. */
+/* map_t[key] = value: a key already present keeps its place, and its
+ * identity (`key_num` of the first entry with that key). */
 static int
 tv_map_put(td_ctx *c, tv_field *f, uint8_t kkind, const tv_val *key,
-           const tv_val *v, int has_v)
+           int key_num, const tv_val *v, int has_v)
 {
 	tv_node *e = tv_index_find(f, kkind, key);
 	if (e == NULL) {
@@ -2856,6 +2860,7 @@ tv_map_put(td_ctx *c, tv_field *f, uint8_t kkind, const tv_val *key,
 		if (e == NULL)
 			return -1;
 		e->key = *key;
+		e->key_num = (uint8_t)key_num;
 		/* Up to 8 entries a scan finds a key; past that, an index. */
 		if (f->count > 8 && tv_index_add(c, f, kkind, e) != 0)
 			return -1;
@@ -2865,9 +2870,13 @@ tv_map_put(td_ctx *c, tv_field *f, uint8_t kkind, const tv_val *key,
 	return 0;
 }
 
-/* Keys the codec keeps as 64-bit cdata: a map merged into another keeps
- * both entries of a key given in each (Lua tables key cdata by
- * identity), where every other key type is merged by value. */
+/* Keys the codec keeps as 64-bit cdata. Lua tables key cdata by
+ * identity, so a map merged into another keeps both entries of a key
+ * given in each, where every other key type is merged by value. The
+ * exception is a key missing from its entry: the codec defaults it to
+ * the number 0, one and the same key in every map, so those entries
+ * merge like any number key. (Within one message the codec deduplicates
+ * 64-bit keys by value, number or cdata alike, keeping the first.) */
 static inline int
 td_cdata_key(uint8_t kind)
 {
@@ -2905,17 +2914,28 @@ tv_merge(td_ctx *c, tv_msg *prev, tv_msg *dec)
 			*pv = *v;
 		} else if (f->kind == PB_KIND_MAP) {
 			for (tv_node *e = v->head; e != NULL; e = e->next) {
-				if (td_cdata_key(f->key_kind)) {
-					tv_node *x = tv_append(c, pv);
+				if (!td_cdata_key(f->key_kind)) {
+					TD_TRY(tv_map_put(c, pv, f->key_kind, &e->key, 0,
+					                  &e->v, e->has_v));
+					continue;
+				}
+				tv_node *x = NULL;
+				if (e->key_num) {
+					/* The number 0: the entry of pv keyed by it. */
+					for (x = pv->head; x != NULL; x = x->next) {
+						if (x->key_num)
+							break;
+					}
+				}
+				if (x == NULL) {
+					x = tv_append(c, pv);
 					if (x == NULL)
 						return -1;
 					x->key = e->key;
-					x->v = e->v;
-					x->has_v = e->has_v;
-				} else {
-					TD_TRY(tv_map_put(c, pv, f->key_kind, &e->key,
-					                  &e->v, e->has_v));
+					x->key_num = e->key_num;
 				}
+				x->v = e->v;
+				x->has_v = e->has_v;
 			}
 		} else if (f->repeated) {
 			if (v->head != NULL) {
@@ -3078,7 +3098,7 @@ td_map_entry(td_ctx *c, const td_field *f, const uint8_t *p, uint32_t n,
 	if (!has_val)
 		memset(&val, 0, sizeof(val));
 	vf->set = 1;
-	return tv_map_put(c, vf, f->key_kind, &key, &val, has_val);
+	return tv_map_put(c, vf, f->key_kind, &key, !has_key, &val, has_val);
 }
 
 /* The value of known field `f` (index j of message m) at the reader
