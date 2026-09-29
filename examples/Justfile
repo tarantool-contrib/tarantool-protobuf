@@ -46,7 +46,7 @@ quickstart:
         local u = qs.User_decode(b) \
         print(u.id, u.name, u.role, u.emails[1], u.emails[2]) \
         print(qs.User_text(u)) \
-    '
+    ' < /dev/null
 
 # Greeter end-to-end via pb.grpc.loopback (all 4 streaming flavors).
 grpc-loopback:
