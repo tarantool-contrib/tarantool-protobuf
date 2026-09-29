@@ -171,7 +171,11 @@
 --   the datetime range or a string/bytes value that is not a uuid for a
 --   uuid column.
 -- * A map<K,V> is written in the order `pairs` yields the decoded map, so
---   a multi-key map is not guaranteed to come back in wire order.
+--   a multi-key map is not guaranteed to come back in wire order. The
+--   same holds for the keys of a message laid out as a map. The C decoder
+--   (PB_ENABLE_C=1) writes a fixed order instead: message keys by
+--   ascending field number, map entries by first appearance on the wire.
+--   Every entry and every value is the same either way.
 -- * A non-nullable column with no proto field makes decode raise.
 local M = {}
 
