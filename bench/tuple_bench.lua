@@ -14,8 +14,8 @@
 --           limit = n})`, then a RangeResponse (header, repeated KeyValue
 --           kvs, count, more) on the wire.
 --             A     per row: tuple:unpack(), NULL lease -> 0, NULL value
---                   -> '', a KeyValue table; then pb.encode of the
---                   response (see range_ops for why in two parts).
+--                   -> '', a KeyValue table; then one pb.encode of the
+--                   whole response.
 --             cand  pb.encode of the response without kvs, concatenated
 --                   with conv:encode_repeated(2, tuples).
 --           `select` times the index:select alone, so the share of the
@@ -291,22 +291,8 @@ local function range_ops(space, conv, base, limit)
         return kvs
     end
 
-    -- The store encodes the whole response in one pb.encode. The C codec
-    -- refuses that once the response outgrows its buffer twice (about
-    -- 8 KiB; "message field requires a table value"), so baseline A
-    -- encodes the response without kvs and the kvs on their own and
-    -- concatenates them: the same split the candidate makes, so the two
-    -- differ only in how the rows become wire bytes.
+    -- The store encodes the whole response in one pb.encode.
     local function baseline(i)
-        local tuples = index:select(keys[i % 256 + 1], opts)
-        local kvs = kv_tables(tuples)
-        return pb.encode(RangeResponse, {header = header(base),
-                                         count = #kvs, more = false})
-            .. pb.encode(RangeResponse, {kvs = kvs})
-    end
-
-    -- The single pb.encode, run in the self-check only.
-    local function whole(i)
         local tuples = index:select(keys[i % 256 + 1], opts)
         local kvs = kv_tables(tuples)
         return pb.encode(RangeResponse, {header = header(base), kvs = kvs,
@@ -320,22 +306,10 @@ local function range_ops(space, conv, base, limit)
             .. conv:encode_repeated(KVS_FIELD, tuples)
     end
 
-    return select_only, baseline, candidate, whole
+    return select_only, baseline, candidate
 end
 
-local function check_range(baseline, candidate, whole, limit)
-    local ok, err = pcall(whole, 0)
-    if ok then
-        if pb.encode(RangeResponse, pb.decode(RangeResponse, err))
-                ~= pb.encode(RangeResponse,
-                             pb.decode(RangeResponse, baseline(0))) then
-            error('self-check failed: split baseline differs from the '
-                  .. 'single pb.encode')
-        end
-    else
-        print(string.format('  note: the single pb.encode of the %d-row '
-                            .. 'response fails: %s', limit, tostring(err)))
-    end
+local function check_range(baseline, candidate, limit)
     for _, i in ipairs({0, 1, 77, 255}) do
         local a = pb.decode(RangeResponse, baseline(i))
         local c = pb.decode(RangeResponse, candidate(i))
@@ -367,9 +341,9 @@ local function bench_range(space, conv, base)
                         'A/cand', 'excl', 'sel%A', 'sel%cand', 'A B/op',
                         'cand B/op'))
     for _, limit in ipairs(SIZES) do
-        local select_only, baseline, candidate, whole =
+        local select_only, baseline, candidate =
             range_ops(space, conv, base, limit)
-        check_range(baseline, candidate, whole, limit)
+        check_range(baseline, candidate, limit)
         local iters = math.floor(200000 / limit)
         local s = measure(select_only, iters)
         local a = measure(baseline, iters)

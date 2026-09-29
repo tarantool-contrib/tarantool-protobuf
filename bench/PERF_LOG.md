@@ -74,13 +74,16 @@ are above 2^32 (5-byte varints). The converter binds `KeyValue` with
 
 - **Range**: `index:select(key, {iterator = 'GE', limit = n})`, then a
   RangeResponse (header, repeated KeyValue kvs, count, more). A: per
-  row `tuple:unpack()` -> KeyValue table -> `pb.encode`; cand:
-  `conv:encode_repeated(2, tuples)`. Both encode the response without
-  kvs with one `pb.encode` and append the kvs: the C codec's
-  `pb.encode` refuses the whole response once it passes about 8 KiB
-  (`message field requires a table value`, a message field followed by
-  a large repeated message field), so A encodes in the same two parts
-  as the candidate. `select` is `index:select` alone.
+  row `tuple:unpack()` -> KeyValue table, then one `pb.encode` of the
+  whole response; cand: `pb.encode` of the response without kvs, with
+  `conv:encode_repeated(2, tuples)` appended. The numbers below were
+  taken while the C codec's `pb.encode` still refused the whole
+  response past about 8 KiB (a message field followed by a large
+  repeated message field lost its buffer's stack slot, since fixed),
+  so their A encoded in the same two parts as the candidate: the
+  response without kvs, then the kvs on their own. That split costs
+  the same per row, so the rows' figures stand. `select` is
+  `index:select` alone.
 - **Put**: 1,000 distinct KeyValue messages, one row per op. B:
   `pb.decode` -> table -> `space:replace{...}`; cand: `conv:replace`.
   Decode-only: `pb.decode` alone, `pb.decode` + `box.tuple.new`,
