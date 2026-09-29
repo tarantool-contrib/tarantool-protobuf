@@ -13,8 +13,15 @@ local uuid = require('uuid')
 local datetime = require('datetime')
 local decimal = require('decimal')
 local varbinary = require('varbinary')
+local fiber = require('fiber')
 local pb = require('pb')
 local helper = require('tuple_helper')
+
+-- The corpus loops run long without yielding, and box refuses DDL to a
+-- fiber past its time slice (FiberSliceIsExceeded): yield now and then.
+local function pace(k)
+    if k % 50 == 0 then fiber.yield() end
+end
 
 local c = pb.c_runtime
 local lua = pb.tuple._lua
@@ -757,6 +764,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
         for _, case in ipairs(cases) do
             local conv = bind(case[1], case[2], case[3])
             for k = 1, 600 do
+                pace(k)
                 local chaos = k % 2 == 0 and 0 or 0.03
                 local row = gen_row(conv, case[3], chaos)
                 local res = check_parity(conv, row, case[2] .. ' row ' .. k)
@@ -1395,6 +1403,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
         local count = {ok = 0, err = 0}
         for _, cv in ipairs(decode_convs(mode)) do
             for k = 1, 400 do
+                pace(k)
                 local bytes = gen_wire(cv.desc, 0)
                 if k % 3 == 0 then bytes = mangle(bytes) end
                 local res = check_decode(cv.conv, bytes, string.format(
@@ -1424,6 +1433,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
             local econv = pb.tuple.bind(case[1], s)
             local dconv = convs[case[4]].conv
             for k = 1, 300 do
+                pace(k)
                 local row = gen_row(econv, case[3], k % 2 == 0 and 0 or 0.02)
                 local ok, bytes = pcall(lua.encode, econv, row)
                 if ok then
