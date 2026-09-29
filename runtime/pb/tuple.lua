@@ -107,6 +107,57 @@
 --                        together: another space that reuses the id is
 --                        not the bound one) or its new format no longer
 --                        binds
+--   conv:encode(tuple)   -> wire bytes of the message the tuple holds
+--   conv:encode_repeated(field_no, tuples)
+--                        -> for each tuple: the tag of `field_no` (LEN), the
+--                           length, the encoded tuple. Splices rows into an
+--                           enclosing message as a `repeated` field.
+--   conv:decode(bytes)   -> box.tuple laid out per the space format
+--   conv:insert(bytes), conv:replace(bytes)
+--                        -> decode, then space:insert / space:replace
+-- Every method first calls _check_schema.
+--
+-- Conversion rules
+-- ----------------
+-- Tuple -> wire (encode) reads the tuple's msgpack and walks the plan:
+-- * Fields are written in ascending field-number order at every level,
+--   whatever the key order inside the tuple's maps. (The descriptor codec
+--   writes declaration order, so the tuple path does not go through it.)
+-- * NULL (or a column missing from the end of the tuple) is an unset
+--   field. An implicit-presence field holding its proto3 default is not
+--   written; a field with explicit presence is written whenever it is not
+--   NULL. Two non-NULL members of one oneof are an error.
+-- * The entries of a map<K,V> field are written in the order of the keys
+--   in the tuple's msgpack map. A key or value equal to its proto3 default
+--   is left out of the entry (message values are always written).
+-- * A `raw` message is written as tag + length + the stored bytes verbatim.
+-- * Per-value checks: the msgpack type must suit the proto type (integers
+--   for integer kinds, integers or floats for double/float, str or bin for
+--   string/bytes, a uuid for a uuid column, a datetime for Timestamp, a
+--   map / array for a message or repeated field); integers must fit the
+--   proto type; a key in a message map must name a field; an array
+--   position with no field must be NULL; NULL is not allowed as an
+--   element of a repeated field or as a map key or value.
+--
+-- Wire -> tuple (decode) goes through the descriptor codec, then lays the
+-- decoded message out per the plan:
+-- * Unknown wire fields are skipped. Defaults of implicit-presence fields
+--   are written out (0, '', false, empty array, empty map), at every
+--   level; an unset field with explicit presence is NULL in the tuple (a
+--   missing key in a nested map). For a oneof, the last member on the wire
+--   wins and the others are NULL.
+-- * A `raw` column receives the field's payload bytes verbatim; a field
+--   given more than once receives the payloads joined, which is protobuf's
+--   merge.
+-- * Values are written in the msgpack type their column needs (bin for
+--   varbinary, a double for `double`, a uuid for `uuid`); in untyped
+--   slots `bytes` becomes bin and `string` str. An integer that does not
+--   fit its column (a negative one in `unsigned`, one above 2^63-1 in
+--   `integer`) is an error, as is a Timestamp outside the datetime range
+--   or a string/bytes value that is not a uuid for a uuid column.
+-- * A map<K,V> is written in the order `pairs` yields the decoded map, so
+--   a multi-key map is not guaranteed to come back in wire order.
+-- * A non-nullable column with no proto field makes decode raise.
 local M = {}
 
 -- An `array` column holds a message positioned by field number, so the
@@ -666,5 +717,783 @@ function M.bind(desc, space, opts)
     conv.plan = compile_plan(conv, space)
     return conv
 end
+
+-- ===========================================================================
+-- Conversion through the Lua codec
+--
+-- The reference implementation of the conversion rules in the header. It
+-- walks the tuple's msgpack itself (a Lua table would lose the key order
+-- of maps) and writes the wire bytes with pb.wire's typed helpers in plan
+-- order. Everything here iterates the plan's arrays with a numeric `for`.
+-- ===========================================================================
+
+local ffi      = require('ffi')
+local msgpack  = require('msgpack')
+local uuid     = require('uuid')
+local datetime = require('datetime')
+local codec    = require('pb.codec')
+local wire     = require('pb.wire')
+local wkt      = require('pb.wkt')
+
+local NULL = box.NULL
+local byte, sub = string.byte, string.sub
+local concat = table.concat
+local encode_varint = wire.encode_varint
+local encode_tag = wire.encode_tag
+local TYPE_INFO = wire.TYPE_INFO
+local WIRE_VARINT, WIRE_LEN = wire.WIRE_VARINT, wire.WIRE_LEN
+local RECURSION_LIMIT = wire.RECURSION_LIMIT
+local MAX_FIELD_NO = 536870911  -- 2^29 - 1
+
+local MAP_MT = {__serialize = 'map'}
+local ARRAY_MT = {__serialize = 'array'}
+
+-- MP_BIN can only be produced from Lua through the varbinary module
+-- (Tarantool 3.0+). Loaded on first use, so `require('pb')` keeps working
+-- where it is missing; decoding into a binary slot there raises.
+local varbinary
+local function to_varbinary(s)
+    if varbinary == nil then
+        local ok, mod = pcall(require, 'varbinary')
+        if not ok then
+            error('pb.tuple: writing binary data into a tuple needs the '
+                  .. 'varbinary module (Tarantool 3.0 or later)', 0)
+        end
+        varbinary = mod
+    end
+    return varbinary.new(s)
+end
+
+-- ---------------------------------------------------------------------------
+-- msgpack reading
+-- ---------------------------------------------------------------------------
+
+local MP_NIL, MP_BOOL, MP_UINT, MP_INT, MP_FLOAT, MP_STR, MP_BIN, MP_ARRAY,
+      MP_MAP, MP_EXT = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+local MP_CLASS_NAME = {'nil', 'boolean', 'unsigned integer', 'integer',
+                       'float', 'string', 'binary', 'array', 'map'}
+local MP_EXT_UUID, MP_EXT_DATETIME = 2, 4
+local MP_EXT_NAME = {[1] = 'decimal', [2] = 'uuid', [3] = 'error',
+                     [4] = 'datetime', [6] = 'interval'}
+
+local function be16(s, p)
+    local a, b = byte(s, p, p + 1)
+    return a * 0x100 + b
+end
+
+local function be32(s, p)
+    local a, b, c, d = byte(s, p, p + 3)
+    return ((a * 0x100 + b) * 0x100 + c) * 0x100 + d
+end
+
+local function ext_type(s, p)
+    local x = byte(s, p)
+    if x >= 0x80 then x = x - 0x100 end
+    return x
+end
+
+-- Head of the msgpack value at s[p]: class, n, body[, ext type].
+--   str/bin: n = byte length, body = first payload byte
+--   array/map: n = element / pair count, body = first element
+--   ext: n = payload length, body = first payload byte
+--   scalars: n = 0, body = p (read them with msgpack.decode)
+local function mp_head(s, p)
+    local c = byte(s, p)
+    if c <= 0x7f then return MP_UINT, 0, p end
+    if c <= 0x8f then return MP_MAP, c - 0x80, p + 1 end
+    if c <= 0x9f then return MP_ARRAY, c - 0x90, p + 1 end
+    if c <= 0xbf then return MP_STR, c - 0xa0, p + 1 end
+    if c >= 0xe0 then return MP_INT, 0, p end
+    if c == 0xc0 then return MP_NIL, 0, p end
+    if c == 0xc2 or c == 0xc3 then return MP_BOOL, 0, p end
+    if c == 0xc4 then return MP_BIN, byte(s, p + 1), p + 2 end
+    if c == 0xc5 then return MP_BIN, be16(s, p + 1), p + 3 end
+    if c == 0xc6 then return MP_BIN, be32(s, p + 1), p + 5 end
+    if c == 0xc7 then return MP_EXT, byte(s, p + 1), p + 3, ext_type(s, p + 2) end
+    if c == 0xc8 then return MP_EXT, be16(s, p + 1), p + 4, ext_type(s, p + 3) end
+    if c == 0xc9 then return MP_EXT, be32(s, p + 1), p + 6, ext_type(s, p + 5) end
+    if c == 0xca or c == 0xcb then return MP_FLOAT, 0, p end
+    if c <= 0xcf then return MP_UINT, 0, p end
+    if c <= 0xd3 then return MP_INT, 0, p end
+    if c <= 0xd8 then
+        return MP_EXT, bit.lshift(1, c - 0xd4), p + 2, ext_type(s, p + 1)
+    end
+    if c == 0xd9 then return MP_STR, byte(s, p + 1), p + 2 end
+    if c == 0xda then return MP_STR, be16(s, p + 1), p + 3 end
+    if c == 0xdb then return MP_STR, be32(s, p + 1), p + 5 end
+    if c == 0xdc then return MP_ARRAY, be16(s, p + 1), p + 3 end
+    if c == 0xdd then return MP_ARRAY, be32(s, p + 1), p + 5 end
+    if c == 0xde then return MP_MAP, be16(s, p + 1), p + 3 end
+    if c == 0xdf then return MP_MAP, be32(s, p + 1), p + 5 end
+    error(string.format('pb.tuple: invalid msgpack byte 0x%02x', c), 0)
+end
+
+-- Position just past the msgpack value at s[p].
+local function mp_next(s, p)
+    local _, np = msgpack.decode(s, p)
+    return np
+end
+
+local function class_name(cls, ext)
+    if cls == MP_EXT then
+        return MP_EXT_NAME[ext] or ('extension type ' .. tostring(ext))
+    end
+    return MP_CLASS_NAME[cls]
+end
+
+-- ---------------------------------------------------------------------------
+-- Per-value errors
+-- ---------------------------------------------------------------------------
+
+-- `elem` narrows the location inside field i: nil (the field's own
+-- value), an element index of a repeated field, or 'map key' /
+-- 'map value'.
+local function value_error(node, i, elem, fmt, ...)
+    local col = node.column_name[i]
+    local where
+    if col ~= '' then
+        where = string.format("field '%s' of %s (column '%s')",
+                              node.name[i], node.message, col)
+    else
+        where = string.format("field '%s' of %s", node.name[i], node.message)
+    end
+    if type(elem) == 'number' then
+        where = where .. ': element ' .. elem
+    elseif elem ~= nil then
+        where = where .. ': ' .. elem
+    end
+    error('pb.tuple: ' .. where .. ': ' .. string.format(fmt, ...), 0)
+end
+
+local function type_error(node, i, elem, what, cls, ext)
+    value_error(node, i, elem, 'expected %s, got %s', what,
+                class_name(cls, ext))
+end
+
+-- ---------------------------------------------------------------------------
+-- Scalars
+-- ---------------------------------------------------------------------------
+
+local I32_MIN, I32_MAX = -2147483648, 2147483647
+local U32_MAX = 4294967295
+local I64_MAX = 9223372036854775807ULL
+
+-- Integer kinds and the range their values must fit.
+local INT_RANGE = {
+    int32 = 's32', sint32 = 's32', sfixed32 = 's32', enum = 's32',
+    uint32 = 'u32', fixed32 = 'u32',
+    int64 = 's64', sint64 = 's64', sfixed64 = 's64',
+    uint64 = 'u64', fixed64 = 'u64',
+}
+
+-- Whether integer `v`, read from a msgpack value of class `cls`, fits
+-- `range`. MP_UINT values are never negative (possibly uint64 cdata), so
+-- only their upper bound is checked; comparing a uint64 cdata against a
+-- negative bound would convert the bound to uint64.
+local function int_fits(range, v, cls)
+    if range == 's32' then
+        if cls == MP_UINT then return v <= I32_MAX end
+        return v >= I32_MIN and v <= I32_MAX
+    elseif range == 'u32' then
+        if cls == MP_UINT then return v <= U32_MAX end
+        return v >= 0 and v <= U32_MAX
+    elseif range == 's64' then
+        if cls == MP_UINT then return v <= I64_MAX end
+        return true
+    end
+    return cls == MP_UINT or v >= 0
+end
+
+-- Read the msgpack value at s[p] as a value of proto scalar `kind` bound
+-- with conversion `conv`. Returns the value in the form pb.wire's encoder
+-- for `kind` takes, and the position past it.
+local function read_scalar(node, i, elem, kind, conv, s, p)
+    local cls, n, body, ext = mp_head(s, p)
+    local range = INT_RANGE[kind]
+    if range ~= nil then
+        if cls ~= MP_UINT and cls ~= MP_INT then
+            type_error(node, i, elem, 'an integer', cls, ext)
+        end
+        local v, np = msgpack.decode(s, p)
+        if not int_fits(range, v, cls) then
+            value_error(node, i, elem, 'value %s is out of range for %s',
+                        tostring(v), kind)
+        end
+        return v, np
+    elseif kind == 'double' or kind == 'float' then
+        if cls == MP_FLOAT then
+            return msgpack.decode(s, p)
+        elseif cls == MP_UINT or cls == MP_INT then
+            local v, np = msgpack.decode(s, p)
+            return tonumber(v), np
+        end
+        type_error(node, i, elem, 'a number', cls, ext)
+    elseif kind == 'bool' then
+        if cls ~= MP_BOOL then
+            type_error(node, i, elem, 'a boolean', cls, ext)
+        end
+        return byte(s, p) == 0xc3, p + 1
+    elseif kind == 'string' or kind == 'bytes' then
+        if conv == 'uuid_text' or conv == 'uuid_bin' then
+            if cls ~= MP_EXT or ext ~= MP_EXT_UUID or n ~= 16 then
+                type_error(node, i, elem, 'a uuid', cls, ext)
+            end
+            -- msgpack stores a uuid as its 16 bytes in RFC 4122 order.
+            local b = sub(s, body, body + 15)
+            if conv == 'uuid_bin' then return b, body + 16 end
+            return uuid.frombin(b, 'b'):str(), body + 16
+        end
+        if cls ~= MP_STR and cls ~= MP_BIN then
+            type_error(node, i, elem,
+                       kind == 'string' and 'a string' or 'binary data',
+                       cls, ext)
+        end
+        return sub(s, body, body + n - 1), body + n
+    end
+    error('pb.tuple: no scalar conversion for kind ' .. tostring(kind), 0)
+end
+
+-- proto3 default test, for elision. -0.0 is not the default: it encodes
+-- to different bytes.
+local function is_default(kind, v)
+    if kind == 'string' or kind == 'bytes' then return v == '' end
+    if kind == 'bool' then return v == false end
+    if kind == 'double' or kind == 'float' then
+        return v == 0 and 1 / v > 0
+    end
+    return v == 0
+end
+
+-- Wire bytes of a scalar value, without the tag.
+local function scalar_bytes(kind, v)
+    if kind == 'enum' then return encode_varint(v) end
+    return TYPE_INFO[kind].encode(v)
+end
+
+local function value_wire(kind)
+    if kind == 'enum' then return WIRE_VARINT end
+    local info = TYPE_INFO[kind]
+    if info ~= nil then return info.wire end
+    return WIRE_LEN
+end
+
+-- Timestamp body of the datetime at s[p], and the position past it.
+local function read_timestamp(node, i, elem, s, p)
+    local cls, _, _, ext = mp_head(s, p)
+    if cls ~= MP_EXT or ext ~= MP_EXT_DATETIME then
+        type_error(node, i, elem, 'a datetime', cls, ext)
+    end
+    local dt, np = msgpack.decode(s, p)
+    return wkt.Timestamp_encode(dt), np
+end
+
+-- ---------------------------------------------------------------------------
+-- Per-node lookup data for the Lua path, derived from the plan once and
+-- kept beside it (weak keys: it goes away with the plan).
+-- ---------------------------------------------------------------------------
+
+local AUX = setmetatable({}, {__mode = 'k'})
+
+local function aux_of(node)
+    local a = AUX[node]
+    if a ~= nil then return a end
+    a = {
+        tag = {},      -- [i] the field's tag (LEN for packed and messages)
+        key_tag = {},  -- [i] map<K,V>: tag of an entry's key
+        val_tag = {},  -- [i] map<K,V>: tag of an entry's value
+        packed = {},   -- [i] repeated scalar written packed
+        index = {},    -- map layout: field name -> i
+        at = {},       -- array layout: array position -> i
+        raw_at = {},   -- field number -> i, for `raw` fields
+        has_raw = false,
+        width = 0,     -- tuple/array layout: largest column/position
+    }
+    for i = 1, node.n do
+        local kind, repr = node.kind[i], node.repr[i]
+        local info = TYPE_INFO[kind]
+        local packed = repr == 'list' and node.packed[i]
+            and (kind == 'enum' or (info ~= nil and info.packable))
+        a.packed[i] = packed and true or false
+        local wt = WIRE_LEN
+        if not packed and (repr == 'scalar' or repr == 'list') then
+            wt = value_wire(kind)
+        end
+        a.tag[i] = encode_tag(node.field_no[i], wt)
+        if repr == 'dict' then
+            a.key_tag[i] = encode_tag(1, value_wire(node.key_kind[i]))
+            a.val_tag[i] = encode_tag(2, value_wire(node.value_kind[i]))
+        end
+        a.index[node.name[i]] = i
+        if node.layout == 'array' then a.at[node.column[i]] = i end
+        if repr == 'raw' then
+            a.has_raw = true
+            a.raw_at[node.field_no[i]] = i
+        end
+        if node.column[i] > a.width then a.width = node.column[i] end
+    end
+    AUX[node] = a
+    return a
+end
+
+-- ---------------------------------------------------------------------------
+-- Encode: tuple -> wire
+-- ---------------------------------------------------------------------------
+
+local encode_message
+local emit_fields
+
+local function emit_len(out, tag, body)
+    local n = #out
+    out[n + 1] = tag
+    out[n + 2] = encode_varint(#body)
+    out[n + 3] = body
+end
+
+local function emit_list(node, i, s, p, out, depth, a)
+    local cls, count, q, ext = mp_head(s, p)
+    if cls ~= MP_ARRAY then
+        type_error(node, i, nil, 'an array', cls, ext)
+    end
+    if count == 0 then return end
+    local kind, tag = node.kind[i], a.tag[i]
+    if kind == 'message' then
+        local child = node.sub[i]
+        for k = 1, count do
+            local body
+            body, q = encode_message(child, s, q, depth + 1, node, i, k)
+            emit_len(out, tag, body)
+        end
+    elseif kind == 'timestamp' then
+        for k = 1, count do
+            local body
+            body, q = read_timestamp(node, i, k, s, q)
+            emit_len(out, tag, body)
+        end
+    elseif a.packed[i] then
+        local parts = {}
+        for k = 1, count do
+            local v
+            v, q = read_scalar(node, i, k, kind, 'any', s, q)
+            parts[k] = scalar_bytes(kind, v)
+        end
+        emit_len(out, tag, concat(parts))
+    else
+        for k = 1, count do
+            local v
+            v, q = read_scalar(node, i, k, kind, 'any', s, q)
+            local n = #out
+            out[n + 1] = tag
+            out[n + 2] = scalar_bytes(kind, v)
+        end
+    end
+end
+
+-- Entries go out in the order of the keys in the msgpack map.
+local function emit_dict(node, i, s, p, out, depth, a)
+    local cls, count, q, ext = mp_head(s, p)
+    if cls ~= MP_MAP then
+        type_error(node, i, nil, 'a map', cls, ext)
+    end
+    local kkind, vkind = node.key_kind[i], node.value_kind[i]
+    local tag, ktag, vtag = a.tag[i], a.key_tag[i], a.val_tag[i]
+    for _ = 1, count do
+        local entry = {}
+        local k, v
+        k, q = read_scalar(node, i, 'map key', kkind, 'any', s, q)
+        if not is_default(kkind, k) then
+            entry[1] = ktag
+            entry[2] = scalar_bytes(kkind, k)
+        end
+        if vkind == 'message' then
+            v, q = encode_message(node.sub[i], s, q, depth + 1, node, i,
+                                  'map value')
+            emit_len(entry, vtag, v)
+        elseif vkind == 'timestamp' then
+            v, q = read_timestamp(node, i, 'map value', s, q)
+            emit_len(entry, vtag, v)
+        else
+            v, q = read_scalar(node, i, 'map value', vkind, 'any', s, q)
+            if not is_default(vkind, v) then
+                local n = #entry
+                entry[n + 1] = vtag
+                entry[n + 2] = scalar_bytes(vkind, v)
+            end
+        end
+        emit_len(out, tag, concat(entry))
+    end
+end
+
+-- Write field i, whose value at s[p] is not NULL.
+local function emit_value(node, i, s, p, out, depth, a)
+    local repr, kind = node.repr[i], node.kind[i]
+    if repr == 'scalar' then
+        if kind == 'timestamp' then
+            emit_len(out, a.tag[i], (read_timestamp(node, i, nil, s, p)))
+            return
+        end
+        local v = read_scalar(node, i, nil, kind, node.conv[i], s, p)
+        if node.optional[i] or not is_default(kind, v) then
+            local n = #out
+            out[n + 1] = a.tag[i]
+            out[n + 2] = scalar_bytes(kind, v)
+        end
+    elseif repr == 'msg_map' or repr == 'msg_array' then
+        emit_len(out, a.tag[i],
+                 (encode_message(node.sub[i], s, p, depth + 1, node, i, nil)))
+    elseif repr == 'raw' then
+        local cls, n, body, ext = mp_head(s, p)
+        if cls ~= MP_BIN then
+            type_error(node, i, nil, 'binary data', cls, ext)
+        end
+        emit_len(out, a.tag[i], sub(s, body, body + n - 1))
+    elseif repr == 'list' then
+        emit_list(node, i, s, p, out, depth, a)
+    else
+        emit_dict(node, i, s, p, out, depth, a)
+    end
+end
+
+-- Write the fields of `node` in plan order. fpos[i] is the position of
+-- field i's value in `s`, or nil when the slot is missing.
+emit_fields = function(node, a, s, fpos, out, depth)
+    local oneof = node.oneof
+    local seen
+    for i = 1, node.n do
+        local p = fpos[i]
+        if p ~= nil and byte(s, p) ~= 0xc0 then
+            local grp = oneof[i]
+            if grp ~= 0 then
+                if seen == nil then seen = {} end
+                local other = seen[grp]
+                if other ~= nil then
+                    error(string.format("pb.tuple: oneof '%s' of %s has more "
+                        .. "than one member set: '%s' and '%s'",
+                        node.oneof_names[grp], node.message, node.name[other],
+                        node.name[i]), 0)
+                end
+                seen[grp] = i
+            end
+            emit_value(node, i, s, p, out, depth, a)
+        end
+    end
+end
+
+-- Body of the nested message at s[p] (a map or an array per the node's
+-- layout) and the position past it. `parent`, `pi`, `elem` locate the
+-- value for error messages.
+encode_message = function(node, s, p, depth, parent, pi, elem)
+    if depth > RECURSION_LIMIT then
+        error(string.format('pb.tuple: %s nests deeper than %d levels',
+                            parent.message, RECURSION_LIMIT), 0)
+    end
+    local a = aux_of(node)
+    local cls, count, q, ext = mp_head(s, p)
+    local fpos = {}
+    if node.layout == 'map' then
+        if cls ~= MP_MAP then
+            type_error(parent, pi, elem, 'a map', cls, ext)
+        end
+        for _ = 1, count do
+            local kcls, kn, kbody, kext = mp_head(s, q)
+            if kcls ~= MP_STR then
+                error(string.format('pb.tuple: a %s map has a key of type %s, '
+                                    .. 'field names are strings', node.message,
+                                    class_name(kcls, kext)), 0)
+            end
+            local key = sub(s, kbody, kbody + kn - 1)
+            local i = a.index[key]
+            if i == nil then
+                error(string.format("pb.tuple: unknown key '%s' in a %s map",
+                                    key, node.message), 0)
+            end
+            if fpos[i] ~= nil then
+                error(string.format("pb.tuple: key '%s' appears twice in a "
+                                    .. '%s map', key, node.message), 0)
+            end
+            q = kbody + kn
+            fpos[i] = q
+            q = mp_next(s, q)
+        end
+    else
+        if cls ~= MP_ARRAY then
+            type_error(parent, pi, elem, 'an array', cls, ext)
+        end
+        for pos = 1, count do
+            local i = a.at[pos]
+            if i ~= nil then
+                fpos[i] = q
+            elseif byte(s, q) ~= 0xc0 then
+                error(string.format('pb.tuple: position %d of a %s array has '
+                                    .. 'no field', pos, node.message), 0)
+            end
+            q = mp_next(s, q)
+        end
+    end
+    local out = {}
+    emit_fields(node, a, s, fpos, out, depth)
+    return concat(out), q
+end
+
+local function lua_encode(conv, tuple)
+    if not box.tuple.is(tuple) then
+        error('pb.tuple: expected a box.tuple, got ' .. type(tuple), 0)
+    end
+    local plan = conv.plan
+    local a = aux_of(plan)
+    -- A tuple encodes to its own msgpack array.
+    local s = msgpack.encode(tuple)
+    local _, count, q = mp_head(s, 1)
+    local cols = {}
+    local last = count < a.width and count or a.width
+    for c = 1, last do
+        cols[c] = q
+        q = mp_next(s, q)
+    end
+    local fpos = {}
+    for i = 1, plan.n do fpos[i] = cols[plan.column[i]] end
+    local out = {}
+    emit_fields(plan, a, s, fpos, out, 0)
+    return concat(out)
+end
+
+local function lua_encode_repeated(conv, field_no, tuples)
+    if type(field_no) ~= 'number' or field_no ~= math.floor(field_no)
+            or field_no < 1 or field_no > MAX_FIELD_NO then
+        error(string.format('pb.tuple: field number must be an integer in '
+                            .. '[1, %d], got %s', MAX_FIELD_NO,
+                            tostring(field_no)), 0)
+    end
+    if type(tuples) ~= 'table' then
+        error('pb.tuple: tuples must be an array of box.tuple, got '
+              .. type(tuples), 0)
+    end
+    local tag = encode_tag(field_no, WIRE_LEN)
+    local out, n = {}, 0
+    for k = 1, #tuples do
+        local b = lua_encode(conv, tuples[k])
+        out[n + 1] = tag
+        out[n + 2] = encode_varint(#b)
+        out[n + 3] = b
+        n = n + 3
+    end
+    return concat(out, '', 1, n)
+end
+
+-- ---------------------------------------------------------------------------
+-- Decode: wire -> tuple
+-- ---------------------------------------------------------------------------
+
+local DEFAULT = {
+    int32 = 0, int64 = 0, uint32 = 0, uint64 = 0, sint32 = 0, sint64 = 0,
+    fixed32 = 0, fixed64 = 0, sfixed32 = 0, sfixed64 = 0, enum = 0,
+    double = 0, float = 0, bool = false, string = '', bytes = '',
+}
+
+-- Tuple value of scalar `v` (proto `kind`) for a slot of type `ctype`
+-- bound with `conv`. nil means NULL.
+local function tuple_scalar(node, i, elem, kind, conv, ctype, v)
+    local range = INT_RANGE[kind]
+    if range ~= nil then
+        if ctype == 'unsigned' and v < 0 then
+            value_error(node, i, elem, 'value %s does not fit column type '
+                        .. 'unsigned', tostring(v))
+        end
+        if ctype == 'integer' and range == 'u64' and v > I64_MAX then
+            value_error(node, i, elem, 'value %s does not fit column type '
+                        .. 'integer', tostring(v))
+        end
+        return v
+    elseif kind == 'double' or kind == 'float' then
+        -- A `double` column refuses a msgpack integer, which is how a
+        -- whole Lua number would be written.
+        if ctype == 'double' then return ffi.cast('double', v) end
+        return v
+    elseif kind == 'bool' then
+        return v
+    end
+    -- string / bytes
+    if conv == 'uuid_text' then
+        if v == '' then return nil end
+        local u = uuid.fromstr(v)
+        if u == nil or u:str() ~= v then
+            value_error(node, i, elem, "'%s' is not a canonical uuid", v)
+        end
+        return u
+    elseif conv == 'uuid_bin' then
+        if v == '' then return nil end
+        if #v ~= 16 then
+            value_error(node, i, elem, 'a uuid is 16 bytes, got %d', #v)
+        end
+        return uuid.frombin(v, 'b')
+    end
+    if ctype == 'varbinary' then return to_varbinary(v) end
+    if ctype == 'string' then return v end
+    -- untyped slot: the msgpack type follows the proto type
+    if kind == 'bytes' then return to_varbinary(v) end
+    return v
+end
+
+local function tuple_timestamp(node, i, elem, v)
+    -- The codec returns a {seconds, nanos} table for a Timestamp that
+    -- datetime cannot represent.
+    if not datetime.is_datetime(v) then
+        value_error(node, i, elem, 'Timestamp is outside the datetime range')
+    end
+    return v
+end
+
+local tuple_message
+
+local function tuple_element(node, i, elem, kind, v)
+    if kind == 'message' then return tuple_message(node.sub[i], v) end
+    if kind == 'timestamp' then return tuple_timestamp(node, i, elem, v) end
+    return tuple_scalar(node, i, elem, kind, 'any', 'any', v)
+end
+
+-- Tuple value of field i given its decoded value `v` (nil when unset).
+-- nil means NULL. `raw` fields are the caller's.
+local function tuple_value(node, i, v)
+    local repr, kind = node.repr[i], node.kind[i]
+    if repr == 'scalar' then
+        if v == nil then
+            if node.optional[i] or kind == 'timestamp' then return nil end
+            v = DEFAULT[kind]
+        end
+        if kind == 'timestamp' then return tuple_timestamp(node, i, nil, v) end
+        return tuple_scalar(node, i, nil, kind, node.conv[i],
+                            node.column_type[i], v)
+    elseif repr == 'msg_map' or repr == 'msg_array' then
+        if v == nil then return nil end
+        return tuple_message(node.sub[i], v)
+    elseif repr == 'list' then
+        local arr = setmetatable({}, ARRAY_MT)
+        if v ~= nil then
+            for k = 1, #v do arr[k] = tuple_element(node, i, k, kind, v[k]) end
+        end
+        return arr
+    end
+    -- dict. The codec hands a map<K,V> back as a Lua hash table, so this
+    -- is the one `pairs` of the conversion path.
+    local m = setmetatable({}, MAP_MT)
+    if v ~= nil then
+        local vkind = node.value_kind[i]
+        for key, val in pairs(v) do
+            m[key] = tuple_element(node, i, 'map value', vkind, val)
+        end
+    end
+    return m
+end
+
+tuple_message = function(node, v)
+    if node.layout == 'map' then
+        local m = setmetatable({}, MAP_MT)
+        for j = 1, node.n do
+            local name = node.name[j]
+            local tv = tuple_value(node, j, v[name])
+            if tv ~= nil then m[name] = tv end
+        end
+        return m
+    end
+    local arr = setmetatable({}, ARRAY_MT)
+    for pos = 1, aux_of(node).width do arr[pos] = NULL end
+    for j = 1, node.n do
+        local tv = tuple_value(node, j, v[node.name[j]])
+        if tv ~= nil then arr[node.column[j]] = tv end
+    end
+    return arr
+end
+
+-- Payload bytes of every `raw` field, verbatim: {[i] = bytes}. A field
+-- present more than once gets its payloads joined (protobuf's merge).
+local function collect_raw(a, bytes)
+    local parts = {}
+    local pos, len = 1, #bytes
+    while pos <= len do
+        local id, wt, np = wire.decode_tag(bytes, pos)
+        local i = a.raw_at[id]
+        if i ~= nil and wt == WIRE_LEN then
+            local payload
+            payload, pos = wire.decode_len(bytes, np)
+            local list = parts[i]
+            if list == nil then
+                list = {}
+                parts[i] = list
+            end
+            list[#list + 1] = payload
+        else
+            pos = wire.skip_field(bytes, np, wt, id)
+        end
+    end
+    return parts
+end
+
+local function lua_decode(conv, bytes)
+    if type(bytes) ~= 'string' then
+        error('pb.tuple: expected a string to decode, got ' .. type(bytes), 0)
+    end
+    local plan = conv.plan
+    local unbound = plan.unbound_nonnull_name
+    if #unbound > 0 then
+        error(string.format("pb.tuple: cannot decode %s into space '%s': "
+                            .. "column%s '%s' %s not nullable and no field "
+                            .. 'binds to %s', plan.message, conv.space_name,
+                            #unbound > 1 and 's' or '',
+                            concat(unbound, "', '"),
+                            #unbound > 1 and 'are' or 'is',
+                            #unbound > 1 and 'them' or 'it'), 0)
+    end
+    local msg = codec.decode(conv.desc, bytes)
+    local a = aux_of(plan)
+    local raw = a.has_raw and collect_raw(a, bytes) or nil
+    local row = {}
+    for c = 1, a.width do row[c] = NULL end
+    for i = 1, plan.n do
+        local tv
+        if plan.repr[i] == 'raw' then
+            local list = raw[i]
+            if list ~= nil then tv = to_varbinary(concat(list)) end
+        else
+            tv = tuple_value(plan, i, msg[plan.name[i]])
+        end
+        if tv ~= nil then row[plan.column[i]] = tv end
+    end
+    return row
+end
+
+-- ---------------------------------------------------------------------------
+-- Converter methods
+-- ---------------------------------------------------------------------------
+
+function Conv:encode(tuple)
+    self:_check_schema()
+    return lua_encode(self, tuple)
+end
+
+function Conv:encode_repeated(field_no, tuples)
+    self:_check_schema()
+    return lua_encode_repeated(self, field_no, tuples)
+end
+
+function Conv:decode(bytes)
+    self:_check_schema()
+    return box.tuple.new(lua_decode(self, bytes))
+end
+
+function Conv:insert(bytes)
+    self:_check_schema()
+    return box.space[self.space_id]:insert(lua_decode(self, bytes))
+end
+
+function Conv:replace(bytes)
+    self:_check_schema()
+    return box.space[self.space_id]:replace(lua_decode(self, bytes))
+end
+
+-- The Lua path on its own, for parity tests against other converters.
+M._lua = {
+    encode          = lua_encode,
+    encode_repeated = lua_encode_repeated,
+    decode          = lua_decode,
+}
 
 return M
