@@ -51,9 +51,16 @@ microbenchmark; same allocation profile.
 ### `pb.decode(desc, bytes) -> table`
 
 Decode wire bytes against `desc`. Returns a plain Lua table whose keys
-match field names. Defaults are filled in per proto3 semantics; absent
-explicit-optional fields stay `nil`. Unknown fields are concatenated
-into `t._unknown_fields` (raw bytes, re-emitted on encode).
+match field names. Only fields present on the wire get a key: a field
+that is not on the wire is `nil`, whatever its kind — scalar, enum,
+string, bytes, repeated, map, message, oneof member or explicit
+`optional` — and proto2 `[default = X]` values are not filled in
+either. Defaults are not materialized, so read an absent implicit-
+presence field as its default yourself (`t.count or 0`). A field that
+is on the wire holding its default (an explicit `0`, say) comes back
+with that value. Generated `M.Foo_decode` in both codegen modes and the
+C codec behave the same way. Unknown fields are concatenated into
+`t._unknown_fields` (raw bytes, re-emitted on encode).
 
 A singular message field that occurs more than once on the wire is
 merged, not replaced: scalars take the last value, repeated fields
