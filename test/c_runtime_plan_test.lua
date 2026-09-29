@@ -20,6 +20,23 @@ local function skip_if_no_c()
     end
 end
 
+-- `pb` falls back to the Lua codec when `require('pb.c_runtime')` fails,
+-- and every C group then skips instead of failing. Under PB_ENABLE_C=1
+-- that fallback would turn a broken C build into a green run of the Lua
+-- suite, so this group fails loudly with the load error instead.
+local g_loaded = t.group('c_runtime_loaded')
+
+function g_loaded.test_loaded_when_enabled()
+    if os.getenv('PB_ENABLE_C') ~= '1' then
+        t.skip('PB_ENABLE_C not set')
+    end
+    local ok, err = pcall(require, 'pb.c_runtime')
+    t.assert(ok, 'PB_ENABLE_C=1 but pb.c_runtime failed to load: ' ..
+        tostring(err))
+    t.assert_not_equals(c_runtime, nil,
+        'PB_ENABLE_C=1 but pb.c_runtime is nil')
+end
+
 -- Run each test against both codegen modes — c_plan is attached to the
 -- descriptor regardless of mode, so both pick up the same compile path.
 for _, mode in ipairs({'full', 'runtime'}) do
