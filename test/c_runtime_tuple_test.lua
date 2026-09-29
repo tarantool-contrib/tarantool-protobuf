@@ -800,6 +800,43 @@ for _, mode in ipairs({'full', 'runtime'}) do
         check_parity(conv, row)
     end
 
+    -- Errors raised in C carry no file:line prefix, however the C entry
+    -- point is called: as the Lua path's error(msg, 0), not luaL_error.
+    g.test_errors_carry_no_position = function()
+        local conv = bind(kv.Mixed_descriptor, 'ctup_mixed', MIXED_FORMAT)
+        local tp = conv._tplan
+        local function err_of(fn, ...)
+            local args = {...}
+            local ok, err = pcall(function()
+                local r = fn(unpack(args))   -- not a tail call
+                return r
+            end)
+            t.assert_not(ok)
+            return tostring(err)
+        end
+        local cases = {
+            {'pb.tuple: expected a box.tuple, got table',
+             c.tuple_encode, tp, {}},
+            {'pb.tuple: tuples must be an array of box.tuple, got string',
+             c.tuple_encode_repeated, tp, 2, 'rows'},
+            {'pb.tuple: expected a box.tuple, got table',
+             c.tuple_encode_repeated, tp, 2, {box.tuple.new({}), {}}},
+            {"pb.tuple: malformed plan of ?: 'n' is not a number",
+             c.tuple_compile, {}, conv.desc},
+            {'pb.tuple: cannot compile kv.Mixed for the C decoder: the '
+                .. 'plan and the descriptor disagree on a message',
+             c.tuple_compile, conv.plan, kv.Record_descriptor},
+        }
+        for _, case in ipairs(cases) do
+            t.assert_equals(err_of(unpack(case, 2)), case[1])
+        end
+        -- and through the converter methods, as the Lua path words them
+        t.assert_equals(err_of(conv.encode, conv, {}),
+                        err_of(lua.encode, conv, {}))
+        t.assert_equals(err_of(conv.encode_repeated, conv, 2, 'rows'),
+                        err_of(lua.encode_repeated, conv, 2, 'rows'))
+    end
+
     -- An extension type Tarantool's Lua msgpack decoder does not know is
     -- skipped where no field reads it (an unbound column, the value of a
     -- key that is about to be refused) and named where one does.

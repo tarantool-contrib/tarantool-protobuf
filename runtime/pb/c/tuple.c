@@ -47,12 +47,12 @@
  * own stack. A call that returns normally puts its scratch back in
  * env[1]. A call that raises never does: its scratch dies with its stack
  * frame and is collected, and the next call makes a new one. There is no
- * flag to reset, so a luaL_error longjmp cannot leave one stuck, and the
+ * flag to reset, so an error's longjmp cannot leave one stuck, and the
  * common path -- take the cached scratch, put it back -- allocates
  * nothing.
  *
  * Output goes to one enc_buf (c_plan.h): 4KB on the C stack, promoted to
- * Lua userdata on overflow, so a luaL_error mid-encode leaks nothing. A
+ * Lua userdata on overflow, so an error mid-encode leaks nothing. A
  * length-delimited body is written in place after a one-byte length
  * placeholder, and moved up when its length needs more bytes. The only
  * Lua value allocated by an encode is the result string (plus the
@@ -62,6 +62,7 @@
 #include <module.h>
 #include <lauxlib.h>
 
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -387,11 +388,25 @@ tp_value_wire(uint8_t kind)
  *  shape raises "malformed plan" instead of being guessed at.       *
  * ---------------------------------------------------------------- */
 
+/* Raise the formatted message as it stands, the way tuple.lua raises
+ * with error(msg, 0). luaL_error would prefix it with the file and line
+ * of its Lua caller, so the same error would read differently depending
+ * on whether the C entry point was tail-called. */
+static int
+tp_error(lua_State *L, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	lua_pushvfstring(L, fmt, ap);
+	va_end(ap);
+	return lua_error(L);
+}
+
 static int
 tp_malformed(lua_State *L, const char *message, const char *what)
 {
-	return luaL_error(L, "pb.tuple: malformed plan of %s: %s",
-	                  message != NULL ? message : "?", what);
+	return tp_error(L, "pb.tuple: malformed plan of %s: %s",
+	                message != NULL ? message : "?", what);
 }
 
 static char *
@@ -399,7 +414,7 @@ tp_strdup(lua_State *L, const char *s, size_t len)
 {
 	char *copy = (char *)malloc(len + 1);
 	if (copy == NULL)
-		luaL_error(L, "pb.tuple: out of memory compiling a plan");
+		tp_error(L, "pb.tuple: out of memory compiling a plan");
 	memcpy(copy, s, len);
 	copy[len] = '\0';
 	return copy;
@@ -410,7 +425,7 @@ tp_calloc(lua_State *L, size_t n, size_t size)
 {
 	void *p = calloc(n > 0 ? n : 1, size);
 	if (p == NULL)
-		luaL_error(L, "pb.tuple: out of memory compiling a plan");
+		tp_error(L, "pb.tuple: out of memory compiling a plan");
 	return p;
 }
 
@@ -825,8 +840,8 @@ tp_compile_node(lua_State *L, tp_node *node, int idx, int memo,
 static int
 td_fail(lua_State *L, const char *message, const char *what)
 {
-	return luaL_error(L, "pb.tuple: cannot compile %s for the C "
-	                  "decoder: %s", message != NULL ? message : "?", what);
+	return tp_error(L, "pb.tuple: cannot compile %s for the C "
+	                "decoder: %s", message != NULL ? message : "?", what);
 }
 
 /* Number the descriptor on top of the stack (popped) unless it already
@@ -1878,8 +1893,8 @@ tp_read_scalar(tp_ctx *ctx, const tp_node *node, int i, int elem,
 		break;
 	default:
 		/* The compiler admits only scalar kinds here. */
-		luaL_error(L, "pb.tuple: no scalar conversion for kind %s",
-		           tp_kind_name(kind));
+		tp_error(L, "pb.tuple: no scalar conversion for kind %s",
+		         tp_kind_name(kind));
 	}
 	*pp = p;
 }
@@ -2298,8 +2313,8 @@ pb_tuple_encode(lua_State *L)
 	 * pointer box_tuple_data returns valid. */
 	box_tuple_t *tuple = luaT_istuple(L, 2);
 	if (tuple == NULL)
-		return luaL_error(L, "pb.tuple: expected a box.tuple, got %s",
-		                  tp_typename(L, 2));
+		return tp_error(L, "pb.tuple: expected a box.tuple, got %s",
+		                tp_typename(L, 2));
 	lua_settop(L, 2);
 
 	uint8_t storage[ENC_TOP_BUF];
@@ -2332,8 +2347,8 @@ pb_tuple_encode_repeated(lua_State *L)
 		return tp_raise(L, 2);
 	}
 	if (lua_type(L, 3) != LUA_TTABLE)
-		return luaL_error(L, "pb.tuple: tuples must be an array of "
-		                  "box.tuple, got %s", tp_typename(L, 3));
+		return tp_error(L, "pb.tuple: tuples must be an array of "
+		                "box.tuple, got %s", tp_typename(L, 3));
 	lua_settop(L, 3);
 	uint8_t tag[5], tag_len;
 	encode_tag((uint32_t)d, PB_WIRE_LEN, tag, &tag_len);
@@ -2358,8 +2373,8 @@ pb_tuple_encode_repeated(lua_State *L)
 		lua_replace(L, slot);
 		box_tuple_t *tuple = luaT_istuple(L, slot);
 		if (tuple == NULL)
-			return luaL_error(L, "pb.tuple: expected a box.tuple, "
-			                  "got %s", tp_typename(L, slot));
+			return tp_error(L, "pb.tuple: expected a box.tuple, "
+			                "got %s", tp_typename(L, slot));
 		tp_put(&ctx, tag, tag_len);
 		size_t mark = tp_len_begin(&ctx);
 		tp_encode_tuple(&ctx, tuple);
