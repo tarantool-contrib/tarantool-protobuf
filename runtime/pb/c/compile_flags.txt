@@ -1,6 +1,7 @@
 -std=c99
 -Wall
 -Wextra
+-Imsgpuck
 -I/opt/homebrew/include/tarantool
 -I/opt/homebrew/opt/tarantool/include/tarantool
 -I/usr/local/include/tarantool
