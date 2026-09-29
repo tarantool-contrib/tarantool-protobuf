@@ -7,22 +7,49 @@ a table per row, built only to be walked once and thrown away. The
 write path does the same in reverse, decoding into a table and
 building a tuple from it.
 
-`pb.tuple` removes that table. It binds a message descriptor to a
-space format once; after that, a tuple's msgpack converts straight
-to wire bytes, and wire bytes straight to a tuple.
+`pb.tuple` binds a message descriptor to a space format once; after
+that, a tuple converts to wire bytes, and wire bytes to a tuple, in
+one call. Whether that removes the table per row depends on the
+backend:
 
-The runnable example is `examples/tuple/kv_range.lua`:
+- With the C runtime (`PB_ENABLE_C=1`, Tarantool 3.5 or later), both
+  directions run in C and build no Lua table per row. Encode reads the
+  tuple's msgpack in place; decode writes the tuple's msgpack
+  directly.
+- On the Lua path, which is what runs by default, every row still
+  allocates. Encode walks the tuple's msgpack but builds scratch
+  tables and strings for each row; decode runs the ordinary codec into
+  a message table and then builds a row table from it.
+
+The allocation win needs the C runtime. Measured on a Linux VM with
+Tarantool 3.8 (`bench/PERF_LOG.md`, "Tuple bridge"):
+
+- C: encoding a Range response's rows is 6-8x faster than building a
+  table per row and encoding those. `conv:decode` is 2.5x faster than
+  `pb.decode` + `box.tuple.new`, and `conv:replace` 1.6x faster than
+  `pb.decode` + `space:replace`, with 79 instead of about 410 bytes of
+  Lua garbage per row.
+- Lua: encoding is 1.2-1.4x faster than a table per row; decoding is
+  slower, at 0.73-0.84x the speed of `pb.decode` + `box.tuple.new`.
+
+The runnable examples are `examples/tuple/kv_range.lua` and
+`examples/tuple/nested_layouts.lua`:
 
 ```bash
 just examples tuple-range
+just examples tuple-layouts
 ```
 
 ## When to use it
 
-- Many rows per request in either direction: range reads, scans,
-  bulk writes arriving as protobuf.
+- With the C runtime: many rows per request in either direction,
+  such as range reads, scans, bulk writes arriving as protobuf.
 - Messages whose top-level fields line up with the columns of a
   space.
+
+On the Lua path, it pays on encode only, and modestly. What it gives
+you there is the binding: every descriptor/format mismatch found at
+startup, and one call per row.
 
 For a one-off conversion, build a table and use the ordinary codec:
 `bind` does real work (it compiles a plan for the message and the
@@ -110,30 +137,39 @@ negative lease: false
 
 ## How a message field is laid out
 
-A singular message field takes its shape from its column type. With
-`Address { string street = 1; string city = 2; uint32 zip = 4; }` in
-a column named `address`, these three tuple values encode to the
-same bytes:
+A singular message field takes its shape from its column type:
 
 - `map` (or `any`): a map keyed by field name.
-
-  ```lua
-  {street = 'Main St', city = 'Springfield', zip = 12345}
-  ```
-
 - `array`: an array positioned by field number, NULL in the holes.
-  Position 3 has no field, so it must be NULL.
-
-  ```lua
-  {'Main St', 'Springfield', box.NULL, 12345}
-  ```
-
 - `varbinary`: the message's own wire bytes, written and read
   verbatim.
 
-  ```lua
-  varbinary.new(Address_encode({street = 'Main St', city = 'Springfield', zip = 12345}))
-  ```
+`examples/tuple/nested_layouts.lua` binds a message with one field of
+type `kv.Address { string street = 1; string city = 2; uint32 zip = 4; }`
+to three spaces whose `address` column is a `map`, an `array` and a
+`varbinary`, and stores the same address in each. In the array,
+position 3 has no field, so it must be NULL:
+
+```lua
+as_map:replace{'c1', {street = 'Main St', city = 'Springfield', zip = 12345}}
+as_array:replace{'c1', {'Main St', 'Springfield', box.NULL, 12345}}
+local address = kv.Address_encode({
+    street = 'Main St', city = 'Springfield', zip = 12345,
+})
+as_raw:replace{'c1', varbinary.new(address)}
+```
+
+All three rows encode to the same bytes, and each decodes back into
+its own layout:
+
+```
+map: 31 bytes
+array, same bytes: true
+varbinary, same bytes: true
+map decode: street Main St, city Springfield, zip 12345
+array decode: 4 positions, [3] is NULL: true, [4] is 12345
+varbinary decode, the Address bytes: true
+```
 
 Only the top level chooses. Every deeper level, every element of a
 `repeated` message field and every value of a `map<K, V>` is a map
@@ -263,10 +299,13 @@ keys only, limit 2: 2 of 3 keys, more = true, 38 bytes
   /app/b
 ```
 
-Encode writes the fields of every level in field-number order,
-whatever the key order inside the tuple's maps. The entries of a
-`map<K, V>` go out in the order of the keys in the tuple's msgpack
-map.
+Encode writes the fields of every level in field-number order, so
+the key order of a map that holds a message (keyed by field name)
+makes no difference to the bytes. A `map<K, V>` field is different:
+its entries go out in the order of the keys in the stored msgpack
+map, on both backends. Two rows holding the same entries in a
+different order encode to different bytes, which matters if the
+bytes are hashed, compared or cached.
 
 ## Decoding into tuples
 
@@ -348,8 +387,13 @@ One thing differs: the order of keys in the maps decode writes. The
 C path writes a nested message's keys in ascending field-number order
 and a `map<K, V>`'s entries in the order they first appear on the
 wire. The Lua path writes them in the order `pairs` yields them, which
-is unspecified. The keys and values are the same either way, and
-encode does not depend on the order.
+is unspecified. The keys and values are the same either way. For a
+nested message the order makes no difference to what the row later
+encodes to; for a `map<K, V>` it does, since encode writes the entries
+in stored order (see [Building a response by
+concatenation](#building-a-response-by-concatenation)). A row decoded
+on the Lua path can therefore re-encode with its map entries in a
+different order from the bytes it was decoded from.
 
 ## Limits
 

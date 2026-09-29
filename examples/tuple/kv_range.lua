@@ -1,8 +1,10 @@
 -- Serve an etcd-style Range response straight from space tuples.
 --
 -- pb.tuple binds a message descriptor to a space format once; after
--- that a tuple converts to wire bytes, and wire bytes to a tuple, with
--- no Lua table per row. Walked through in docs/howto/14-tuples.md.
+-- that a tuple converts to wire bytes, and wire bytes to a tuple, in
+-- one call. With the C runtime (PB_ENABLE_C=1) that builds no Lua table
+-- per row; the default Lua path still allocates per row. Walked through
+-- in docs/howto/14-tuples.md.
 --
 -- Run with:
 --   just examples tuple-range

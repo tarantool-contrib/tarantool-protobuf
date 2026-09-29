@@ -51,7 +51,7 @@ wire format. Only editions are out of scope for now.
 | **Google conformance suite — `--performance`**     | **55 ✓ / 0 failures** (1 editions test skipped) |
 | Runtime `.proto` parsing (`pb.parse`) | ✅       |
 | Runtime `FileDescriptorSet` ingest (`pb.from_pb`) | ✅ |
-| Tuple ↔ wire without a Lua table per row (`pb.tuple`) | ✅ |
+| Tuple ↔ wire in one call per row (`pb.tuple`; no Lua table per row with the C runtime) | ✅ |
 | Markdown doc generator (`protoc-gen-tarantool-doc`) | ✅ |
 | proto3 JSON (`pb.json.encode`/`.decode`) | ✅    |
 | Text format (`pb.text.encode` / `pb.text.decode`) | ✅ |

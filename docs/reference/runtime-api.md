@@ -236,8 +236,12 @@ implementing those four methods plugs into a generated client.
 
 ## Tuple bridge — `pb.tuple`
 
-Converts between Tarantool tuples and wire bytes without a Lua table
-per row. The walkthrough, with the binding rules, the type
+Converts between Tarantool tuples and wire bytes, one call per row.
+With the C runtime (`PB_ENABLE_C=1`) neither direction builds a Lua
+table per row. On the default Lua path both still allocate per row:
+encode builds scratch tables and strings, and decode runs `pb.decode`
+into a message table before laying it out as a row. See the how-to for
+measured numbers. The walkthrough, with the binding rules, the type
 compatibility list and a runnable example, is
 [how-to: tuples to protobuf and back](../howto/14-tuples.md); the full
 contract is the header comment of `runtime/pb/tuple.lua`.
