@@ -449,6 +449,24 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_error_msg_contains('no longer exists',
             conv._check_schema, conv)
     end
+
+    g.test_rebind_refuses_another_space_with_the_same_id = function()
+        local s = helper.make_space('tuple_kv', KV_FORMAT)
+        local id = s.id
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        s:drop()
+        if box.space.tuple_kv_other ~= nil then
+            box.space.tuple_kv_other:drop()
+        end
+        -- Same id, same (bindable) format, different space.
+        local other = box.schema.space.create('tuple_kv_other',
+                                              {id = id, format = KV_FORMAT})
+        t.assert_equals(other.id, id)
+        t.assert_error_msg_contains("space 'tuple_kv' no longer exists",
+            conv._check_schema, conv)
+        other:drop()
+    end
 end
 
 -- ---------------------------------------------------------------------

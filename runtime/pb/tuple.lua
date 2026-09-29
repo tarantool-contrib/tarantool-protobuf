@@ -94,7 +94,10 @@
 --   conv.plan            the top-level node
 --   conv.schema_version  box schema version the plan was compiled against
 --   conv:_check_schema() rebinds when the schema version moved; raises when
---                        the space is gone or its new format no longer binds
+--                        the space is gone (a space is its id and name
+--                        together: another space that reuses the id is
+--                        not the bound one) or its new format no longer
+--                        binds
 local M = {}
 
 -- An `array` column holds a message positioned by field number, so the
@@ -592,9 +595,11 @@ function Conv:_check_schema()
     if version == self.schema_version then
         return
     end
+    -- A space is identified by (id, name): an id freed by a drop can be
+    -- reused by an unrelated space, which must not be rebound silently.
     local space = box.space[self.space_id]
-    if space == nil then
-        error(string.format("pb.tuple: space '%s' (id %d) no longer exists",
+    if space == nil or space.name ~= self.space_name then
+        error(string.format("pb.tuple: space '%s' no longer exists (id %d)",
                             self.space_name, self.space_id), 0)
     end
     local ok, plan = pcall(compile_plan, self, space)
@@ -604,7 +609,6 @@ function Conv:_check_schema()
                             self.desc.name, tostring(plan)), 0)
     end
     self.plan = plan
-    self.space_name = space.name
     self.schema_version = version
 end
 
