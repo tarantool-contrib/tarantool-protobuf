@@ -52,8 +52,15 @@
  * nothing.
  *
  * Output goes to one enc_buf (c_plan.h): 4KB on the C stack, promoted to
- * Lua userdata on overflow, so an error mid-encode leaks nothing. A
- * length-delimited body is written in place after a one-byte length
+ * Lua userdata on overflow, so an error mid-encode leaks nothing. The
+ * userdata lives in the stack slot ebuf_init pushes, below the scratch.
+ * Once the scratch is taken, the encode leaves the stack height alone:
+ * the buffer and the scratch grow by lua_replace into their own slots,
+ * encode_repeated moves each tuple into its slot the same way, and the
+ * only other pushes build an error message on its way to lua_error. So
+ * no slot is dropped or handed to another value while the call runs.
+ *
+ * A length-delimited body is written in place after a one-byte length
  * placeholder, and moved up when its length needs more bytes. The only
  * Lua value allocated by an encode is the result string (plus the
  * buffer's growth userdata for a result past 4KB).
@@ -2319,12 +2326,12 @@ pb_tuple_encode(lua_State *L)
 
 	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
-	ebuf_init(L, &b, storage, sizeof(storage), 0);
+	ebuf_init(L, &b, storage, sizeof(storage), 0);   /* 3: its anchor */
 	tp_ctx ctx;
 	ctx.L = L;
 	ctx.plan = tp;
 	ctx.b = &b;
-	tp_scratch_take(L, &ctx, 1);         /* 3: scratch */
+	tp_scratch_take(L, &ctx, 1);         /* 4: scratch */
 	tp_encode_tuple(&ctx, tuple);
 	tp_scratch_return(L, &ctx, 1);
 
@@ -2355,15 +2362,15 @@ pb_tuple_encode_repeated(lua_State *L)
 
 	uint8_t storage[ENC_TOP_BUF];
 	enc_buf b;
-	ebuf_init(L, &b, storage, sizeof(storage), 0);
+	ebuf_init(L, &b, storage, sizeof(storage), 0);   /* 4: its anchor */
 	tp_ctx ctx;
 	ctx.L = L;
 	ctx.plan = tp;
 	ctx.b = &b;
-	tp_scratch_take(L, &ctx, 1);         /* 4: scratch */
+	tp_scratch_take(L, &ctx, 1);         /* 5: scratch */
 
-	/* Index 5 holds the tuple being encoded. It sits below the buffer's
-	 * growth userdata, which ebuf_grow keeps at the top. */
+	/* Index 6 holds the tuple being encoded, which keeps the pointer
+	 * box_tuple_data returns valid while the tuple is read. */
 	lua_pushnil(L);
 	int slot = lua_gettop(L);
 
