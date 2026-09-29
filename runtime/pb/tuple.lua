@@ -101,6 +101,10 @@
 -- The converter
 -- -------------
 --   conv.plan            the top-level node
+--   conv._tplan          the plan compiled for the C encoder
+--                        (pb.c_runtime.tuple_compile); present when the C
+--                        runtime is loaded (PB_ENABLE_C=1), and then
+--                        conv:encode / conv:encode_repeated run in C
 --   conv.schema_version  box schema version the plan was compiled against
 --   conv:_check_schema() rebinds when the schema version moved; raises when
 --                        the space is gone (a space is its id and name
@@ -668,11 +672,32 @@ end
 local Conv = {}
 Conv.__index = Conv
 
+-- The C encoder, loaded under the switch pb/init.lua uses: PB_ENABLE_C=1
+-- and pb.c_runtime loadable.
+local c_runtime
+if os.getenv('PB_ENABLE_C') == '1' then
+    local ok, mod = pcall(require, 'pb.c_runtime')
+    if ok then c_runtime = mod end
+end
+
 -- Compile the top-level plan of `conv` against `space`'s current format.
 local function compile_plan(conv, space)
     local opts = {columns = conv.opts.columns, omit = conv.opts.omit,
                   space_name = space.name}
     return compile_node(conv.desc, space:format(), 0, 'tuple', {}, opts)
+end
+
+-- Install `plan` on `conv`; the only place conv.plan is assigned, so the
+-- C plan is recompiled whenever the Lua plan is rebuilt.
+local function set_plan(conv, plan)
+    if c_runtime ~= nil then
+        if c_runtime.tuple_compile == nil then
+            error('pb.tuple: the loaded pb.c_runtime has no tuple encoder; '
+                  .. 'rebuild it', 0)
+        end
+        conv._tplan = c_runtime.tuple_compile(plan)
+    end
+    conv.plan = plan
 end
 
 -- Rebind when the box schema changed since the plan was compiled.
@@ -694,7 +719,7 @@ function Conv:_check_schema()
                             .. 'no longer binds %s: %s', space.name,
                             self.desc.name, tostring(plan)), 0)
     end
-    self.plan = plan
+    set_plan(self, plan)
     self.schema_version = version
 end
 
@@ -714,7 +739,7 @@ function M.bind(desc, space, opts)
         space_name = space.name,
     }, Conv)
     conv.schema_version = schema_version()
-    conv.plan = compile_plan(conv, space)
+    set_plan(conv, compile_plan(conv, space))
     return conv
 end
 
@@ -1464,14 +1489,29 @@ end
 -- Converter methods
 -- ---------------------------------------------------------------------------
 
-function Conv:encode(tuple)
-    self:_check_schema()
-    return lua_encode(self, tuple)
-end
+if c_runtime ~= nil then
+    local c_encode = c_runtime.tuple_encode
+    local c_encode_repeated = c_runtime.tuple_encode_repeated
 
-function Conv:encode_repeated(field_no, tuples)
-    self:_check_schema()
-    return lua_encode_repeated(self, field_no, tuples)
+    function Conv:encode(tuple)
+        self:_check_schema()
+        return c_encode(self._tplan, tuple)
+    end
+
+    function Conv:encode_repeated(field_no, tuples)
+        self:_check_schema()
+        return c_encode_repeated(self._tplan, field_no, tuples)
+    end
+else
+    function Conv:encode(tuple)
+        self:_check_schema()
+        return lua_encode(self, tuple)
+    end
+
+    function Conv:encode_repeated(field_no, tuples)
+        self:_check_schema()
+        return lua_encode_repeated(self, field_no, tuples)
+    end
 end
 
 function Conv:decode(bytes)

@@ -42,7 +42,7 @@ else
 	LDFLAGS := -shared
 endif
 
-SRCS    := c_runtime.c
+SRCS    := c_runtime.c tuple.c
 # Vendored MsgPuck (see msgpuck/README.md). Objects land flat in this
 # directory, next to c_runtime.o.
 SRCS    += msgpuck/msgpuck.c msgpuck/hints.c
@@ -60,7 +60,8 @@ $(OUTPUT): $(OBJS)
 %.o: msgpuck/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-c_runtime.o: c_plan.h
+c_runtime.o: c_plan.h tuple.h
+tuple.o: c_plan.h tuple.h msgpuck/msgpuck.h
 msgpuck.o hints.o: msgpuck/msgpuck.h
 
 clean:

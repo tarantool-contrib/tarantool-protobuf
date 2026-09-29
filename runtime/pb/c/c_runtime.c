@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "c_plan.h"
+#include "tuple.h"
 
 #define PB_ABI_VERSION  "1"
 
@@ -3099,6 +3100,9 @@ static const struct luaL_Reg c_runtime_methods[] = {
 	{"encode",          encode_lua},
 	{"decode",          decode_lua},
 	{"decode_unsafe",   decode_unsafe_lua},
+	{"tuple_compile",   pb_tuple_compile},
+	{"tuple_encode",    pb_tuple_encode},
+	{"tuple_encode_repeated", pb_tuple_encode_repeated},
 	{NULL, NULL},
 };
 
@@ -3118,6 +3122,7 @@ luaopen_pb_c_runtime(lua_State *L)
 	luaL_newmetatable(L, PB_PLAN_MT);
 	luaL_register(L, NULL, plan_mt_methods);
 	lua_pop(L, 1);
+	pb_tuple_open(L);
 
 	/* Build the module table. */
 	lua_newtable(L);
