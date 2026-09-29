@@ -1004,3 +1004,817 @@ ga.test_encode_repeated_allocates_the_result = function()
     -- a Lua string costs its length plus a header of a few dozen bytes
     t.assert_le(per_row, total + 64 * #rows + 4096)
 end
+
+-- =====================================================================
+-- Decode: wire -> tuple, through the C decoder (tuple_decode) and the
+-- Lua path. The Lua path is the oracle here too.
+-- =====================================================================
+
+-- Canonical text of the msgpack value at s[p], and the position past
+-- it: every scalar as its own bytes (the integer width, float vs double
+-- and str vs bin all count), arrays in order, map entries sorted. The
+-- Lua path writes the keys of a map in Lua's hash order, which no other
+-- writer reproduces; the entries themselves must agree.
+local MP_FIXED = {
+    [0xc0] = 1, [0xc2] = 1, [0xc3] = 1, [0xca] = 5, [0xcb] = 9,
+    [0xcc] = 2, [0xcd] = 3, [0xce] = 5, [0xcf] = 9,
+    [0xd0] = 2, [0xd1] = 3, [0xd2] = 5, [0xd3] = 9,
+    [0xd4] = 3, [0xd5] = 4, [0xd6] = 6, [0xd7] = 10, [0xd8] = 18,
+}
+
+local function be(s, p, n)
+    local v = 0
+    for k = 0, n - 1 do v = v * 256 + s:byte(p + k) end
+    return v
+end
+
+local mp_canon
+
+local function mp_items(s, p, n, is_map)
+    local items = {}
+    for k = 1, n do
+        local key, v
+        key, p = mp_canon(s, p)
+        if is_map then
+            v, p = mp_canon(s, p)
+            key = key .. '=' .. v
+        end
+        items[k] = key
+    end
+    if is_map then
+        table.sort(items)
+        return '{' .. table.concat(items, ',') .. '}', p
+    end
+    return '[' .. table.concat(items, ',') .. ']', p
+end
+
+mp_canon = function(s, p)
+    local ch = s:byte(p)
+    local size
+    if ch <= 0x7f or ch >= 0xe0 then
+        size = 1
+    elseif ch <= 0x8f then
+        return mp_items(s, p + 1, ch - 0x80, true)
+    elseif ch <= 0x9f then
+        return mp_items(s, p + 1, ch - 0x90, false)
+    elseif ch <= 0xbf then
+        size = 1 + ch - 0xa0
+    elseif MP_FIXED[ch] ~= nil then
+        size = MP_FIXED[ch]
+    elseif ch == 0xc4 or ch == 0xd9 then
+        size = 2 + be(s, p + 1, 1)
+    elseif ch == 0xc5 or ch == 0xda then
+        size = 3 + be(s, p + 1, 2)
+    elseif ch == 0xc6 or ch == 0xdb then
+        size = 5 + be(s, p + 1, 4)
+    elseif ch == 0xc7 then
+        size = 3 + be(s, p + 1, 1)
+    elseif ch == 0xc8 then
+        size = 4 + be(s, p + 1, 2)
+    elseif ch == 0xc9 then
+        size = 6 + be(s, p + 1, 4)
+    elseif ch == 0xdc then
+        return mp_items(s, p + 3, be(s, p + 1, 2), false)
+    elseif ch == 0xdd then
+        return mp_items(s, p + 5, be(s, p + 1, 4), false)
+    elseif ch == 0xde then
+        return mp_items(s, p + 3, be(s, p + 1, 2), true)
+    else
+        return mp_items(s, p + 5, be(s, p + 1, 4), true)
+    end
+    return hex(s:sub(p, p + size - 1)), p + size
+end
+
+local function tuple_canon(tuple)
+    return (mp_canon(msgpack.encode(tuple), 1))
+end
+
+local function decode_outcome(fn, ...)
+    local ok, res = pcall(fn, ...)
+    if not ok then return {ok = false, err = tostring(res)} end
+    if res == nil then return {ok = true, tuple = 'nil'} end
+    return {ok = true, tuple = tuple_canon(res)}
+end
+
+local function lua_new(conv, bytes)
+    return box.tuple.new(lua.decode(conv, bytes))
+end
+
+-- Decode `bytes` through the Lua path, the converter method (C) and the C
+-- function; all must agree. The C function returns false exactly where
+-- the Lua path raises a conversion error.
+local function check_decode(conv, bytes, what)
+    local want = decode_outcome(lua_new, conv, bytes)
+    t.assert_equals(decode_outcome(conv.decode, conv, bytes), want, what)
+    local ok, flag, tuple = pcall(c.tuple_decode, conv._tplan, bytes,
+                                  'new', 0)
+    if want.ok then
+        t.assert(ok and flag == true, what)
+        t.assert_equals(tuple_canon(tuple), want.tuple, what)
+    elseif ok then
+        t.assert_equals(flag, false, what)
+    else
+        t.assert_equals(tostring(flag), want.err, what)
+    end
+    return want
+end
+
+-- A space with `format` and no index: decode needs only the format.
+local function format_space(name, format)
+    helper.ensure_box()
+    if box.space[name] ~= nil then box.space[name]:drop() end
+    return (box.schema.space.create(name, {format = format}))
+end
+
+-- -- Wire building -------------------------------------------------------
+
+local wire = pb.wire
+
+local function wvarint(n) return wire.encode_varint(n) end
+local function wtag(id, wt) return wvarint(id * 8 + wt) end
+local function wlen(id, payload)
+    return wtag(id, 2) .. wvarint(#payload) .. payload
+end
+
+local function rand_bytes(n)
+    local b = {}
+    for k = 1, n do b[k] = string.char(math.random(0, 255)) end
+    return table.concat(b)
+end
+
+local VARINTS = {0, 1, 127, 128, 300, 2147483647, 2147483648, 4294967295,
+                 4294967296, -1, -2147483648, 9223372036854775807LL,
+                 18446744073709551615ULL, I64_MIN, 1000000000, 1000000001}
+local STRING_VALUES = {
+    '', 'a', 'Привет', 'h\0i', string.rep('s', 300),
+    '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+    'ffffffff-0000-4000-8000-00000000000a',
+    '6BA7B810-9DAD-11D1-80B4-00C04FD430C8',
+    '6ba7b810-9dad-11d1-80b4-00c04fd430c',
+    '6ba7b810x9dad-11d1-80b4-00c04fd430c8',
+    string.rep('\x01', 16), string.rep('\x02', 15),
+    '\xff', '\xc0\xaf', '\xed\xa0\x80', '\xf4\x90\x80\x80', '\xe2\x82',
+}
+local VARINT_KINDS = {int32 = true, int64 = true, uint32 = true,
+                      uint64 = true, sint32 = true, sint64 = true,
+                      bool = true}
+local I32_KINDS = {fixed32 = true, sfixed32 = true, float = true}
+local I32_VALUES = {'\0\0\0\0', '\0\0\128\127', '\0\0\128\255',
+                    '\1\0\192\127', '\0\0\0\128', '\255\255\255\255',
+                    '\0\0\192\63'}
+local I64_VALUES = {'\0\0\0\0\0\0\0\0', '\0\0\0\0\0\0\240\127',
+                    '\0\0\0\0\0\0\240\255', '\1\0\0\0\0\0\248\127',
+                    '\0\0\0\0\0\0\0\128', '\255\255\255\255\255\255\255\255',
+                    '\0\0\0\0\0\0\248\63'}
+
+-- Wire type and value bytes of a random value of scalar/enum field `f`.
+local function rand_value(kind)
+    if kind == 'enum' or VARINT_KINDS[kind] then
+        return 0, wvarint(pick(VARINTS))
+    elseif I32_KINDS[kind] then
+        return 5, math.random() < 0.3 and rand_bytes(4) or pick(I32_VALUES)
+    elseif kind == 'fixed64' or kind == 'sfixed64' or kind == 'double' then
+        return 1, math.random() < 0.3 and rand_bytes(8) or pick(I64_VALUES)
+    end
+    local s = math.random() < 0.1 and rand_bytes(math.random(0, 20))
+        or pick(STRING_VALUES)
+    return 2, wvarint(#s) .. s
+end
+
+local function field_kind(f)
+    if f.kind == 'scalar' then return f.proto_type end
+    return f.kind
+end
+
+local function payload_for(wt)
+    if wt == 0 then return wvarint(pick(VARINTS)) end
+    if wt == 1 then return rand_bytes(8) end
+    if wt == 5 then return rand_bytes(4) end
+    local s = rand_bytes(math.random(0, 6))
+    return wvarint(#s) .. s
+end
+
+local TS_SECS = {0, 1, -1, 1700000000, -62135596800, 253402300799,
+                 185480451417600, 185480451417601, -185604722870400,
+                 -185604722870401, 4611686018427387904LL}
+local TS_NANOS = {0, 1, 999999999, 1000000000, 1000000001, -1}
+
+local gen_wire
+
+-- Wire bytes of one occurrence of field `f` (tag included).
+local function gen_field(f, depth)
+    local kind = field_kind(f)
+    if kind == 'map' then
+        local entry = {}
+        if math.random() < 0.9 then
+            local wt, v = rand_value(field_kind(f.key))
+            entry[#entry + 1] = wtag(1, wt) .. v
+        end
+        if math.random() < 0.9 then
+            local vk = field_kind(f.value)
+            if vk == 'message' then
+                entry[#entry + 1] = wlen(2, gen_wire(f.value.message,
+                                                     depth + 1))
+            else
+                local wt, v = rand_value(vk)
+                entry[#entry + 1] = wtag(2, wt) .. v
+            end
+        end
+        if math.random() < 0.1 then entry[#entry + 1] = wtag(3, 0) .. '\1' end
+        return wlen(f.id, table.concat(entry))
+    elseif kind == 'message' then
+        return wlen(f.id, gen_wire(f.message, depth + 1))
+    elseif kind == 'group' then
+        return wtag(f.id, 3) .. gen_wire(f.message, depth + 1)
+            .. wtag(f.id, 4)
+    end
+    if f.repeated and kind ~= 'string' and kind ~= 'bytes'
+            and math.random() < 0.5 then
+        local parts = {}
+        for k = 1, math.random(0, 4) do
+            local _, v = rand_value(kind)
+            parts[k] = v
+        end
+        return wlen(f.id, table.concat(parts))
+    end
+    local wt, v = rand_value(kind)
+    if math.random() < 0.05 then wt = pick({0, 1, 2, 3, 4, 5}) end
+    return wtag(f.id, wt) .. v
+end
+
+-- Random wire bytes of a message `desc`: its fields in random order,
+-- some given twice, some unknown ones.
+gen_wire = function(desc, depth)
+    if desc.decode ~= nil then
+        if desc.name == TIMESTAMP then
+            local parts = {}
+            if math.random() < 0.8 then
+                parts[#parts + 1] = wtag(1, 0) .. wvarint(pick(TS_SECS))
+            end
+            if math.random() < 0.6 then
+                parts[#parts + 1] = wtag(2, 0) .. wvarint(pick(TS_NANOS))
+            end
+            return table.concat(parts)
+        end
+        return pick({'', '', '', '\8\1', '\255', '\10\1a'})
+    end
+    if depth > 3 then return '' end
+    local fields = desc.fields
+    local parts = {}
+    for _ = 1, math.random(0, 7) do
+        if #fields == 0 or math.random() < 0.08 then
+            local wt = pick({0, 1, 2, 5})
+            parts[#parts + 1] = wtag(math.random(2000, 3000), wt)
+                .. payload_for(wt)
+        else
+            parts[#parts + 1] = gen_field(pick(fields), depth)
+        end
+    end
+    return table.concat(parts)
+end
+
+-- The bytes with one random defect.
+local function mangle(bytes)
+    local r = math.random(1, 6)
+    local n = #bytes
+    if r == 1 and n > 0 then
+        return bytes:sub(1, math.random(0, n - 1))
+    elseif r == 2 and n > 0 then
+        local k = math.random(1, n)
+        return bytes:sub(1, k - 1) .. string.char(math.random(0, 255))
+            .. bytes:sub(k + 1)
+    elseif r == 3 then
+        local k = math.random(0, n)
+        return bytes:sub(1, k) .. string.char(math.random(0, 255))
+            .. bytes:sub(k + 1)
+    elseif r == 4 then
+        return bytes .. pick({'\0', '\14', '\15', '\12', '\11', '\136\0',
+                              '\255\255\255\255\255\255\255\255\255\255\1',
+                              '\10\5ab', '\128\128\128\128\16'})
+    elseif r == 5 then
+        return pick({'\11', '\12', '\3\4'}) .. bytes
+    end
+    return bytes .. bytes
+end
+
+-- Bind `desc` with every field it can bind in a column of its own,
+-- omitting the fields that have no tuple representation.
+local function bind_what_binds(desc, name)
+    local function column(f)
+        local raw = f.kind == 'message' and f.message.decode ~= nil
+            and f.message.name ~= TIMESTAMP and not f.repeated
+        return {name = f.name, type = raw and 'varbinary' or 'any',
+                is_nullable = true}
+    end
+    -- Probe each field on its own: a message field can fail deep down.
+    local keep = {}
+    for _, f in ipairs(desc.fields) do
+        local omit = {}
+        for _, o in ipairs(desc.fields) do
+            if o ~= f then omit[#omit + 1] = o.name end
+        end
+        local s = format_space(name, {column(f)})
+        if pcall(pb.tuple.bind, desc, s, {omit = omit}) then
+            keep[f.name] = true
+        end
+    end
+    local format, omit = {}, {}
+    for _, f in ipairs(desc.fields) do
+        if keep[f.name] then
+            format[#format + 1] = column(f)
+        else
+            omit[#omit + 1] = f.name
+        end
+    end
+    local s = format_space(name, format)
+    return pb.tuple.bind(desc, s, {omit = omit}), s
+end
+
+local function sorted_fields(desc)
+    local list = {}
+    for _, f in ipairs(desc.fields) do list[#list + 1] = f end
+    table.sort(list, function(a, b) return a.id < b.id end)
+    return list
+end
+
+local KV_DECODE_FORMAT = {
+    {name = 'key',             type = 'varbinary'},
+    {name = 'create_revision', type = 'integer'},
+    {name = 'mod_revision',    type = 'integer'},
+    {name = 'version',         type = 'integer'},
+    {name = 'value',           type = 'varbinary'},
+    {name = 'lease_id',        type = 'integer'},
+}
+
+-- The conversions the decode corpus runs through: {name, conv, desc}.
+local function decode_convs(mode)
+    local kv = require(mode .. '.kv.kv_pb')
+    local p3 = require(mode .. '.protobuf_test_messages.proto3'
+                       .. '.test_messages_proto3_pb')
+    local p2 = require(mode .. '.protobuf_test_messages.proto2'
+                       .. '.test_messages_proto2_pb')
+    local list = {}
+    local function add(name, desc, format, opts)
+        local s = format_space('ctd_' .. name, format)
+        list[#list + 1] = {name = name, desc = desc,
+                           conv = pb.tuple.bind(desc, s, opts)}
+    end
+    local desc = all_desc()
+    local all_format = {}
+    for _, f in ipairs(sorted_fields(desc)) do
+        all_format[#all_format + 1] = {name = f.name, type = 'any',
+                                       is_nullable = true}
+    end
+    add('all', desc, all_format)
+    add('mixed', kv.Mixed_descriptor, MIXED_FORMAT)
+    add('record', kv.Record_descriptor, record_format())
+    add('record_array', kv.Record_descriptor, record_format('array'))
+    add('record_raw', kv.Record_descriptor, record_format('varbinary'))
+    add('kv', kv.KeyValue_descriptor, KV_DECODE_FORMAT,
+        {columns = {lease = 'lease_id'}})
+    for _, d in ipairs({p3.TestAllTypesProto3_descriptor,
+                        p2.TestAllTypesProto2_descriptor}) do
+        local name = d == p3.TestAllTypesProto3_descriptor and 'p3' or 'p2'
+        list[#list + 1] = {name = name, desc = d,
+                           conv = (bind_what_binds(d, 'ctd_' .. name))}
+    end
+    return list
+end
+
+for _, mode in ipairs({'full', 'runtime'}) do
+    local gd = t.group('c_runtime_tuple.decode.' .. mode)
+    local kv = require(mode .. '.kv.kv_pb')
+
+    gd.before_each(function()
+        skip_if_no_c()
+        helper.ensure_box()
+    end)
+
+    gd.test_random_wire = function()
+        math.randomseed(20260930)
+        local count = {ok = 0, err = 0}
+        for _, cv in ipairs(decode_convs(mode)) do
+            for k = 1, 400 do
+                local bytes = gen_wire(cv.desc, 0)
+                if k % 3 == 0 then bytes = mangle(bytes) end
+                local res = check_decode(cv.conv, bytes, string.format(
+                    '%s #%d %s', cv.name, k, hex(bytes)))
+                count[res.ok and 'ok' or 'err'] =
+                    count[res.ok and 'ok' or 'err'] + 1
+            end
+        end
+        -- both outcomes in bulk
+        t.assert_gt(count.ok, 1000)
+        t.assert_gt(count.err, 600)
+    end
+
+    gd.test_encoded_rows = function()
+        math.randomseed(20261001)
+        local convs = {}
+        for _, cv in ipairs(decode_convs(mode)) do convs[cv.name] = cv end
+        local desc = all_desc()
+        local cases = {
+            {desc, 'ctup_all', any_format(desc), 'all'},
+            {kv.Mixed_descriptor, 'ctup_mixed', MIXED_FORMAT, 'mixed'},
+            {kv.Record_descriptor, 'ctup_record', record_format(), 'record'},
+        }
+        local decoded = 0
+        for _, case in ipairs(cases) do
+            local s = helper.make_space(case[2], case[3])
+            local econv = pb.tuple.bind(case[1], s)
+            local dconv = convs[case[4]].conv
+            for k = 1, 300 do
+                local row = gen_row(econv, case[3], k % 2 == 0 and 0 or 0.02)
+                local ok, bytes = pcall(lua.encode, econv, row)
+                if ok then
+                    local res = check_decode(dconv, bytes, case[4] .. ' #' .. k)
+                    if res.ok then decoded = decoded + 1 end
+                    -- every prefix of a short one
+                    if #bytes < 60 then
+                        for n = 0, #bytes - 1 do
+                            check_decode(dconv, bytes:sub(1, n),
+                                         case[4] .. ' prefix ' .. n)
+                        end
+                    end
+                end
+            end
+        end
+        t.assert_gt(decoded, 150)
+    end
+
+    gd.test_targeted_wire = function()
+        local convs = {}
+        for _, cv in ipairs(decode_convs(mode)) do convs[cv.name] = cv end
+        local all = convs.all.conv
+        local function msg(...) return table.concat({...}) end
+        local leaf_s = wlen(1, 'a')
+        local cases = {
+            -- tags
+            '\0', '\8', '\14\1', '\15\1', '\12', '\11', '\136\0\1',
+            '\248\255\255\255\31\1', '\248\255\255\255\15\1',
+            '\128\128\128\128\128\128\128\128\128\128\1',
+            '\8\255\255\255\255\255\255\255\255\255\1',
+            '\8\255\255\255\255\255\255\255\255\255\127',
+            '\8\255\255\255\255\255\255\255\255\255\255\1',
+            -- LEN past the end, inside and outside a message
+            '\114\5ab', '\178\1\2\10\5a',
+            -- unknown groups: nested, mismatched, unterminated, too deep
+            wtag(2000, 3) .. wtag(2001, 0) .. '\1' .. wtag(2000, 4),
+            wtag(2000, 3) .. wtag(2001, 4),
+            wtag(2000, 3) .. wtag(2001, 0) .. '\1',
+            string.rep(wtag(2000, 3), 100) .. string.rep(wtag(2000, 4), 100),
+            string.rep(wtag(2000, 3), 101) .. string.rep(wtag(2000, 4), 101),
+            -- wrong wire types for known fields
+            wtag(1, 2) .. '\2\8\7', wtag(14, 0) .. '\5', wtag(22, 0) .. '\1',
+            wtag(12, 5) .. '\0\0\0\0\0\0\0\0', wtag(1, 3) .. '\1',
+            wtag(23, 1) .. '\1\2\3\4\5\6\7\8',
+            -- invalid UTF-8 in a string, a map key, a nested string
+            wlen(14, '\xff'), wlen(36, msg(wtag(1, 0), '\1', wlen(2, '\xc0'))),
+            wlen(43, msg(wlen(1, '\xed\xa0\x80'))),
+            wlen(22, wlen(1, '\xf4\x90\x80\x80')),
+            -- map entries: missing key / value, duplicates, extra fields
+            wlen(36, ''), wlen(36, wtag(1, 0) .. '\5'),
+            wlen(36, wlen(2, 'x')) .. wlen(36, wlen(2, 'y')),
+            wlen(36, msg(wtag(1, 0), '\1', wlen(2, 'a'))) ..
+                wlen(36, msg(wtag(1, 0), '\1', wlen(2, 'b'))),
+            wlen(42, wlen(1, 'k')), wlen(43, wlen(1, 'k')),
+            wlen(42, msg(wlen(1, 'k'), wlen(2, wtag(2, 0) .. '\255\147\235\220\3'))),
+            wlen(42, msg(wlen(1, 'k'), wlen(2, wtag(2, 0) .. '\128\148\235\220\3'))),
+            -- Timestamps at and past the datetime range
+            wlen(21, wtag(1, 0) .. wvarint(185480451417600)),
+            wlen(21, wtag(1, 0) .. wvarint(185480451417601)),
+            wlen(21, wtag(1, 0) .. wvarint(-185604722870400)),
+            wlen(21, wtag(1, 0) .. wvarint(-185604722870401)),
+            wlen(21, wtag(2, 0) .. wvarint(-1)),
+            wlen(21, wtag(2, 0) .. wvarint(1000000000)),
+            wlen(21, msg(wtag(2, 0), wvarint(5), wtag(2, 0), wvarint(0))),
+            wlen(21, wtag(1, 0) .. '\1') .. wlen(21, wtag(2, 0) .. '\1'),
+            wlen(34, '') .. wlen(34, wtag(1, 1) .. '\1\2\3\4\5\6\7\8'),
+            -- packed and unpacked, mixed
+            wlen(23, '\1\2\255\255\255\255\15') .. wtag(23, 0) .. '\3',
+            wlen(30, '\1\2') .. wtag(30, 0) .. '\255\255\255\255\255\255\255\255\255\1',
+            wlen(27, '\0\0\128\127\1\0\192\127') .. wtag(27, 5) .. '\0\0\0\128',
+            wlen(28, '\0\0\0\0\0\0\0\128') .. wlen(28, '\1\0\0'),
+            -- oneof: last member wins, members merge, siblings unset
+            wtag(50, 0) .. '\1' .. wlen(51, 'x'),
+            wlen(52, leaf_s) .. wtag(50, 0) .. '\1' .. wlen(52, wtag(2, 0) .. '\2'),
+            wlen(52, leaf_s) .. wlen(52, wtag(2, 0) .. '\2'),
+            -- a message given twice merges field by field; a oneof member
+            -- inside it that comes back after a sibling is merged with
+            -- the earlier occurrence's value (codec merge, not the
+            -- concatenation of the two payloads)
+            wlen(60, wlen(52, leaf_s)) ..
+                wlen(60, msg(wlen(52, wtag(2, 0) .. '\1'), wlen(51, 'x'),
+                             wlen(52, wtag(2, 0) .. '\2'))),
+            wlen(60, wlen(21, wtag(1, 0) .. '\5')) ..
+                wlen(60, wlen(21, wtag(2, 0) .. '\7')),
+            -- int64-keyed maps merged keep both entries of a key
+            wlen(60, wlen(37, msg(wtag(1, 0), '\5', wtag(2, 0), '\1'))) ..
+                wlen(60, wlen(37, msg(wtag(1, 0), '\5', wtag(2, 0), '\2'))),
+            wlen(60, wlen(36, msg(wtag(1, 0), '\5', wlen(2, 'a')))) ..
+                wlen(60, wlen(36, msg(wtag(1, 0), '\5', wlen(2, 'b')))),
+            wlen(60, wlen(47, msg(wtag(1, 1), '\5\0\0\0\0\0\0\0'))) ..
+                wlen(60, wlen(47, msg(wtag(1, 1), '\5\0\0\0\0\0\0\0'))),
+            -- repeated messages and their merges
+            wlen(61, wtag(1, 0) .. '\1') .. wlen(61, wtag(1, 0) .. '\2'),
+            wlen(60, wlen(61, leaf_s)) .. wlen(60, wlen(61, leaf_s)),
+            -- floats: NaN payloads, infinities, -0
+            wtag(11, 5) .. '\1\0\192\127' .. wtag(12, 1) .. '\1\0\0\0\0\0\248\255',
+            wtag(11, 5) .. '\0\0\128\255' .. wtag(12, 1) .. '\0\0\0\0\0\0\240\127',
+            wtag(11, 5) .. '\0\0\0\128' .. wtag(12, 1) .. '\0\0\0\0\0\0\0\128',
+            wtag(18, 1) .. '\0\0\0\0\0\0\0\128',
+            -- presence: optional fields set to their defaults
+            msg(wtag(17, 0), '\0', wtag(18, 1), '\0\0\0\0\0\0\0\0',
+                wlen(19, ''), wtag(20, 0), '\0'),
+            -- field numbers far apart, unknown fields of every type
+            wtag(1000, 0) .. '\1' .. wtag(2000, 1) .. '12345678'
+                .. wtag(2001, 5) .. '1234' .. wlen(2002, 'xyz'),
+        }
+        -- nesting at and past the recursion limit
+        for _, levels in ipairs({99, 100, 101}) do
+            local b = wtag(1, 0) .. '\1'
+            for _ = 1, levels do b = wlen(60, b) end
+            cases[#cases + 1] = b
+        end
+        for k, bytes in ipairs(cases) do
+            check_decode(all, bytes, 'all #' .. k .. ' ' .. hex(bytes))
+        end
+        -- typed columns: uuid text and bytes, unsigned, double, datetime
+        local rec = convs.record.conv
+        local rcases = {
+            wlen(9, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
+            wlen(9, '6BA7B810-9DAD-11D1-80B4-00C04FD430C8'),
+            wlen(9, '6ba7b810-9dad-11d1-80b4-00c04fd430c8 '),
+            wlen(9, '6ba7b8109dad11d180b400c04fd430c8'),
+            wlen(9, '6ba7b810-9dad-11d1-80b4-00c04fd430cg'),
+            wlen(9, '6ba7b810-9dad-11d1-80b4-00c04fd430c\0'),
+            wlen(9, ''), wlen(10, ''), wlen(10, string.rep('\1', 16)),
+            wlen(10, string.rep('\1', 17)), wlen(10, string.rep('\1', 15)),
+            wtag(1, 0) .. wvarint(18446744073709551615ULL),
+            wtag(7, 0) .. wvarint(-1), wtag(7, 0) .. wvarint(2147483647),
+            wtag(100, 0) .. wvarint(18446744073709551615ULL),
+            wtag(12, 1) .. '\0\0\0\0\0\0\0\64', wtag(12, 1) .. '\0\0\0\0\0\0\248\63',
+            wlen(8, ''), wlen(8, wtag(2, 0) .. '\1'),
+            wlen(3, msg(wlen(1, 'x'), wtag(4, 0), wvarint(-1))),
+            wlen(11, 'raw bytes') .. wlen(11, 'more'),
+        }
+        for k, bytes in ipairs(rcases) do
+            check_decode(rec, bytes, 'record #' .. k .. ' ' .. hex(bytes))
+            check_decode(convs.record_array.conv, bytes, 'array #' .. k)
+            check_decode(convs.record_raw.conv, bytes, 'raw #' .. k)
+        end
+        -- proto2: an extension, groups, MessageSet items
+        local function group(id, body)
+            return wtag(id, 3) .. body .. wtag(id, 4)
+        end
+        local function item(type_id, payload)
+            return group(1, wtag(2, 0) .. wvarint(type_id) .. wlen(3, payload))
+        end
+        local p2cases = {
+            wtag(120, 0) .. '\5', wtag(120, 2) .. '\1\5', wtag(120, 0),
+            group(201, wtag(202, 0) .. '\1'),
+            wtag(201, 3) .. wtag(202, 0) .. '\1' .. wtag(202, 4),
+            wtag(201, 3) .. wtag(202, 0) .. '\1',
+            group(201, wlen(202, 'x')),
+            wlen(500, item(4135312, wtag(9, 0) .. '\7')),
+            wlen(500, item(4135312, wtag(9, 0))),
+            wlen(500, item(1547769, wlen(25, '\xff'))),
+            wlen(500, item(1547769, wlen(25, 'ok'))),
+            wlen(500, item(999, 'junk')),
+            wlen(500, group(1, wtag(2, 0) .. '\1')),
+            wlen(500, wtag(1, 3) .. wtag(2, 4)),
+            wlen(500, wtag(1, 3) .. wtag(2, 0) .. '\1'),
+        }
+        for k, bytes in ipairs(p2cases) do
+            check_decode(convs.p2.conv, bytes, 'p2 #' .. k .. ' ' .. hex(bytes))
+        end
+        -- a raw member of a oneof, its sibling bound or not
+        local om = pb.parse([[
+            syntax = "proto3";
+            package decode_oneof_raw;
+            message C { int32 x = 1; }
+            message M { oneof pick { C a = 1; int32 b = 2; } uint64 id = 3; }
+        ]])
+        local both = pb.tuple.bind(om.M_descriptor, format_space('ctd_oo1', {
+            {name = 'id', type = 'unsigned'},
+            {name = 'a', type = 'varbinary', is_nullable = true},
+            {name = 'b', type = 'integer', is_nullable = true},
+        }))
+        local only_a = pb.tuple.bind(om.M_descriptor, format_space('ctd_oo2', {
+            {name = 'id', type = 'unsigned'},
+            {name = 'a', type = 'varbinary', is_nullable = true},
+        }), {omit = {'b'}})
+        local a1, a2 = wlen(1, '\8\7'), wlen(1, '\8\1')
+        local b1 = wtag(2, 0) .. '\9'
+        for k, bytes in ipairs({
+            a1 .. b1, b1 .. a1, a1 .. b1 .. wlen(1, ''), a1 .. a2,
+            a1 .. b1 .. a2 .. b1, b1 .. a1 .. b1 .. a2, a1 .. a2 .. b1 .. a1,
+            wtag(1, 0) .. '\1' .. b1, a1 .. wtag(1, 0) .. '\1',
+        }) do
+            check_decode(both, bytes, 'oneof raw #' .. k)
+            check_decode(only_a, bytes, 'oneof raw, b omitted #' .. k)
+        end
+        -- an unbound non-nullable column
+        local s = format_space('ctd_unbound', {
+            {name = 'key', type = 'varbinary'},
+            {name = 'extra', type = 'unsigned'},
+        })
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {omit = {'create_revision', 'mod_revision',
+                                            'version', 'value', 'lease'}})
+        check_decode(conv, '', 'unbound')
+        check_decode(conv, nil, 'not a string')
+        check_decode(all, {}, 'not a string')
+    end
+
+    gd.test_insert_and_replace = function()
+        local s = helper.make_space('ctd_kv_space', KV_DECODE_FORMAT)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        local function lua_op(op, bytes)
+            return box.space[s.id][op](box.space[s.id],
+                                       lua.decode(conv, bytes))
+        end
+        local function outcome(ok, res)
+            if not ok then
+                local e = {ok = false, err = tostring(res)}
+                if type(res) == 'cdata' then
+                    e.type, e.code = res.type, res.code
+                end
+                return e
+            end
+            return {ok = true, tuple = res == nil and 'nil'
+                    or tuple_canon(res)}
+        end
+        for k = 1, 30 do
+            local bytes = pb.encode(kv.KeyValue_descriptor, {
+                key = 'k' .. (k % 7), version = k, lease = -k,
+                value = string.rep('v', k)})
+            for _, op in ipairs({'replace', 'insert'}) do
+                s:truncate()
+                if op == 'insert' and k % 2 == 0 then
+                    -- a duplicate key: the same box error both ways
+                    s:insert(lua.decode(conv, bytes))
+                end
+                local want = outcome(pcall(lua_op, op, bytes))
+                local rows_lua = s:select()
+                s:truncate()
+                if op == 'insert' and k % 2 == 0 then
+                    s:insert(lua.decode(conv, bytes))
+                end
+                local got = outcome(pcall(conv[op], conv, bytes))
+                t.assert_equals(got, want, op .. ' #' .. k)
+                t.assert_equals(s:select(), rows_lua, op .. ' #' .. k)
+            end
+        end
+        -- a conversion error does not reach the space
+        t.assert_error_msg_contains('truncated', conv.insert, conv, '\10\5a')
+    end
+
+    gd.test_region_is_restored = function()
+        local ffi_ok = pcall(ffi.cdef, 'size_t box_region_used(void);')
+        t.assert(ffi_ok or pcall(function() return ffi.C.box_region_used end))
+        local function used() return tonumber(ffi.C.box_region_used()) end
+        local s = helper.make_space('ctd_kv_space', KV_DECODE_FORMAT)
+        local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                                   {columns = {lease = 'lease_id'}})
+        local good = pb.encode(kv.KeyValue_descriptor, {key = 'k',
+                                                        value = 'v'})
+        local rconv = pb.tuple.bind(kv.Record_descriptor,
+                                    format_space('ctd_region', record_format()))
+        local steps = {
+            {'new', function() return conv:decode(good) end},
+            {'replace', function() return conv:replace(good) end},
+            {'duplicate insert', function() return conv:insert(good) end},
+            {'wire error', function() return conv:decode('\10\5a') end},
+            {'wire error in C', function()
+                return c.tuple_decode(conv._tplan, '\10\5a', 'new', 0)
+            end},
+            {'layout error', function()
+                return rconv:decode(wlen(9, 'not a uuid'))
+            end},
+            {'layout error in C', function()
+                return c.tuple_decode(rconv._tplan, wlen(9, 'x'), 'new', 0)
+            end},
+            {'bad utf-8 deep inside', function()
+                return rconv:decode(wlen(4, wlen(1, '\xff')))
+            end},
+        }
+        for _, step in ipairs(steps) do
+            local before = used()
+            pcall(step[2])
+            t.assert_equals(used(), before, step[1])
+        end
+    end
+
+    gd.test_reentrant_decode = function()
+        local m = pb.parse([[
+            syntax = "proto3";
+            package reentry_decode;
+            import "google/protobuf/duration.proto";
+            message R {
+                google.protobuf.Duration d = 1;
+                string s = 2;
+                int32 i = 3;
+            }
+        ]])
+        local s = format_space('ctd_reentry', {
+            {name = 'd', type = 'varbinary', is_nullable = true},
+            {name = 's', type = 'string'},
+            {name = 'i', type = 'integer'},
+        })
+        local conv = pb.tuple.bind(m.R_descriptor, s)
+        local tplan = conv._tplan
+        local ffi_ok = pcall(ffi.cdef, 'size_t box_region_used(void);')
+        t.assert(ffi_ok or true)
+        -- the Duration is checked through its Lua decode before s and i
+        -- are read: that call allocates, and can run finalizers
+        local outer = wlen(1, wtag(1, 0) .. '\7') .. wlen(2, 'outer')
+            .. wtag(3, 0) .. '\123'
+        local inner = wlen(2, 'inner') .. wtag(3, 0) .. '\99'
+        local bad = wlen(2, '\xff')
+        local want_outer = tuple_canon(lua_new(conv, outer))
+        local want_inner = tuple_canon(lua_new(conv, inner))
+        local hits, inner_bad, refused = 0, 0, 0
+        local function reenter()
+            hits = hits + 1
+            local ok, tuple = c.tuple_decode(tplan, inner, 'new', 0)
+            if not ok or tuple_canon(tuple) ~= want_inner then
+                inner_bad = inner_bad + 1
+            end
+            if not c.tuple_decode(tplan, bad, 'new', 0) then
+                refused = refused + 1
+            end
+            -- and an error raised inside the re-entrant call
+            pcall(conv.decode, conv, bad)
+        end
+        local function plant(n)
+            for _ = 1, n do ffi.gc(ffi.new('char[1]'), reenter) end
+        end
+        local stepmul = collectgarbage('setstepmul', 2^30)
+        local region_before = tonumber(ffi.C.box_region_used())
+        local ok, err = pcall(function()
+            for round = 1, 3 do
+                collectgarbage('collect')
+                collectgarbage('stop')
+                plant(10)
+                collectgarbage('restart')
+                local done, tuple = c.tuple_decode(tplan, outer, 'new', 0)
+                t.assert(done, 'round ' .. round)
+                t.assert_equals(tuple_canon(tuple), want_outer,
+                                'round ' .. round)
+            end
+        end)
+        collectgarbage('setstepmul', stepmul)
+        collectgarbage('restart')
+        t.assert(ok, tostring(err))
+        t.assert_equals({hits = hits, inner_bad = inner_bad,
+                         refused = refused},
+                        {hits = 30, inner_bad = 0, refused = 30})
+        t.assert_equals(tonumber(ffi.C.box_region_used()), region_before)
+    end
+end
+
+-- IV3 for decode: no Lua value per field or per row, only the tuple.
+ga.test_decode_allocates_the_tuple = function()
+    local kv = require('full.kv.kv_pb')
+    local s = format_space('ctd_alloc', KV_DECODE_FORMAT)
+    local conv = pb.tuple.bind(kv.KeyValue_descriptor, s,
+                               {columns = {lease = 'lease_id'}})
+    local wires = {}
+    for k = 1, 1000 do
+        wires[k] = pb.encode(kv.KeyValue_descriptor, {
+            key = 'key-' .. k, create_revision = k, mod_revision = k + 1,
+            version = 3, value = string.rep('v', 40), lease = k * 7})
+    end
+    local tplan = conv._tplan
+    local decode = c.tuple_decode
+    -- keep the tuples, so the GC frees nothing mid-measure
+    local keep = {}
+    for k = 1, #wires do keep[k] = false end
+    for k = 1, #wires do select(2, decode(tplan, wires[k], 'new', 0)) end
+    for k = 1, #wires do lua.decode(conv, wires[k]) end
+    local c_bytes = allocated(function()
+        for k = 1, #wires do
+            local _, tuple = decode(tplan, wires[k], 'new', 0)
+            keep[k] = tuple
+        end
+    end)
+    local lua_bytes = allocated(function()
+        for k = 1, #wires do
+            keep[k] = box.tuple.new(lua.decode(conv, wires[k]))
+        end
+    end)
+    -- What a tuple reference costs by itself: box.tuple.new of a table
+    -- that already exists.
+    local row = {'k', 1, 2, 3, 'v', 4}
+    local baseline = allocated(function()
+        for k = 1, #wires do keep[k] = box.tuple.new(row) end
+    end)
+    -- the tuple reference and nothing per field
+    t.assert_le(c_bytes, baseline + 16 * #wires,
+                string.format('C: %d bytes for %d rows, a tuple reference '
+                              .. 'alone: %d', c_bytes, #wires, baseline))
+    -- the Lua path builds a table per message and per row on top
+    t.assert_gt(lua_bytes, 4 * c_bytes)
+end
