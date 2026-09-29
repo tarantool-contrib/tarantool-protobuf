@@ -33,6 +33,7 @@ M.Address_descriptor = {name = "kv.Address"}
 M.Phone_descriptor = {name = "kv.Phone"}
 M.Label_descriptor = {name = "kv.Label"}
 M.Record_descriptor = {name = "kv.Record"}
+M.Mixed_descriptor = {name = "kv.Mixed"}
 
 -- Message: kv.KeyValue
 M.KeyValue_descriptor.fields = {
@@ -125,6 +126,39 @@ M.Record_fields = pb.field_names({
     balance = "balance",
 })
 
+-- Message: kv.Mixed
+M.Mixed_descriptor.fields = {
+    {name="rank", id=5, kind='scalar', proto_type="int32"},
+    {name="counts", id=3, kind='scalar', proto_type="sint32", repeated=true, packed=true},
+    {name="id", id=1, kind='scalar', proto_type="string"},
+    {name="contacts", id=4, kind='map', key={kind='scalar', proto_type="int64"}, value={kind='message', message=M.Phone_descriptor}},
+    {name="tags", id=2, kind='scalar', proto_type="string", repeated=true},
+    {name="seen", id=6, kind='message', message=pb.wkt.Timestamp_descriptor, repeated=true},
+    {name="child", id=8, kind='message', message=M.Mixed_descriptor},
+    {name="kinds", id=7, kind='enum', enum=M.Kind_descriptor, repeated=true, packed=true},
+    {name="text", id=10, kind='scalar', proto_type="string", oneof="pick"},
+    {name="code", id=9, kind='scalar', proto_type="int64", oneof="pick"},
+}
+M.Mixed_descriptor.oneofs = {
+    pick = {"text", "code"},
+}
+pb.finalize_message(M.Mixed_descriptor)
+M.Mixed_fields = pb.field_names({
+    rank = "rank",
+    counts = "counts",
+    id = "id",
+    contacts = "contacts",
+    tags = "tags",
+    seen = "seen",
+    child = "child",
+    kinds = "kinds",
+    text = "text",
+    code = "code",
+})
+M.Mixed_oneofs = pb.field_names({
+    pick = "pick",
+})
+
 -- EmmyLua / lua-language-server type annotations.
 -- These are comments — no runtime effect. They give editors
 -- autocomplete and type-checking for the generated wrappers.
@@ -176,6 +210,23 @@ M.Record_fields = pb.field_names({
 ---@field active boolean
 ---@field label kv.Label
 ---@field balance integer
+
+--- Declared out of field-number order, with the repeated and map shapes
+--- Record lacks: packed and unpacked scalars, a map with message values,
+--- repeated Timestamps, a oneof and a recursive field. The descriptor
+--- codec writes fields in declaration order; the tuple bridge writes them
+--- in field-number order at every level.
+---@class kv.Mixed
+---@field rank integer
+---@field counts integer[]
+---@field id string
+---@field contacts table<integer, kv.Phone>
+---@field tags string[]
+---@field seen google.protobuf.Timestamp[]
+---@field child kv.Mixed
+---@field kinds kv.Kind[]
+---@field text? string
+---@field code? integer
 
 ---@param t? kv.KeyValue
 ---@return kv.KeyValue
@@ -271,5 +322,23 @@ function M.Record_text(t, opts) return pb.text.encode(M.Record_descriptor, t, op
 function M.Record_has_nickname(t) return t.nickname ~= nil end
 ---@param t kv.Record
 function M.Record_clear_nickname(t) t.nickname = nil end
+
+---@param t? kv.Mixed
+---@return kv.Mixed
+function M.Mixed_new(t) return t or {} end
+---@param t kv.Mixed
+---@return string
+function M.Mixed_encode(t) return pb.encode(M.Mixed_descriptor, t) end
+---@param b string
+---@return kv.Mixed
+function M.Mixed_decode(b) return pb.decode(M.Mixed_descriptor, b) end
+function M.Mixed_decode_unsafe(b) return pb.decode_unsafe(M.Mixed_descriptor, b) end
+---@param b string
+---@return pb.MessageView
+function M.Mixed_decode_lazy(b) return pb.decode_lazy(M.Mixed_descriptor, b) end
+---@param t kv.Mixed
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.Mixed_text(t, opts) return pb.text.encode(M.Mixed_descriptor, t, opts) end
 
 return M

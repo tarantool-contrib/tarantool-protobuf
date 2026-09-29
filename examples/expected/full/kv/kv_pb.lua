@@ -33,6 +33,7 @@ M.Address_descriptor = {name = "kv.Address"}
 M.Phone_descriptor = {name = "kv.Phone"}
 M.Label_descriptor = {name = "kv.Label"}
 M.Record_descriptor = {name = "kv.Record"}
+M.Mixed_descriptor = {name = "kv.Mixed"}
 
 -- Message: kv.KeyValue
 M.KeyValue_descriptor.fields = {
@@ -125,6 +126,39 @@ M.Record_fields = pb.field_names({
     balance = "balance",
 })
 
+-- Message: kv.Mixed
+M.Mixed_descriptor.fields = {
+    {name="rank", id=5, kind='scalar', proto_type="int32"},
+    {name="counts", id=3, kind='scalar', proto_type="sint32", repeated=true, packed=true},
+    {name="id", id=1, kind='scalar', proto_type="string"},
+    {name="contacts", id=4, kind='map', key={kind='scalar', proto_type="int64"}, value={kind='message', message=M.Phone_descriptor}},
+    {name="tags", id=2, kind='scalar', proto_type="string", repeated=true},
+    {name="seen", id=6, kind='message', message=pb.wkt.Timestamp_descriptor, repeated=true},
+    {name="child", id=8, kind='message', message=M.Mixed_descriptor},
+    {name="kinds", id=7, kind='enum', enum=M.Kind_descriptor, repeated=true, packed=true},
+    {name="text", id=10, kind='scalar', proto_type="string", oneof="pick"},
+    {name="code", id=9, kind='scalar', proto_type="int64", oneof="pick"},
+}
+M.Mixed_descriptor.oneofs = {
+    pick = {"text", "code"},
+}
+pb.finalize_message(M.Mixed_descriptor)
+M.Mixed_fields = pb.field_names({
+    rank = "rank",
+    counts = "counts",
+    id = "id",
+    contacts = "contacts",
+    tags = "tags",
+    seen = "seen",
+    child = "child",
+    kinds = "kinds",
+    text = "text",
+    code = "code",
+})
+M.Mixed_oneofs = pb.field_names({
+    pick = "pick",
+})
+
 -- EmmyLua / lua-language-server type annotations.
 -- These are comments — no runtime effect. They give editors
 -- autocomplete and type-checking for the generated wrappers.
@@ -176,6 +210,23 @@ M.Record_fields = pb.field_names({
 ---@field active boolean
 ---@field label kv.Label
 ---@field balance integer
+
+--- Declared out of field-number order, with the repeated and map shapes
+--- Record lacks: packed and unpacked scalars, a map with message values,
+--- repeated Timestamps, a oneof and a recursive field. The descriptor
+--- codec writes fields in declaration order; the tuple bridge writes them
+--- in field-number order at every level.
+---@class kv.Mixed
+---@field rank integer
+---@field counts integer[]
+---@field id string
+---@field contacts table<integer, kv.Phone>
+---@field tags string[]
+---@field seen google.protobuf.Timestamp[]
+---@field child kv.Mixed
+---@field kinds kv.Kind[]
+---@field text? string
+---@field code? integer
 
 ---@param t? kv.KeyValue
 ---@return kv.KeyValue
@@ -2097,5 +2148,735 @@ function M.Record_text(t, opts) return pb.text.encode(M.Record_descriptor, t, op
 function M.Record_has_nickname(t) return t.nickname ~= nil end
 ---@param t kv.Record
 function M.Record_clear_nickname(t) t.nickname = nil end
+
+---@param t? kv.Mixed
+---@return kv.Mixed
+function M.Mixed_new(t) return t or {} end
+
+---@param t kv.Mixed
+---@return string
+function M.Mixed_encode(t)
+    local encode_int32 = wire.encode_int32
+    local encode_int64 = wire.encode_int64
+    local encode_varint = wire.encode_varint
+    local _d = M.Mixed_descriptor
+    if pb.c_runtime ~= nil then
+        local _p = _d.c_plan or pb.c_runtime.compile_plan(_d)
+        return pb.c_runtime.encode(_p, t)
+    end
+    if type(t) ~= 'table' then
+        error("expected table for kv.Mixed, got " .. type(t), 0)
+    end
+    local out, n = {}, 0
+    local v
+    local _of_pick
+    if t.text ~= nil then _of_pick = "text" end
+    if t.code ~= nil then _of_pick = "code" end
+    -- field 5: rank
+    v = t.rank
+    if v ~= nil and v ~= 0 then
+        n = n + 1; out[n] = "\x28"
+        n = n + 1; out[n] = encode_int32(v)
+    end
+    -- field 3: counts
+    v = t.counts
+    if v ~= nil and #v > 0 then
+        local _n = #v
+        local parts, m = table_new(_n, 0), 0
+        for _i = 1, _n do
+            local _e = v[_i]
+            if type(_e) == 'number' and _e >= -64 and _e <= 63 then
+                m = m + 1; parts[m] = CHARS[bit.bxor(bit.lshift(_e, 1), bit.arshift(_e, 31))]
+            else
+                m = m + 1; parts[m] = wire.encode_sint32(_e)
+            end
+        end
+        local _b = table.concat(parts)
+        n = n + 1; out[n] = "\x1a"
+        local _len = #_b
+        if _len < 128 then
+            n = n + 1; out[n] = CHARS[_len]
+        else
+            n = n + 1; out[n] = encode_varint(_len)
+        end
+        n = n + 1; out[n] = _b
+    end
+    -- field 1: id
+    v = t.id
+    if v ~= nil and v ~= '' then
+        n = n + 1; out[n] = "\x0a"
+        local _len = #v
+        if _len < 128 then
+            n = n + 1; out[n] = CHARS[_len]
+        else
+            n = n + 1; out[n] = encode_varint(_len)
+        end
+        n = n + 1; out[n] = v
+    end
+    -- field 4: contacts
+    v = t.contacts
+    if v ~= nil and next(v) ~= nil then
+        local _tag, _ktag, _vtag = "\x22", "\x08", "\x12"
+        for _k, _val in pairs(v) do
+            local entry, _m = {}, 0
+            if _k ~= 0 then
+                _m = _m + 1; entry[_m] = _ktag
+                _m = _m + 1; entry[_m] = encode_int64(_k)
+            end
+            if _val ~= nil then
+                _m = _m + 1; entry[_m] = _vtag
+                _m = _m + 1; entry[_m] = wire.encode_len(M.Phone_encode(_val))
+            end
+            n = n + 1; out[n] = _tag
+            local _b = table.concat(entry)
+            local _len = #_b
+            if _len < 128 then
+                n = n + 1; out[n] = CHARS[_len]
+            else
+                n = n + 1; out[n] = encode_varint(_len)
+            end
+            n = n + 1; out[n] = _b
+        end
+    end
+    -- field 2: tags
+    v = t.tags
+    if v ~= nil and #v > 0 then
+        local _tag = "\x12"
+        for _i = 1, #v do
+            local _b = v[_i]
+            n = n + 1; out[n] = _tag
+            local _len = #_b
+            if _len < 128 then
+                n = n + 1; out[n] = CHARS[_len]
+            else
+                n = n + 1; out[n] = encode_varint(_len)
+            end
+            n = n + 1; out[n] = _b
+        end
+    end
+    -- field 6: seen
+    v = t.seen
+    if v ~= nil and #v > 0 then
+        local _tag = "\x32"
+        for _i = 1, #v do
+            local _b = pb.wkt.Timestamp_encode(v[_i])
+            n = n + 1; out[n] = _tag
+            local _len = #_b
+            if _len < 128 then
+                n = n + 1; out[n] = CHARS[_len]
+            else
+                n = n + 1; out[n] = encode_varint(_len)
+            end
+            n = n + 1; out[n] = _b
+        end
+    end
+    -- field 8: child
+    v = t.child
+    if v ~= nil or type(v) == 'cdata' then
+        local _b = M.Mixed_encode(v)
+        n = n + 1; out[n] = "\x42"
+        local _len = #_b
+        if _len < 128 then
+            n = n + 1; out[n] = CHARS[_len]
+        else
+            n = n + 1; out[n] = encode_varint(_len)
+        end
+        n = n + 1; out[n] = _b
+    end
+    -- field 7: kinds
+    v = t.kinds
+    if v ~= nil and #v > 0 then
+        local _n = #v
+        local parts, m = table_new(_n, 0), 0
+        for _i = 1, _n do
+            local elem = v[_i]
+            local nv = elem
+            if type(elem) == 'string' then
+                nv = M.Kind[elem]
+                if nv == nil then error("unknown enum value '" .. elem .. "' for kv.Kind", 0) end
+            end
+            local _e = nv
+            if type(_e) == 'number' and _e >= 0 and _e < 128 then
+                m = m + 1; parts[m] = CHARS[_e]
+            else
+                m = m + 1; parts[m] = encode_int32(_e)
+            end
+        end
+        local _b = table.concat(parts)
+        n = n + 1; out[n] = "\x3a"
+        local _len = #_b
+        if _len < 128 then
+            n = n + 1; out[n] = CHARS[_len]
+        else
+            n = n + 1; out[n] = encode_varint(_len)
+        end
+        n = n + 1; out[n] = _b
+    end
+    -- field 10: text
+    v = t.text
+    if _of_pick == "text" then
+        n = n + 1; out[n] = "\x52"
+        local _len = #v
+        if _len < 128 then
+            n = n + 1; out[n] = CHARS[_len]
+        else
+            n = n + 1; out[n] = encode_varint(_len)
+        end
+        n = n + 1; out[n] = v
+    end
+    -- field 9: code
+    v = t.code
+    if _of_pick == "code" then
+        n = n + 1; out[n] = "\x48"
+        n = n + 1; out[n] = encode_int64(v)
+    end
+    local _uf = t._unknown_fields
+    if _uf ~= nil and _uf ~= '' then n = n + 1; out[n] = _uf end
+    return table.concat(out)
+end
+
+---@param b string
+---@return kv.Mixed
+function M.Mixed_decode(buf, depth)
+    local decode_int64 = wire.decode_int64
+    local decode_len = wire.decode_len
+    local decode_sint32 = wire.decode_sint32
+    local decode_string = wire.decode_string
+    local decode_tag = wire.decode_tag
+    local decode_varint = wire.decode_varint
+    local skip_field = wire.skip_field
+    local varint_to_int32 = wire.varint_to_int32
+    local _d = M.Mixed_descriptor
+    if pb.c_runtime ~= nil then
+        local _p = _d.c_plan or pb.c_runtime.compile_plan(_d)
+        return pb.c_runtime.decode(_p, buf)
+    end
+    if type(buf) ~= 'string' then
+        error("expected string for kv.Mixed decode, got " .. type(buf), 0)
+    end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
+    local result = {}
+    local pos, len = 1, #buf
+    local _uf
+    local _n_counts = 0
+    local _n_tags = 0
+    local _n_seen = 0
+    local _n_kinds = 0
+    while pos <= len do
+        local _tag_start = pos
+        local id, wt
+        local _b = string_byte(buf, pos)
+        if _b ~= nil and _b < 0x80 then
+            wt = band(_b, 7)
+            if wt >= 6 then error("illegal wire type " .. wt, 0) end
+            id = rshift(_b, 3)
+            if id == 0 then error("illegal field number 0", 0) end
+            pos = pos + 1
+        elseif _b ~= nil and pos < len then
+            local _b2 = string_byte(buf, pos + 1)
+            if _b2 < 0x80 then
+                if _b2 == 0 then error("overlong tag varint at offset " .. pos, 0) end
+                local _v = _b - 128 + _b2 * 128
+                wt = band(_v, 7)
+                if wt >= 6 then error("illegal wire type " .. wt, 0) end
+                id = rshift(_v, 3)
+                pos = pos + 2
+            else
+                id, wt, pos = decode_tag(buf, pos)
+            end
+        else
+            id, wt, pos = decode_tag(buf, pos)
+        end
+        if id == 5 then
+            local val
+            val, pos = wire.decode_int32(buf, pos)
+            result.rank = val
+        elseif id == 3 then
+            if wt == 2 then
+                local payload
+                payload, pos = decode_len(buf, pos)
+                local p2, lim = 1, #payload
+                local list = result.counts
+                if list == nil then list = table_new(lim, 0); result.counts = list end
+                while p2 <= lim do
+                    local val
+                    val, p2 = decode_sint32(payload, p2)
+                    _n_counts = _n_counts + 1; list[_n_counts] = val
+                end
+            else
+                local list = result.counts
+                if list == nil then list = {}; result.counts = list end
+                local val
+                val, pos = decode_sint32(buf, pos)
+                _n_counts = _n_counts + 1; list[_n_counts] = val
+            end
+        elseif id == 1 then
+            local _lb = string_byte(buf, pos)
+            if _lb ~= nil and _lb < 0x80 then
+                local _np = pos + 1
+                local _epos = _np + _lb
+                if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                local _s = buf:sub(_np, _epos - 1)
+                if utf8_len(_s) == nil then error("invalid UTF-8 in string field at offset " .. pos, 0) end
+                result.id = _s
+                pos = _epos
+            elseif _lb ~= nil and pos < len then
+                local _lb2 = string_byte(buf, pos + 1)
+                if _lb2 ~= nil and _lb2 < 0x80 then
+                    if _lb2 == 0 then error("overlong LEN varint at offset " .. pos, 0) end
+                    local _ln = _lb - 128 + _lb2 * 128
+                    local _np = pos + 2
+                    local _epos = _np + _ln
+                    if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                    local _s = buf:sub(_np, _epos - 1)
+                    if utf8_len(_s) == nil then error("invalid UTF-8 in string field at offset " .. pos, 0) end
+                    result.id = _s
+                    pos = _epos
+                else
+                    local val
+                    val, pos = decode_string(buf, pos)
+                    result.id = val
+                end
+            else
+                local val
+                val, pos = decode_string(buf, pos)
+                result.id = val
+            end
+        elseif id == 4 then
+            local map = result.contacts
+            if map == nil then map = {}; result.contacts = map end
+            local payload
+            payload, pos = decode_len(buf, pos)
+            local _ep, _elim = 1, #payload
+            local _key, _val = 0, {}
+            while _ep <= _elim do
+                local eid, ewt
+                eid, ewt, _ep = decode_tag(payload, _ep)
+                if eid == 1 then
+                    _key, _ep = decode_int64(payload, _ep)
+                elseif eid == 2 then
+                    local _payload
+                    _payload, _ep = decode_len(payload, _ep)
+                    _val = M.Phone_decode(_payload, depth + 1)
+                else
+                    _ep = skip_field(payload, _ep, ewt, eid)
+                end
+            end
+            for _k in pairs(map) do
+                if _k == _key then _key = _k; break end
+            end
+            map[_key] = _val
+        elseif id == 2 then
+            local list = result.tags
+            if list == nil then list = {}; result.tags = list end
+            local _lb = string_byte(buf, pos)
+            if _lb ~= nil and _lb < 0x80 then
+                local _np = pos + 1
+                local _epos = _np + _lb
+                if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                local _s = buf:sub(_np, _epos - 1)
+                if utf8_len(_s) == nil then error("invalid UTF-8 in string field at offset " .. pos, 0) end
+                _n_tags = _n_tags + 1; list[_n_tags] = _s
+                pos = _epos
+            elseif _lb ~= nil and pos < len then
+                local _lb2 = string_byte(buf, pos + 1)
+                if _lb2 ~= nil and _lb2 < 0x80 then
+                    if _lb2 == 0 then error("overlong LEN varint at offset " .. pos, 0) end
+                    local _ln = _lb - 128 + _lb2 * 128
+                    local _np = pos + 2
+                    local _epos = _np + _ln
+                    if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                    local _s = buf:sub(_np, _epos - 1)
+                    if utf8_len(_s) == nil then error("invalid UTF-8 in string field at offset " .. pos, 0) end
+                    _n_tags = _n_tags + 1; list[_n_tags] = _s
+                    pos = _epos
+                else
+                    local val
+                    val, pos = decode_string(buf, pos)
+                    _n_tags = _n_tags + 1; list[_n_tags] = val
+                end
+            else
+                local val
+                val, pos = decode_string(buf, pos)
+                _n_tags = _n_tags + 1; list[_n_tags] = val
+            end
+        elseif id == 6 then
+            local list = result.seen
+            if list == nil then list = {}; result.seen = list end
+            local payload
+            payload, pos = decode_len(buf, pos)
+            _n_seen = _n_seen + 1; list[_n_seen] = pb.wkt.Timestamp_decode(payload, depth + 1)
+        elseif id == 8 then
+            local payload
+            payload, pos = decode_len(buf, pos)
+            local prev = result.child
+            if prev == nil then
+                result.child = M.Mixed_decode(payload, depth + 1)
+            else
+                pb.codec.merge_message(M.Mixed_descriptor, prev, M.Mixed_decode(payload, depth + 1))
+            end
+        elseif id == 7 then
+            if wt == 2 then
+                local payload
+                payload, pos = decode_len(buf, pos)
+                local p2, lim = 1, #payload
+                local list = result.kinds
+                if list == nil then list = table_new(lim, 0); result.kinds = list end
+                while p2 <= lim do
+                    local val
+                    local _b = string_byte(payload, p2)
+                    if _b ~= nil and _b < 0x80 then
+                        val = _b
+                        p2 = p2 + 1
+                    elseif _b ~= nil and p2 < lim then
+                        local _b2 = string_byte(payload, p2 + 1)
+                        if _b2 ~= nil and _b2 < 0x80 then
+                            if _b2 == 0 then error("overlong varint at offset " .. p2, 0) end
+                            val = _b - 128 + _b2 * 128
+                            p2 = p2 + 2
+                        else
+                            local _u; _u, p2 = decode_varint(payload, p2)
+                            val = varint_to_int32(_u)
+                        end
+                    else
+                        local _u; _u, p2 = decode_varint(payload, p2)
+                        val = varint_to_int32(_u)
+                    end
+                    _n_kinds = _n_kinds + 1; list[_n_kinds] = val
+                end
+            else
+                local list = result.kinds
+                if list == nil then list = {}; result.kinds = list end
+                local u
+                u, pos = decode_varint(buf, pos)
+                _n_kinds = _n_kinds + 1; list[_n_kinds] = varint_to_int32(u)
+            end
+        elseif id == 10 then
+            local _lb = string_byte(buf, pos)
+            if _lb ~= nil and _lb < 0x80 then
+                local _np = pos + 1
+                local _epos = _np + _lb
+                if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                local _s = buf:sub(_np, _epos - 1)
+                if utf8_len(_s) == nil then error("invalid UTF-8 in string field at offset " .. pos, 0) end
+                result.text = _s
+                pos = _epos
+            elseif _lb ~= nil and pos < len then
+                local _lb2 = string_byte(buf, pos + 1)
+                if _lb2 ~= nil and _lb2 < 0x80 then
+                    if _lb2 == 0 then error("overlong LEN varint at offset " .. pos, 0) end
+                    local _ln = _lb - 128 + _lb2 * 128
+                    local _np = pos + 2
+                    local _epos = _np + _ln
+                    if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                    local _s = buf:sub(_np, _epos - 1)
+                    if utf8_len(_s) == nil then error("invalid UTF-8 in string field at offset " .. pos, 0) end
+                    result.text = _s
+                    pos = _epos
+                else
+                    local val
+                    val, pos = decode_string(buf, pos)
+                    result.text = val
+                end
+            else
+                local val
+                val, pos = decode_string(buf, pos)
+                result.text = val
+            end
+            result.code = nil
+        elseif id == 9 then
+            local val
+            val, pos = decode_int64(buf, pos)
+            result.code = val
+            result.text = nil
+        else
+            local _ebid = M.Mixed_descriptor.extensions_by_id
+            local _ext = _ebid and _ebid[id] or nil
+            if _ext ~= nil then
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
+            else
+                pos = skip_field(buf, pos, wt, id)
+                if _uf == nil then _uf = {} end
+                _uf[#_uf + 1] = buf:sub(_tag_start, pos - 1)
+            end
+        end
+    end
+    if _uf ~= nil then result._unknown_fields = table.concat(_uf) end
+    return result
+end
+
+---@param b string
+---@return kv.Mixed
+function M.Mixed_decode_unsafe(buf, depth)
+    local decode_bytes = wire.decode_bytes
+    local decode_int64 = wire.decode_int64
+    local decode_len = wire.decode_len
+    local decode_sint32 = wire.decode_sint32
+    local decode_tag = wire.decode_tag
+    local decode_varint = wire.decode_varint
+    local skip_field = wire.skip_field
+    local varint_to_int32 = wire.varint_to_int32
+    local _d = M.Mixed_descriptor
+    if pb.c_runtime ~= nil then
+        local _p = _d.c_plan or pb.c_runtime.compile_plan(_d)
+        return pb.c_runtime.decode_unsafe(_p, buf)
+    end
+    if type(buf) ~= 'string' then
+        error("expected string for kv.Mixed decode, got " .. type(buf), 0)
+    end
+    depth = depth or 0
+    if depth > wire.RECURSION_LIMIT then wire.recursion_limit_error() end
+    local result = {}
+    local pos, len = 1, #buf
+    local _uf
+    local _n_counts = 0
+    local _n_tags = 0
+    local _n_seen = 0
+    local _n_kinds = 0
+    while pos <= len do
+        local _tag_start = pos
+        local id, wt
+        local _b = string_byte(buf, pos)
+        if _b ~= nil and _b < 0x80 then
+            wt = band(_b, 7)
+            if wt >= 6 then error("illegal wire type " .. wt, 0) end
+            id = rshift(_b, 3)
+            if id == 0 then error("illegal field number 0", 0) end
+            pos = pos + 1
+        elseif _b ~= nil and pos < len then
+            local _b2 = string_byte(buf, pos + 1)
+            if _b2 < 0x80 then
+                if _b2 == 0 then error("overlong tag varint at offset " .. pos, 0) end
+                local _v = _b - 128 + _b2 * 128
+                wt = band(_v, 7)
+                if wt >= 6 then error("illegal wire type " .. wt, 0) end
+                id = rshift(_v, 3)
+                pos = pos + 2
+            else
+                id, wt, pos = decode_tag(buf, pos)
+            end
+        else
+            id, wt, pos = decode_tag(buf, pos)
+        end
+        if id == 5 then
+            local val
+            val, pos = wire.decode_int32(buf, pos)
+            result.rank = val
+        elseif id == 3 then
+            if wt == 2 then
+                local payload
+                payload, pos = decode_len(buf, pos)
+                local p2, lim = 1, #payload
+                local list = result.counts
+                if list == nil then list = table_new(lim, 0); result.counts = list end
+                while p2 <= lim do
+                    local val
+                    val, p2 = decode_sint32(payload, p2)
+                    _n_counts = _n_counts + 1; list[_n_counts] = val
+                end
+            else
+                local list = result.counts
+                if list == nil then list = {}; result.counts = list end
+                local val
+                val, pos = decode_sint32(buf, pos)
+                _n_counts = _n_counts + 1; list[_n_counts] = val
+            end
+        elseif id == 1 then
+            local _lb = string_byte(buf, pos)
+            if _lb ~= nil and _lb < 0x80 then
+                local _np = pos + 1
+                local _epos = _np + _lb
+                if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                local _s = buf:sub(_np, _epos - 1)
+                result.id = _s
+                pos = _epos
+            elseif _lb ~= nil and pos < len then
+                local _lb2 = string_byte(buf, pos + 1)
+                if _lb2 ~= nil and _lb2 < 0x80 then
+                    if _lb2 == 0 then error("overlong LEN varint at offset " .. pos, 0) end
+                    local _ln = _lb - 128 + _lb2 * 128
+                    local _np = pos + 2
+                    local _epos = _np + _ln
+                    if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                    local _s = buf:sub(_np, _epos - 1)
+                    result.id = _s
+                    pos = _epos
+                else
+                    local val
+                    val, pos = decode_bytes(buf, pos)
+                    result.id = val
+                end
+            else
+                local val
+                val, pos = decode_bytes(buf, pos)
+                result.id = val
+            end
+        elseif id == 4 then
+            local map = result.contacts
+            if map == nil then map = {}; result.contacts = map end
+            local payload
+            payload, pos = decode_len(buf, pos)
+            local _ep, _elim = 1, #payload
+            local _key, _val = 0, {}
+            while _ep <= _elim do
+                local eid, ewt
+                eid, ewt, _ep = decode_tag(payload, _ep)
+                if eid == 1 then
+                    _key, _ep = decode_int64(payload, _ep)
+                elseif eid == 2 then
+                    local _payload
+                    _payload, _ep = decode_len(payload, _ep)
+                    _val = M.Phone_decode_unsafe(_payload, depth + 1)
+                else
+                    _ep = skip_field(payload, _ep, ewt, eid)
+                end
+            end
+            for _k in pairs(map) do
+                if _k == _key then _key = _k; break end
+            end
+            map[_key] = _val
+        elseif id == 2 then
+            local list = result.tags
+            if list == nil then list = {}; result.tags = list end
+            local _lb = string_byte(buf, pos)
+            if _lb ~= nil and _lb < 0x80 then
+                local _np = pos + 1
+                local _epos = _np + _lb
+                if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                local _s = buf:sub(_np, _epos - 1)
+                _n_tags = _n_tags + 1; list[_n_tags] = _s
+                pos = _epos
+            elseif _lb ~= nil and pos < len then
+                local _lb2 = string_byte(buf, pos + 1)
+                if _lb2 ~= nil and _lb2 < 0x80 then
+                    if _lb2 == 0 then error("overlong LEN varint at offset " .. pos, 0) end
+                    local _ln = _lb - 128 + _lb2 * 128
+                    local _np = pos + 2
+                    local _epos = _np + _ln
+                    if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                    local _s = buf:sub(_np, _epos - 1)
+                    _n_tags = _n_tags + 1; list[_n_tags] = _s
+                    pos = _epos
+                else
+                    local val
+                    val, pos = decode_bytes(buf, pos)
+                    _n_tags = _n_tags + 1; list[_n_tags] = val
+                end
+            else
+                local val
+                val, pos = decode_bytes(buf, pos)
+                _n_tags = _n_tags + 1; list[_n_tags] = val
+            end
+        elseif id == 6 then
+            local list = result.seen
+            if list == nil then list = {}; result.seen = list end
+            local payload
+            payload, pos = decode_len(buf, pos)
+            _n_seen = _n_seen + 1; list[_n_seen] = pb.wkt.Timestamp_decode(payload, depth + 1)
+        elseif id == 8 then
+            local payload
+            payload, pos = decode_len(buf, pos)
+            local prev = result.child
+            if prev == nil then
+                result.child = M.Mixed_decode_unsafe(payload, depth + 1)
+            else
+                pb.codec.merge_message(M.Mixed_descriptor, prev, M.Mixed_decode_unsafe(payload, depth + 1))
+            end
+        elseif id == 7 then
+            if wt == 2 then
+                local payload
+                payload, pos = decode_len(buf, pos)
+                local p2, lim = 1, #payload
+                local list = result.kinds
+                if list == nil then list = table_new(lim, 0); result.kinds = list end
+                while p2 <= lim do
+                    local val
+                    local _b = string_byte(payload, p2)
+                    if _b ~= nil and _b < 0x80 then
+                        val = _b
+                        p2 = p2 + 1
+                    elseif _b ~= nil and p2 < lim then
+                        local _b2 = string_byte(payload, p2 + 1)
+                        if _b2 ~= nil and _b2 < 0x80 then
+                            if _b2 == 0 then error("overlong varint at offset " .. p2, 0) end
+                            val = _b - 128 + _b2 * 128
+                            p2 = p2 + 2
+                        else
+                            local _u; _u, p2 = decode_varint(payload, p2)
+                            val = varint_to_int32(_u)
+                        end
+                    else
+                        local _u; _u, p2 = decode_varint(payload, p2)
+                        val = varint_to_int32(_u)
+                    end
+                    _n_kinds = _n_kinds + 1; list[_n_kinds] = val
+                end
+            else
+                local list = result.kinds
+                if list == nil then list = {}; result.kinds = list end
+                local u
+                u, pos = decode_varint(buf, pos)
+                _n_kinds = _n_kinds + 1; list[_n_kinds] = varint_to_int32(u)
+            end
+        elseif id == 10 then
+            local _lb = string_byte(buf, pos)
+            if _lb ~= nil and _lb < 0x80 then
+                local _np = pos + 1
+                local _epos = _np + _lb
+                if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                local _s = buf:sub(_np, _epos - 1)
+                result.text = _s
+                pos = _epos
+            elseif _lb ~= nil and pos < len then
+                local _lb2 = string_byte(buf, pos + 1)
+                if _lb2 ~= nil and _lb2 < 0x80 then
+                    if _lb2 == 0 then error("overlong LEN varint at offset " .. pos, 0) end
+                    local _ln = _lb - 128 + _lb2 * 128
+                    local _np = pos + 2
+                    local _epos = _np + _ln
+                    if _epos - 1 > len then error("truncated LEN at offset " .. pos, 0) end
+                    local _s = buf:sub(_np, _epos - 1)
+                    result.text = _s
+                    pos = _epos
+                else
+                    local val
+                    val, pos = decode_bytes(buf, pos)
+                    result.text = val
+                end
+            else
+                local val
+                val, pos = decode_bytes(buf, pos)
+                result.text = val
+            end
+            result.code = nil
+        elseif id == 9 then
+            local val
+            val, pos = decode_int64(buf, pos)
+            result.code = val
+            result.text = nil
+        else
+            local _ebid = M.Mixed_descriptor.extensions_by_id
+            local _ext = _ebid and _ebid[id] or nil
+            if _ext ~= nil then
+                pos = pb.codec.decode_extension(_ext, buf, pos, wt, result, depth)
+            else
+                pos = skip_field(buf, pos, wt, id)
+                if _uf == nil then _uf = {} end
+                _uf[#_uf + 1] = buf:sub(_tag_start, pos - 1)
+            end
+        end
+    end
+    if _uf ~= nil then result._unknown_fields = table.concat(_uf) end
+    return result
+end
+
+---@param b string
+---@return pb.MessageView
+function M.Mixed_decode_lazy(b) return pb.decode_lazy(M.Mixed_descriptor, b) end
+---@param t kv.Mixed
+---@param opts? {single_line: boolean?, indent: string?}
+---@return string
+function M.Mixed_text(t, opts) return pb.text.encode(M.Mixed_descriptor, t, opts) end
 
 return M

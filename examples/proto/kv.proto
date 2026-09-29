@@ -68,3 +68,23 @@ message Record {
   Label label = 20;
   sint64 balance = 100;
 }
+
+// Declared out of field-number order, with the repeated and map shapes
+// Record lacks: packed and unpacked scalars, a map with message values,
+// repeated Timestamps, a oneof and a recursive field. The descriptor
+// codec writes fields in declaration order; the tuple bridge writes them
+// in field-number order at every level.
+message Mixed {
+  int32 rank = 5;
+  repeated sint32 counts = 3;
+  string id = 1;
+  map<int64, Phone> contacts = 4;
+  repeated string tags = 2;
+  repeated google.protobuf.Timestamp seen = 6;
+  Mixed child = 8;
+  repeated Kind kinds = 7;
+  oneof pick {
+    string text = 10;
+    int64 code = 9;
+  }
+}
