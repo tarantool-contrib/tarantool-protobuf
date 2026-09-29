@@ -305,11 +305,22 @@ end
 M.zigzag_decode32 = zigzag_decode32
 
 -- 64-bit zigzag uses cdata.
+--
+-- `~x` is written as `UINT64_MAX - x`, never `bit.bnot(x)`. The arm64
+-- backend of LuaJIT before upstream commit 90742d91 ("ARM64: Don't fuse
+-- sign extensions into logical operands", LuaJIT#1076) folds the sign
+-- extension of an int into the operand of a logical instruction, which has
+-- no such form, so a compiled `bit.bnot` of a sign-extended value computes
+-- `x << 48`. Tarantool's LuaJIT predates that fix: encode_sint64(-5)
+-- produced a 10-byte varint instead of 0x09. Covered by
+-- test/wire_zigzag_jit_test.lua.
+local UINT64_MAX = UINT64(-1)
+
 local function zigzag_encode64(n)
     local i = to_int64(n)
     local doubled = bit.lshift(UINT64(i), 1)
     if i >= 0 then return doubled end
-    return bit.bnot(doubled)
+    return UINT64_MAX - doubled
 end
 M.zigzag_encode64 = zigzag_encode64
 
@@ -319,7 +330,7 @@ M.zigzag_encode64 = zigzag_encode64
 local function zigzag_encode64_i(i)
     local doubled = bit.lshift(UINT64(i), 1)
     if i >= 0 then return doubled end
-    return bit.bnot(doubled)
+    return UINT64_MAX - doubled  -- not bit.bnot, see zigzag_encode64
 end
 M.zigzag_encode64_i = zigzag_encode64_i
 
@@ -327,7 +338,7 @@ local function zigzag_decode64(u)
     u = to_uint64(u)
     local half = bit.rshift(u, 1)
     if bit.band(u, 1) == UINT64_ZERO then return INT64(half) end
-    return INT64(bit.bnot(half))
+    return INT64(UINT64_MAX - half)  -- not bit.bnot, see zigzag_encode64
 end
 M.zigzag_decode64 = zigzag_decode64
 
