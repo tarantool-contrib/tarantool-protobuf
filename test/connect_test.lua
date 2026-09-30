@@ -139,7 +139,33 @@ local function fake_st(items)
     function st:write(data) self.out[#self.out + 1] = data return true end
     function st:finish() self.finished = true return true end
     function st:is_cancelled() return self.cancelled == true end
+    function st:abort() self.aborted = true; self.cancelled = true; return true end
     return st
+end
+
+-- An exchange without abort() (an older tarantool-http2, whose write
+-- also ignores a timeout) cannot bound a stream by its deadline: the
+-- stream is refused with an HTTP 500 and no body (a body write is what
+-- such an exchange cannot bound), and the handler never runs.
+u.test_stream_needs_abort = function()
+    local hello = require('full.hello.hello_pb')
+    local ran = false
+    local h = connect.new({hello.Greeter_server({
+        StreamHellos = function() ran = true end,
+    })})
+    local head = {method = 'POST', path = '/hello.Greeter/StreamHellos', version = 'HTTP/2',
+                  headers = {['content-type'] = 'application/connect+json',
+                             ['connect-timeout-ms'] = '10'}}
+    for _ = 1, 2 do
+        local st = fake_st({E(0, '{"name": "x"}')})
+        st.abort = nil
+        h:stream_handler(head)(head, st)
+        t.assert_equals(ran, false)
+        t.assert(st.finished)
+        t.assert_equals(st.head[1], 500)
+        t.assert_equals(st.out, {}, 'no body write')
+    end
+    t.assert_str_contains(connect.REQUIRED_TRANSPORT, 'abort()')
 end
 
 u.test_stream_io_read = function()

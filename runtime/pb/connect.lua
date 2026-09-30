@@ -1029,7 +1029,8 @@ function M.stream_io(st)
     -- write blocked in another fiber returns at once (HTTP/2: the stream
     -- is reset; HTTP/1.1: the connection closes).
     function io:abort(reason)
-        if st.abort ~= nil then st:abort(reason) end
+        -- stream_handler refuses exchanges without abort().
+        st:abort(reason)
     end
     return io
 end
@@ -1206,8 +1207,34 @@ function Handler:stream_handler(head)
     local call = self:match(head)
     if call == nil or call.mode ~= 'stream' or call.reject ~= nil then return nil end
     return function(hd, st)
+        if type(st.abort) ~= 'function' then
+            return M._unsupported_exchange(call, st)
+        end
         self:_serve_stream(call, hd, M.stream_io(st))
     end
+end
+
+-- The transport a Connect stream needs: a streaming exchange whose
+-- write takes a timeout and that has abort() (tarantool-http2 master
+-- e656208 or later). An older exchange would let a client that takes
+-- nothing hold the call past its deadline, so such a stream is refused
+-- instead, with one log line. The refusal is an HTTP 500 without a
+-- body (a Connect client reads it as `unknown`): a body write on such
+-- an exchange is exactly what cannot be bounded, the head and the end
+-- of the response are not flow-controlled.
+M.REQUIRED_TRANSPORT = 'tarantool-http2 with streaming exchanges that have '
+    .. 'write(data, timeout) and abort() (master e656208 or later)'
+
+local warned_transport = false
+
+function M._unsupported_exchange(call, st)
+    if not warned_transport then
+        warned_transport = true
+        log.error('pb.connect: streaming calls need %s; this exchange has no abort(), '
+            .. 'so Connect streams are refused with HTTP 500', M.REQUIRED_TRANSPORT)
+    end
+    st:write_head(500, {['content-type'] = 'application/connect+' .. call.codec.name})
+    st:finish()
 end
 
 -- serve(call, req) -> response for a call `match` returned.

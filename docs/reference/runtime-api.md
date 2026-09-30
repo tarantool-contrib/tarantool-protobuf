@@ -593,6 +593,12 @@ What `handle` serves:
 | `GET ?encoding=json\|proto&message=...[&base64=1][&compression=identity][&connect=v1]`, method with `idempotency_level = NO_SIDE_EFFECTS` | unary, the message from the query |
 | `POST`, `content-type: application/connect+proto` or `+json`, streaming method | enveloped messages in, enveloped messages and an EndStreamResponse out, HTTP 200 |
 
+The streaming path needs tarantool-http2 master e656208 or later
+(`pb.connect.REQUIRED_TRANSPORT`): a streaming exchange with
+`write(data, timeout)` and `abort()`. A stream on an exchange without
+`abort()` is refused with HTTP 500 and no body, and the first refusal
+logs an error naming the requirement.
+
 `stream_handler(head)` returns a tarantool-http2 streaming handler
 (`http_stream` router result) for a Connect streaming call and `nil`
 for anything else; unary calls, GETs and rejections go through

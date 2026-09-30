@@ -146,6 +146,13 @@ Streaming calls run on tarantool-http2's streaming handlers
 (`http_stream`): the request body is read as it arrives and the
 response is written as the handler produces it.
 
+**Minimum transport:** tarantool-http2 master e656208 or later, whose
+streaming exchange has `write(data, timeout)` and `abort()` — what
+bounds a stream by its deadline. On an older exchange (no `abort()`)
+every Connect stream is refused with HTTP 500 and no body, and the
+first refusal logs an error naming this requirement; unary calls and
+gRPC are not affected.
+
 | Call | HTTP/1.1 | HTTP/2 |
 |---|---|---|
 | unary (POST, GET) | yes | yes |
