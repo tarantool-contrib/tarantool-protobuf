@@ -167,7 +167,8 @@ deps:
   `buf dep update` once to resolve it into `buf.lock` and commit both
   files; public modules need no login.
 - **`tarantool/tarantool.proto`** (the `(tarantool.lua_package)`
-  option) is not published as a registry module. Copy
+  option) is not published as a registry module yet (see
+  [Using the options module](#using-the-options-module)). Copy
   `options/tarantool/tarantool.proto` from this repository into a
   directory that is one of your modules, keeping the `tarantool/`
   directory so the import path stays `tarantool/tarantool.proto`. Skip
@@ -318,8 +319,10 @@ easyp lint --root proto
   file under an input, so it also writes an unused
   `gen/tarantool/tarantool_pb.lua`; `ignore: [tarantool]` keeps the
   copy out of the lint (it fails `PACKAGE_VERSION_SUFFIX` under
-  `DEFAULT`). A git dependency on this repository does not replace the
-  copy: EasyP installs the file under its repository path,
+  `DEFAULT`). A git dependency on this repository replaces the copy
+  from the first release that ships the options module (see
+  [Using the options module](#using-the-options-module)); at earlier
+  revisions EasyP installs the file under its repository path,
   `options/tarantool/tarantool.proto`, so `import
   "tarantool/tarantool.proto"` does not resolve.
 - `opts:` is a map of the `--tarantool_opt` keys (`mode`, `prefix`,
@@ -329,6 +332,89 @@ easyp lint --root proto
 The generated modules load like the `buf` ones. As with `buf`, only
 the embedded descriptors differ from `protoc` output, in the order of
 option fields; `just test-easyp` checks the examples.
+
+## Using the options module
+
+The `options/` directory of this repository is a module of its own:
+`tarantool/tarantool.proto`, which defines `(tarantool.lua_package)`,
+and nothing else. The `buf.yaml` at the repository root names it
+`buf.build/tarantool-contrib/tarantool-protobuf`. The copies of
+`google/api/annotations.proto` and `google/api/http.proto` this
+repository builds its examples with live in `third_party/googleapis/`,
+outside the module, so they never compete with the googleapis module
+or repository your project takes `google/api` from.
+
+With the module as a dependency, the copy of `tarantool/tarantool.proto`
+in the `buf` and EasyP layouts above goes away; the import stays
+`import "tarantool/tarantool.proto";`.
+
+### With `buf`
+
+**The module is not published on the Buf Schema Registry yet.** Once it
+is, list it next to googleapis in `buf.yaml` and run `buf dep update`:
+
+```yaml
+version: v2
+modules:
+  - path: proto
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/tarantool-contrib/tarantool-protobuf
+```
+
+Until then, make `options/` of a checkout of this repository (a git
+submodule, for instance) one of your modules; it builds together with
+googleapis from the registry:
+
+```yaml
+version: v2
+modules:
+  - path: proto
+  - path: vendor/tarantool-protobuf/options
+deps:
+  - buf.build/googleapis/googleapis
+```
+
+When the registry module becomes available, replace the `modules`
+entry with the `deps` entry rather than adding it: a file in a local
+module and in a dependency at once fails the build
+(`tarantool/tarantool.proto is contained in multiple modules`).
+
+### With EasyP
+
+Add a git dependency on this repository at a release tag (or a
+commit) next to googleapis:
+
+```yaml
+deps:
+  - github.com/googleapis/googleapis@93d6085996d0b4ff7e7e86ca9945d5524bb380d1
+  - github.com/tarantool-contrib/tarantool-protobuf@<tag>
+
+generate:
+  inputs:
+    - directory:
+        path: .
+        root: proto
+  plugins:
+    - path: ./bin/protoc-gen-tarantool
+      out: gen
+      opts:
+        mode: full
+```
+
+EasyP reads the root `buf.yaml` of a dependency and strips the module
+path from its files, so `options/tarantool/tarantool.proto` installs as
+`tarantool/tarantool.proto`. The other `.proto` files of the repository
+(examples, test fixtures, `third_party/`) install under their
+repository paths, where they cannot shadow an import of yours;
+`google/api` still comes from googleapis. A dependency is neither
+generated nor linted, so there is no `gen/tarantool/tarantool_pb.lua`
+and no `ignore: [tarantool]` to add.
+
+**This works from the first release that carries the root `buf.yaml`;
+no such release exists yet.** At an older tag the file installs as
+`options/tarantool/tarantool.proto` and the import does not resolve:
+keep the copy under `proto/` until then.
 
 ## CMake
 
