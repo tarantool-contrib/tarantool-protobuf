@@ -232,6 +232,12 @@ test-c: build-c gen
 # or codec changes.
 test-all: test test-c
 
+# Generate the examples with `buf generate` (both modes) and check them
+# against the protoc outputs of `gen`: identical code, embedded
+# descriptors equal once decoded. Offline; skips without buf on PATH.
+test-buf: gen
+    test/buf/check.sh
+
 # Check pb.reflection against an independent consumer: grpc-go's reflection
 # types decode the responses and protodesc links every returned file
 # (test/reflection-go). `protolegacy` lets protodesc accept the MessageSet

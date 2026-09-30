@@ -1,0 +1,18 @@
+# Generates the examples in both codegen modes with the same options as
+# `just gen-full` and `just gen-runtime`. test/buf/check.sh passes `-o`,
+# so the outputs land in <dir>/full/... and <dir>/runtime/..., the layout
+# of examples/expected/.
+version: v2
+plugins:
+  - local: ./protoc-gen-tarantool
+    out: .
+    opt:
+      - mode=full
+      - prefix=full
+    strategy: all
+  - local: ./protoc-gen-tarantool
+    out: .
+    opt:
+      - mode=runtime
+      - prefix=runtime
+    strategy: all
