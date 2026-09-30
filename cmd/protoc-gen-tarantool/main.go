@@ -2,11 +2,13 @@
 // Tarantool's LuaJIT runtime, paired with the runtime/protobuf Lua package.
 //
 // Usage:
-//   protoc --tarantool_out=./out --plugin=./protoc-gen-tarantool foo.proto
+//
+//	protoc --tarantool_out=./out --plugin=./protoc-gen-tarantool foo.proto
 //
 // File option (in your .proto):
-//   import "tarantool/tarantool.proto";
-//   option (tarantool.lua_package) = "myapp.proto.foo";
+//
+//	import "tarantool/tarantool.proto";
+//	option (tarantool.lua_package) = "myapp.proto.foo";
 package main
 
 import (

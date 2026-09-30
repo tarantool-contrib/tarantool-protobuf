@@ -274,7 +274,7 @@ func collectImports(file *protogen.File, msgs []*protogen.Message, prefix string
 			return
 		}
 		if isWellKnownTypeFile(ext) {
-			return  // pb.wkt is reachable via the existing `pb` require
+			return // pb.wkt is reachable via the existing `pb` require
 		}
 		lp := luaPackagePath(ext, prefix)
 		if lp == selfPath {

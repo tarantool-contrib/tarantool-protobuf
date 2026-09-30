@@ -97,9 +97,10 @@ func outputFilename(f protoreflect.FileDescriptor, prefix string) string {
 // Lua module tables. Strips the leading proto-package prefix.
 //
 // Examples (assuming file package = "foo.bar"):
-//   foo.bar.Person          -> "Person"
-//   foo.bar.Outer.Inner     -> "Outer_Inner"
-//   foo.bar.Color           -> "Color"
+//
+//	foo.bar.Person          -> "Person"
+//	foo.bar.Outer.Inner     -> "Outer_Inner"
+//	foo.bar.Color           -> "Color"
 func luaTypeName(fullName protoreflect.FullName, filePkg protoreflect.FullName) string {
 	s := string(fullName)
 	if filePkg != "" {
@@ -130,4 +131,3 @@ func isWellKnownTypeFile(fd protoreflect.FileDescriptor) bool {
 func wktTypeName(full protoreflect.FullName) string {
 	return strings.TrimPrefix(string(full), "google.protobuf.")
 }
-

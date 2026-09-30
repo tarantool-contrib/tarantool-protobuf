@@ -4,8 +4,9 @@
 // relative to the -I directory.
 //
 // Usage:
-//   protoc --tarantool-doc_out=./docs \
-//          --plugin=./protoc-gen-tarantool-doc foo.proto
+//
+//	protoc --tarantool-doc_out=./docs \
+//	       --plugin=./protoc-gen-tarantool-doc foo.proto
 //
 // Output sections (in order, omitted when empty):
 //   - Header with package + imports
