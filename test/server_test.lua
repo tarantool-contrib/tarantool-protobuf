@@ -425,21 +425,6 @@ live.test_smoke = function()
         r = http_client.get(base .. '/missing', {timeout = 5})
         t.assert_equals(r.status, 404)
 
-        -- A gRPC call over HTTP/2 with prior knowledge. An http.client
-        -- without the http_version option (older Tarantool) rejects it
-        -- or sends HTTP/1.1, which the server answers with 415.
-        local body = hello.HelloRequest_encode({name = 'Zed'})
-        local framed = '\0' .. string.char(0, 0, 0, #body) .. body
-        local gok, gr = pcall(http_client.post, base .. '/hello.Greeter/SayHello', framed,
-            {timeout = 5, http_version = '2-prior-knowledge',
-             headers = {['content-type'] = 'application/grpc', te = 'trailers'}})
-        if gok and gr.status ~= 415 then
-            t.assert_equals(gr.status, 200)
-            t.assert_equals(gr.headers['content-type'], 'application/grpc')
-            t.assert_equals(gr.body:sub(1, 5), '\0' .. string.char(0, 0, 0, #gr.body - 5))
-            t.assert_equals(hello.HelloReply_decode(gr.body:sub(6)).greeting, 'Hi Zed')
-        end
-
         t.assert_error_msg_contains('already started', s.start, s)
         s:set_serving_status('hello.Greeter', 'NOT_SERVING')
         t.assert_equals(s:health():get('hello.Greeter'), 'NOT_SERVING')
@@ -450,6 +435,63 @@ live.test_smoke = function()
     t.assert_equals(s:health():get(''), 'NOT_SERVING', 'stop() shuts health down first')
     t.assert_equals(s:set_serving_status('hello.Greeter', 'SERVING'), false)
     fiber.yield()
+end
+
+-- gRPC over the network from Tarantool's own http.client (HTTP/2 with
+-- prior knowledge). Whether this http.client can speak it is probed
+-- first, on a plain HTTP route that reports the protocol the server saw;
+-- only an established lack of that capability skips. Once the probe
+-- shows HTTP/2 works, the gRPC calls must succeed as such: a server that
+-- answered 415 (or anything else) to gRPC would fail here.
+live.test_grpc_over_http_client = function()
+    t.skip_if(not HAVE_HTTP2, NO_HTTP2)
+    local http_client = require('http.client')
+
+    local s = server.new({
+        listen = '127.0.0.1:0',
+        services = {
+            hello.Greeter_server({SayHello = function(r) return {greeting = 'Hi ' .. r.name} end}),
+        },
+        http = function(req)
+            if req.path == '/version' then return {status = 200, body = req.version} end
+        end,
+    }):start()
+    local base = ('http://127.0.0.1:%d'):format(s:address().port)
+    local H2 = {timeout = 5, http_version = '2-prior-knowledge'}
+
+    local ok, err = pcall(function()
+        local pok, probe = pcall(http_client.get, base .. '/version', H2)
+        t.skip_if(not pok, 'http.client cannot request HTTP/2 with prior knowledge: '
+            .. tostring(probe))
+        t.skip_if(probe.status == 200 and probe.body ~= 'HTTP/2',
+            'http.client sent ' .. tostring(probe.body) .. ' when asked for HTTP/2')
+        t.assert_equals({probe.status, probe.body}, {200, 'HTTP/2'}, 'the h2c probe')
+
+        local function call(path, msg)
+            local framed = '\0' .. string.char(0, 0, 0, #msg) .. msg
+            return http_client.post(base .. path, framed, {
+                timeout = 5, http_version = '2-prior-knowledge',
+                headers = {['content-type'] = 'application/grpc', te = 'trailers'},
+            })
+        end
+
+        local r = call('/hello.Greeter/SayHello', hello.HelloRequest_encode({name = 'Zed'}))
+        t.assert_equals(r.status, 200)
+        t.assert_equals(r.headers['content-type'], 'application/grpc')
+        -- A failed call is a trailers-only response: grpc-status in the
+        -- headers. A successful one carries it in the trailers, which
+        -- http.client does not show.
+        t.assert_equals(r.headers['grpc-status'], nil)
+        t.assert_equals(r.body:sub(1, 5), '\0' .. string.char(0, 0, 0, #r.body - 5))
+        t.assert_equals(hello.HelloReply_decode(r.body:sub(6)).greeting, 'Hi Zed')
+
+        -- The negative control: the status is visible when there is one.
+        r = call('/hello.Greeter/Nope', '')
+        t.assert_equals(r.status, 200)
+        t.assert_equals(r.headers['grpc-status'], tostring(grpc.code.UNIMPLEMENTED))
+    end)
+    s:stop(1)
+    if not ok then error(err, 0) end
 end
 
 live.test_bind_failure = function()
