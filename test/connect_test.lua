@@ -173,6 +173,40 @@ u.test_stream_io_read = function()
     t.assert_le(st.timeouts[1], 0.001)
 end
 
+-- A reset wins over requests already buffered.
+u.test_stream_io_cancel_over_buffered = function()
+    local st = fake_st({E(0, 'a') .. E(0, 'b') .. E(0, 'c')})
+    local io = connect.stream_io(st)
+    t.assert_equals({io:read()}, {0, 'a'})
+    st.cancelled = true
+    t.assert_equals({io:read()}, {false, 'canceled'})
+    t.assert_equals({io:read()}, {false, 'canceled'})
+    t.assert_equals(st.reads, 1, 'the transport is not asked again')
+end
+
+-- The handler's view: after the client goes away, recv() reports it
+-- instead of handing out requests that were buffered before.
+u.test_stream_recv_after_cancel = function()
+    local hello = require('full.hello.hello_pb')
+    local req = function(n) return E(0, hello.HelloRequest_encode({name = n})) end
+    local st = fake_st({req('a') .. req('b') .. req('c')})
+    local got = {}
+    local h = connect.new({hello.Greeter_server({
+        CollectHellos = function(stream, ctx)
+            local r = stream:recv()
+            got[#got + 1] = r.name
+            st.cancelled = true
+            got[#got + 1] = {stream:recv()}
+            got[#got + 1] = ctx:is_cancelled()
+            return {greeting = 'x'}
+        end,
+    })})
+    local head = {method = 'POST', path = '/hello.Greeter/CollectHellos', version = 'HTTP/2',
+                  headers = {['content-type'] = 'application/connect+proto'}}
+    h:stream_handler(head)(head, st)
+    t.assert_equals(got, {'a', {nil, 'canceled'}, true})
+end
+
 u.test_stream_io_write = function()
     local st = fake_st({})
     local io = connect.stream_io(st)

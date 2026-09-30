@@ -969,6 +969,13 @@ function M.stream_io(st)
     end
 
     function io:read(limit, deadline)
+        -- A client that went away wins over requests already buffered,
+        -- as the transport's own reset does over unread data: they are
+        -- dropped, not handed to the handler.
+        if st:is_cancelled() then
+            parts, have = {}, 0
+            return false, 'canceled'
+        end
         local ok, err = fill(5, deadline)
         if ok == nil then
             if have == 0 then return nil end
@@ -1102,6 +1109,12 @@ function Handler:_serve_stream(call, req, io)
     function view:recv()
         if recv_err ~= nil then return nil, recv_err end
         if expired(state) then return nil, deadline_status() end
+        if io:is_cancelled() then
+            -- The client went away: requests it sent before are not
+            -- handed out any more (stream_io's read drops them too).
+            recv_err = 'canceled'
+            return nil, recv_err
+        end
         local flags, payload = io:read(limit, state.deadline)
         local st
         if flags == nil then
