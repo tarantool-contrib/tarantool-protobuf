@@ -1,5 +1,6 @@
 -- pb.connect: the Connect protocol (https://connectrpc.com/docs/protocol)
--- for generated gRPC server tables, over buffered HTTP requests.
+-- for generated gRPC server tables, over tarantool-http2's HTTP handler
+-- contracts: buffered request/response tables and streaming exchanges.
 --
 --   local h = require('pb.connect').new({greeter_pb.Greeter_server(impl)})
 --   local resp = h:handle({method = 'POST', path = '/hello.Greeter/SayHello',
@@ -7,8 +8,9 @@
 --                          body = '{"name": "Dave"}'})
 --   -- resp = {status = 200, headers = {...}, body = '{"greeting":"Hello, Dave"}'}
 --
--- Like pb.transcode it is a function over request/response tables, with
--- no sockets: pb.server calls it from its HTTP handler. It serves
+-- It holds no sockets: pb.server calls `handle` from its buffered HTTP
+-- handler and gives `stream_handler` to http2 as its streaming router.
+-- It serves
 --
 --   * unary calls: POST with `application/proto` or `application/json`,
 --     and GET (`?encoding=...&message=...`) for methods whose
@@ -22,15 +24,13 @@
 -- a generated `methods[path]` / `streams[path]` handler cannot tell
 -- which protocol called it (ctx.protocol says, for those who ask).
 --
--- The HTTP handler contract of tarantool-http2 hands over a request
--- whose body has fully arrived and takes back a whole response. So a
--- streaming handler here reads envelopes already in memory and its
--- sends are collected into one response: wire-correct, but a
--- server-streaming reply is not delivered incrementally, and a
--- full-duplex bidi call (the client waits for a reply before it ends
--- its request) cannot work. The envelope I/O is kept behind a small
--- object (`buffered_io`) so a streaming transport can replace it
--- without touching the protocol logic.
+-- Streaming calls run over a streaming exchange (stream_io): messages
+-- are read as they arrive and sent as the handler sends them, full
+-- duplex on HTTP/2. Unary calls and GETs stay buffered: the message is
+-- needed whole anyway, and the transcoding router, which pb.server may
+-- ask first, needs the body. `handle` also serves streaming calls over
+-- a body already in memory (buffered_io), for use without a streaming
+-- transport; both I/O objects share one contract (see below).
 local clock  = require('clock')
 local fiber  = require('fiber')
 local log    = require('log')

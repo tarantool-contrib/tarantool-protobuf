@@ -3,8 +3,8 @@
 Status: **shipped** — `pb.transcode`, `pb.reflection`, `pb.health` and
 `pb.server` over the tarantool-http2 rock, verified against grpc-go,
 grpcurl and net/http (`test/server-go`). The Connect protocol
-(`pb.connect`) is shipped as phase 1 of [its section](#connect) below,
-verified by the official Connect conformance suite; phase 2 is open.
+(`pb.connect`) is shipped, both phases of [its section](#connect)
+below, verified by the official Connect conformance suite.
 The other non-goals below stay deferred. The in-process transport contract
 ([`runtime/pb/grpc.lua`](../../runtime/pb/grpc.lua): generated
 `M.<Service>_client(transport)` / `M.<Service>_server(impl)`, the
@@ -99,7 +99,9 @@ message bytes; HTTP handlers take and return request/response tables.
   HTTP/1.1. The peeked bytes are fed to the chosen parser, not dropped.
 - **HTTP/2 streams are routed per stream** by `content-type`:
   `application/grpc` and `application/grpc+*` go to the gRPC registry,
-  everything else to the HTTP handler with a buffered body.
+  everything else to the `http_stream` router when it takes the
+  request (a streaming handler, used for Connect streams) and to the
+  HTTP handler with a buffered body otherwise.
 - **HTTP/1.1** is a deliberately small subset: request line, headers,
   `Content-Length` and `chunked` bodies, keep-alive, no pipelining, no
   `Expect: 100-continue`, no upgrade. Header and body size limits are
@@ -290,30 +292,36 @@ service descriptor (`methods.<M>.idempotency_level`).
 With a buffered request and a whole response, unary, client-streaming
 and half-duplex bidi calls work fully; a server stream is wire-correct
 but delivered in one response; a full-duplex bidi call cannot work (the
-request never ends, so the handler never runs). Reflection over Connect
-is full-duplex, so reflection-driven clients (`buf curl` without
-`--protocol grpc`) need gRPC for it.
+request never ends, so the handler never runs).
 
-**Phase 2 (open): a streaming HTTP handler.** tarantool-http2 gains an
-HTTP handler API that gets the request headers at once and reads the
-body and writes the response incrementally. `pb.connect` keeps its
-envelope I/O behind one object (`buffered_io`: `read`, `write_headers`,
-`write`, `finish`); a streaming implementation of the same four methods
-turns on incremental server streams and full-duplex bidi (and with it
-Connect reflection) without touching the protocol logic.
+**Phase 2 (shipped): streaming HTTP handlers.** tarantool-http2 gained
+an `http_stream` router: a handler that gets the request head at once,
+reads the body as it arrives and writes the response piece by piece,
+full duplex on HTTP/2 and half duplex (chunked) on HTTP/1.1.
+`pb.server` routes Connect streaming calls there. `pb.connect` kept its
+envelope I/O behind one contract (`read`, `write_headers`, `write`,
+`finish`, `is_cancelled`), so `stream_io` over the exchange replaced
+`buffered_io` without touching the protocol logic: server streams are
+incremental, client streams read messages as they arrive, bidi is full
+duplex on HTTP/2 (and with it Connect reflection works), the deadline
+bounds every wait, a client that goes away cancels the call, and a
+message over the limit is refused from its length prefix. On HTTP/1.1
+a stream that ends before its request body did reads the rest (bounded)
+first, since the client is still sending. Unary calls, GETs and
+rejections stay buffered: the message is needed whole anyway, and the
+transcoding router, which may take them first, needs the body; the one
+thing they lack is noticing a client that goes away mid-call.
 
 **Verification.** `just connect-conformance` runs the official
 connectrpc/conformance suite (v1.0.5, protos vendored in
 `third_party/connect-conformance`) in server mode against
 `test/connect-conformance/server.lua`: its connect-go and grpc-go
 clients over HTTP/1.1 and h2c, Connect and gRPC, proto and JSON, all
-stream kinds, GET and the message size limit. The expected failures
-are listed with their reasons in
-`test/connect-conformance/known-failing.txt`: the Connect full-duplex
-cases, and gRPC cases that trace to tarantool-http2 (padded base64 in
-`-bin` trailers, response headers folded into trailers-only responses,
-`INTERNAL` for unary cardinality violations). `test/server-go` adds
-`buf curl` and net/http.
+stream kinds (half-duplex bidi over HTTP/1.1 included), GET and the
+message size limit. All 612 cases pass, with no list of expected
+failures. `test/server-go` adds `buf curl` (local schema and
+reflection) and net/http checks of incremental delivery, full duplex,
+cancellation and stream deadlines.
 
 ## Status code mapping
 

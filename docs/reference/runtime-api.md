@@ -560,15 +560,16 @@ into `pb.gen.grpc.health.v1.health_pb`.
 ## The Connect protocol — `pb.connect`
 
 The [Connect protocol](https://connectrpc.com/docs/protocol/) for
-generated servers, as a function over buffered HTTP request/response
-tables (the contract of tarantool-http2's HTTP handler, the same as
-`pb.transcode`'s). `pb.server` builds one by default; the walkthrough,
-with what the buffered transport cannot do, is
-[howto/17-connect.md](../howto/17-connect.md).
+generated servers, over tarantool-http2's two HTTP handler contracts:
+buffered request/response tables (`handle`, the contract `pb.transcode`
+uses too) and streaming exchanges (`stream_handler`, for streaming
+calls). `pb.server` builds one by default and uses both; the
+walkthrough is [howto/17-connect.md](../howto/17-connect.md).
 
 ```lua
 local h    = pb.connect.new(servers [, opts])
 local resp = h:handle(req)           -- nil when req is not a Connect call
+local fn   = h:stream_handler(head)  -- function(head, st) for a streaming call, else nil
 local call = h:match(req)            -- {proc, mode, codec, query?, strong, reject?} | nil
 local resp = h:serve(call, req)
 h:reject(req)                        -- 415/405 for a procedure path, else nil
@@ -591,6 +592,19 @@ What `handle` serves:
 | `POST`, `content-type: application/proto` or `application/json` (parameters ignored), unary method | unary: bare message in, bare message or JSON error out |
 | `GET ?encoding=json\|proto&message=...[&base64=1][&compression=identity][&connect=v1]`, method with `idempotency_level = NO_SIDE_EFFECTS` | unary, the message from the query |
 | `POST`, `content-type: application/connect+proto` or `+json`, streaming method | enveloped messages in, enveloped messages and an EndStreamResponse out, HTTP 200 |
+
+`stream_handler(head)` returns a tarantool-http2 streaming handler
+(`http_stream` router result) for a Connect streaming call and `nil`
+for anything else; unary calls, GETs and rejections go through
+`handle`. Over a streaming exchange, request envelopes are parsed as
+the body arrives (a message over the limit is refused from its length
+prefix), each `send` goes out at once, bidi calls are full duplex on
+HTTP/2, a client that goes away turns `ctx:is_cancelled()` true (and
+`recv` returns `nil, 'canceled'`, `send` `false`), and the deadline
+bounds every wait. On HTTP/1.1, a stream that ends before its request
+body did reads and drops the rest (up to 4 MiB or 2 s) before
+answering. `handle` also serves streaming calls, over a body already in
+memory, for use without a streaming transport.
 
 `match` returns `strong = true` when the request can only be Connect
 (a Connect-Protocol-Version header of any value, a protobuf or
@@ -639,9 +653,12 @@ Helpers, exported for tests and other transports:
 `pb.connect.envelope(flags, payload)`, `pb.connect.error_json(st)`,
 `pb.connect.end_stream_json(st, trailing_metadata)`,
 `pb.connect.parse_timeout(v)`, `pb.connect.parse_query(q)`,
-`pb.connect.request_metadata(headers)` and
-`pb.connect.buffered_io(body)`, the envelope I/O of a streaming call
-over an in-memory body (`read`, `write_headers`, `write`, `finish`).
+`pb.connect.request_metadata(headers)`, and the envelope I/O of a
+streaming call, `pb.connect.stream_io(st)` over a tarantool-http2
+streaming exchange and `pb.connect.buffered_io(body)` over an in-memory
+body. Both have `read(limit, deadline)` (`flags, payload`, `nil` at the
+end, or `false, err`), `write_headers(headers)`, `write(flags, payload)`
+(`false` once the client is gone), `finish()` and `is_cancelled()`.
 
 ## gRPC and HTTP/JSON server — `pb.server`
 
@@ -726,8 +743,11 @@ path's service name. Handlers receive http2's `ctx`: `method`,
   `DEADLINE_EXCEEDED` when a deadline passes; the handler fiber is not
   cancelled and should poll `ctx:is_cancelled()`.
 
-**HTTP.** Every HTTP/1.1 request and every HTTP/2 request without a
-gRPC content-type goes, in order, to: Connect when the request can
+**HTTP.** A Connect streaming call is handed to tarantool-http2 as a
+streaming handler (its `http_stream` router, `pb.connect`'s
+`stream_handler`) and runs as the body arrives. Every other HTTP/1.1
+request and HTTP/2 request without a gRPC content-type is buffered and
+goes, in order, to: Connect when the request can
 only be Connect (`pb.connect`'s `strong` match); the transcoding
 router; Connect for a plain JSON call to a procedure path; the `http`
 fallback; Connect's `415`/`405` for a procedure path with the wrong

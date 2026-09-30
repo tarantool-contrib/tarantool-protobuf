@@ -43,8 +43,8 @@ links to the next.
     `pb.server`: real gRPC, reflection, health, transcoding and Connect
     over the network (needs the tarantool-http2 rock).
 16. **[The Connect protocol](howto/17-connect.md)** — `pb.connect`:
-    unary POST and GET, streaming envelopes, errors, and what the
-    buffered HTTP transport cannot do yet.
+    unary POST and GET, incremental and full-duplex streams, errors,
+    cancellation and deadlines.
 
 When something doesn't work, **[troubleshooting](troubleshooting.md)**
 collects the common errors and their fixes.

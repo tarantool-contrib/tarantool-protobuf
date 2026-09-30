@@ -130,36 +130,53 @@ buf curl --schema examples/proto/hello.proto \
 # { "greeting": "Hello, a, b" }
 ```
 
-The generated streaming handlers run unchanged: `stream:recv()` walks
-the request envelopes (`nil, nil` at the end), `stream:send()` adds a
-response envelope. A server stream with zero or several request
-messages is `unimplemented`; an envelope with the compressed flag is
-`internal`; a torn envelope or an end-stream flag in a request is
-`invalid_argument`.
+The generated streaming handlers run unchanged: `stream:recv()` returns
+the next request message as it arrives (`nil, nil` once the client
+ended its request), `stream:send()` puts a response message on the wire
+at once and returns `false` once the client is gone. A server stream
+with zero or several request messages is `unimplemented`; an envelope
+with the compressed flag is `internal`; a torn envelope or an
+end-stream flag in a request is `invalid_argument`; a message over the
+size limit is `resource_exhausted`, refused from its length prefix
+before its bytes are read.
 
-## What works and what does not
+## How streams are carried
 
-The HTTP handler of tarantool-http2 is called once a request's body has
-fully arrived, and returns one whole response. That shapes what the
-streaming kinds can do:
+Streaming calls run on tarantool-http2's streaming handlers
+(`http_stream`): the request body is read as it arrives and the
+response is written as the handler produces it.
 
 | Call | HTTP/1.1 | HTTP/2 |
 |---|---|---|
 | unary (POST, GET) | yes | yes |
-| client streaming | yes | yes |
-| server streaming | yes, delivered at once when the handler returns | same |
+| client streaming | yes, messages read as they arrive | same |
+| server streaming | yes, each message sent as the handler sends it | same |
 | bidi, half-duplex (the client sends everything, then reads) | yes | yes |
-| bidi, full-duplex (the client waits for a reply before it goes on) | no | no: the request never ends, so the handler never runs, and the client times out |
+| bidi, full-duplex (the client waits for a reply before it goes on) | no: HTTP/1.1 clients send the whole request first | yes |
 
-So a server stream is wire-correct but not incremental: the client gets
-every message together with the end of the stream, which suits
-bounded result sets and not long-lived subscriptions (use gRPC for
-those). Server reflection over Connect is a full-duplex stream too:
-`buf curl` finds services through reflection only with `--protocol grpc
---http2-prior-knowledge` (how-to 16). Serving these needs a streaming
-HTTP handler API in tarantool-http2, planned as the next step; the
-protocol code already keeps its envelope I/O behind one small object
-for that.
+- **Cancellation.** When the client goes away (an HTTP/2 reset, a
+  closed connection), `ctx:is_cancelled()` turns true, `stream:send()`
+  returns `false` and `stream:recv()` returns `nil, 'canceled'`. On
+  HTTP/1.1 the server notices at the next read or write.
+- **Deadlines.** `Connect-Timeout-Ms` bounds the whole call: a handler
+  waiting in `recv()` wakes up at the deadline, and when the deadline
+  passes while the handler still runs, the stream ends with
+  `deadline_exceeded` and later sends return `false`.
+- **HTTP/1.1.** A stream that ends before reading the whole request (a
+  message over the limit, a handler that stopped reading) first reads
+  and drops the rest of the body, up to 4 MiB or 2 s, so the client,
+  still sending, gets a clean response and keeps its connection.
+
+Unary calls, GETs and the protocol's rejections stay on the buffered
+HTTP handler: a unary message is needed whole before the handler runs
+anyway, and the transcoding router, which takes some of those requests
+first, needs the body. A consequence: a client that goes away during a
+unary call is not noticed (`ctx:is_cancelled()` stays false unless the
+deadline passes).
+
+Server reflection is a full-duplex stream, so `buf curl` finds
+services through reflection over Connect too, given
+`--http2-prior-knowledge` for a plain `http://` URL (how-to 16).
 
 Not supported: compression other than `identity`, and CORS (a browser
 client on another origin needs a proxy or an `http` fallback that
@@ -216,12 +233,13 @@ ctx:is_cancelled()
 [Connect conformance suite](https://github.com/connectrpc/conformance)
 (v1.0.5) in server mode: its connect-go and grpc-go clients drive
 `test/connect-conformance/server.lua` over HTTP/1.1 and h2c, Connect
-and gRPC, proto and JSON, every stream kind, Connect GET and the
-message size limit. The cases expected to fail, with the reason for
-each, are listed in `test/connect-conformance/known-failing.txt`: the
-Connect full-duplex calls above, and a few gRPC cases that trace to
-tarantool-http2. `test/server-go` checks `buf curl` and `net/http`
-against the example services.
+and gRPC, proto and JSON, every stream kind (full-duplex bidi on
+HTTP/2, half-duplex bidi on HTTP/1.1 as well), Connect GET and the
+message size limit. All 612 cases pass; there is no list of expected
+failures. `test/server-go` checks `buf curl` (with a local schema and
+through reflection) and `net/http` against the example services,
+including incremental delivery, full duplex, cancellation and
+deadlines of streams.
 
 ## What's next
 

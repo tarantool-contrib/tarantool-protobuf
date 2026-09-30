@@ -48,9 +48,8 @@ wire format. Only editions are out of scope for now.
 | gRPC over HTTP/2 (h2c) network server, all four call kinds (`pb.server`)¹ | ✅ |
 | HTTP/JSON transcoding over HTTP/1.1 and HTTP/2 on the gRPC port (`pb.server`)¹ | ✅ |
 | Reflection and health served over the network (`pb.server`)¹ | ✅ |
-| Connect protocol on the same port: unary POST + GET, client / server / half-duplex bidi streams (`pb.connect`)¹ | ✅ |
-| Connect full-duplex bidi and incremental server streams | ❌ needs a streaming HTTP handler in tarantool-http2 |
-| **Connect conformance suite (server mode, Connect + gRPC)** | **516 ✓**, 72 known failures (Connect full-duplex, tarantool-http2) |
+| Connect protocol on the same port: unary POST + GET, incremental client / server streams, full-duplex bidi on HTTP/2 (`pb.connect`)¹ | ✅ |
+| **Connect conformance suite (server mode, Connect + gRPC)** | **612 ✓ / 0 failures** |
 | WKT: Timestamp ↔ `datetime`      | ✅           |
 | WKT: Duration, Empty, wrappers   | ✅           |
 | WKT: Struct, Value, ListValue    | ✅           |
@@ -139,10 +138,9 @@ encoding and decoding it, see **[docs/howto/01-first-message.md](docs/howto/01-f
 dependency and copy `options/tarantool/tarantool.proto` into one of your
 modules if you use `(tarantool.lua_package)`. The output matches
 `protoc`'s (`just test-buf` checks it). A server built with `pb.server`
-answers `buf curl` over its default Connect protocol given a local
-`--schema`, and through server reflection with `--protocol grpc
---http2-prior-knowledge` (reflection over Connect is a full-duplex
-stream, not served yet). See
+answers `buf curl` over its default Connect protocol, with a local
+`--schema` or through server reflection (`--http2-prior-knowledge` for
+a plain `http://` URL), and over gRPC with `--protocol grpc`. See
 [docs/howto/12-build-integration.md](docs/howto/12-build-integration.md#buf)
 and [docs/howto/16-network-server.md](docs/howto/16-network-server.md#3-talk-to-it).
 
@@ -436,7 +434,7 @@ runtime/pb/                  pure-Lua runtime (`require('pb')`)
   reflection.lua             gRPC server reflection (v1, v1alpha)
   health.lua                 gRPC health service
   transcode.lua              google.api.http HTTP/JSON router
-  connect.lua                the Connect protocol over buffered HTTP requests
+  connect.lua                the Connect protocol (buffered and streaming HTTP)
   server.lua                 network server over the tarantool-http2 rock
   gen/                       reflection + health modules generated from
                              third_party/grpc-proto by this plugin
