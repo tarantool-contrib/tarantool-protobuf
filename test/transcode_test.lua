@@ -430,6 +430,20 @@ gq.test_bytes_base64 = function()
     t.assert_equals(call(router, calls, 'GET', '/v1/items/x?blob=AAH%2F').blob, '\x00\x01\xff')
     t.assert_equals(call(router, calls, 'GET', '/v1/items/x?blob=AAH_').blob, '\x00\x01\xff')
     t.assert_equals(call(router, calls, 'GET', '/v1/items/x?blob=aGk').blob, 'hi')
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?blob=aGk%3D').blob, 'hi')
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?blob=aA%3D%3D').blob, 'h')
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?blob=aGVsbG8h').blob, 'hello!')
+end
+
+-- Lengths base64 cannot produce and padding that does not complete the
+-- last quantum are rejected, not decoded around.
+gq.test_bytes_strict_base64 = function()
+    local router, calls = query_router()
+    for _, s in ipairs({'A', 'AAAAA', '%3D%3D%3D%3D', 'aGk%3D%3D%3D%3D%3D', 'aGk%3D%3D',
+                        'aA%3D', 'aGVsbG8h%3D', 'aG%3Dk', 'a%20Gk'}) do
+        bad_request(router, '/v1/items/x?blob=' .. s, '"blob" (bytes)')
+    end
+    t.assert_equals(#calls, 0)
 end
 
 gq.test_enums_by_name_and_number = function()

@@ -341,6 +341,20 @@ local function parse_int(s, lo_neg, hi)
     return neg .. digits
 end
 
+-- Strict base64: the standard or the URL-safe alphabet, padded or not,
+-- but the length must be one base64 can produce and padding, when
+-- present, must complete the last quantum exactly. digest.base64_decode
+-- alone skips junk silently, so the shape is checked first.
+local function decode_base64(s)
+    local b64 = s:gsub('-', '+'):gsub('_', '/')
+    local body, pad = b64:match('^([%w+/]*)(=*)$')
+    if body == nil then return nil end
+    local rem = #body % 4
+    if rem == 1 then return nil end
+    if #pad > 0 and (#pad ~= (4 - rem) % 4 or rem == 0) then return nil end
+    return digest.base64_decode(body)
+end
+
 -- Scalar Lua value for proto type `pt` from the text `s`, or nil.
 local function convert_scalar(pt, s)
     if pt == 'string' then
@@ -373,11 +387,7 @@ local function convert_scalar(pt, s)
         end
         return tonumber(s)
     end
-    if pt == 'bytes' then
-        local b64 = s:gsub('-', '+'):gsub('_', '/')
-        if not b64:match('^[%w+/]*=*$') then return nil end
-        return digest.base64_decode(b64)
-    end
+    if pt == 'bytes' then return decode_base64(s) end
     return nil
 end
 
