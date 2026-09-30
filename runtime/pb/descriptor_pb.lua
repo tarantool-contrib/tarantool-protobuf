@@ -17,6 +17,25 @@ local function finalize(desc)
     end
     desc.field_by_id = fbi
     desc.field_by_name = fbn
+    -- Oneof members clear their siblings on decode, so the last member
+    -- on the wire wins, as the proto spec requires. The readers capture
+    -- oneof_siblings when compiled, so set it first. Same shape as
+    -- pb.finalize_message builds: desc.oneofs = {name = {members}}.
+    if desc.oneofs then
+        local list = {}
+        for oname, members in pairs(desc.oneofs) do
+            list[#list + 1] = {name = oname, members = members}
+            for _, fname in ipairs(members) do
+                local sibs = {}
+                for _, other in ipairs(members) do
+                    if other ~= fname then sibs[#sibs + 1] = other end
+                end
+                fbn[fname].oneof = oname
+                fbn[fname].oneof_siblings = sibs
+            end
+        end
+        desc.oneofs_list = list
+    end
     codec.compile_writers(desc)
     codec.compile_readers(desc)
     return desc
@@ -89,9 +108,14 @@ M.CustomHttpPattern = {
     },
 }
 
--- google.api.HttpRule (google/api/http.proto). The `pattern` oneof
--- members are plain fields here: a well-formed rule sets one of them.
-M.HttpRule = {name = 'google.api.HttpRule'}
+-- google.api.HttpRule (google/api/http.proto), with its `pattern` oneof:
+-- when several members appear on the wire, the last one wins.
+M.HttpRule = {
+    name = 'google.api.HttpRule',
+    oneofs = {
+        pattern = {'get', 'put', 'post', 'delete', 'patch', 'custom'},
+    },
+}
 M.HttpRule.fields = {
     {name = 'selector',            id = 1,  kind = 'scalar',  proto_type = 'string'},
     {name = 'get',                 id = 2,  kind = 'scalar',  proto_type = 'string'},

@@ -132,3 +132,53 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(n, 11)
     end
 end
+
+-- ---------------------------------------------------------------------------
+-- HttpRule.pattern is a oneof: with two members on the wire, the last one
+-- wins (protoc and every conforming parser agree).
+-- ---------------------------------------------------------------------------
+
+local wire = pb.wire
+
+local function spit_bytes(path, content)
+    local f = assert(io.open(path, 'wb'))
+    f:write(content)
+    f:close()
+end
+
+local function len_field(id, payload)
+    return wire.encode_varint(id * 8 + 2) .. wire.encode_varint(#payload) .. payload
+end
+
+-- HttpRule{post: "/post"} followed by HttpRule{get: "/get"} on one wire.
+local RULE = len_field(4, '/post') .. len_field(2, '/get')
+
+local u = t.group('http_rules.oneof')
+
+u.test_protoc_reads_last_member = function()
+    local dir = fio.tempdir()
+    local bin = fio.pathjoin(dir, 'rule.bin')
+    local txt = fio.pathjoin(dir, 'rule.txt')
+    spit_bytes(bin, RULE)
+    local cmd = string.format(
+        'protoc --decode=google.api.HttpRule -I %q google/api/http.proto < %q > %q',
+        OPTIONS_DIR, bin, txt)
+    local ok = os.execute(cmd)
+    t.assert(ok == 0 or ok == true, cmd)
+    local text = slurp(txt)
+    t.assert_str_contains(text, 'get: "/get"')
+    t.assert_not_str_contains(text, 'post')
+end
+
+u.test_from_pb_reads_last_member = function()
+    local method_options = len_field(72295728, RULE)
+    local method = len_field(1, 'M') .. len_field(2, '.o.Req')
+        .. len_field(3, '.o.Req') .. len_field(4, method_options)
+    local service = len_field(1, 'S') .. len_field(2, method)
+    local file = len_field(1, 'o.proto') .. len_field(2, 'o')
+        .. len_field(4, len_field(1, 'Req')) .. len_field(6, service)
+        .. len_field(12, 'proto3')
+    local set = pb.from_pb(len_field(1, file))
+    local m = set.files['o.proto'].S_service.methods.M
+    t.assert_equals(m.http, {{method = 'GET', pattern = '/get'}})
+end
