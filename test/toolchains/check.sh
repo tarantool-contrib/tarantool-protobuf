@@ -58,11 +58,13 @@ check_buf() {
         return 0
     fi
     echo "buf: $(buf --version 2>&1) against $(protoc --version)"
+    # The check functions run as `check_x || rc=1`, where errexit does
+    # not apply: every step propagates its failure itself.
     buf generate examples/proto \
         --config "$here/buf.yaml" \
         --template "$here/buf.gen.yaml" \
-        -o "$tmp/buf"
-    "$here/compare.sh" "$tmp/protoc" "$tmp/buf"
+        -o "$tmp/buf" || return 1
+    "$here/compare.sh" "$tmp/protoc" "$tmp/buf" || return 1
 }
 
 check_easyp() {
@@ -81,12 +83,12 @@ check_easyp() {
     # a scratch workspace with copies of the inputs; EASYPPATH keeps its
     # cache there too.
     local ws="$tmp/easyp-ws"
-    mkdir -p "$ws"
-    cp -R examples/proto "$ws/proto"
-    cp -R options "$ws/options"
-    cp protoc-gen-tarantool "$ws/"
-    cp "$here/easyp.yaml" "$ws/"
-    (cd "$ws" && EASYPPATH="$ws/.easyp" "$easyp" generate)
+    mkdir -p "$ws" || return 1
+    cp -R examples/proto "$ws/proto" || return 1
+    cp -R options "$ws/options" || return 1
+    cp protoc-gen-tarantool "$ws/" || return 1
+    cp "$here/easyp.yaml" "$ws/" || return 1
+    (cd "$ws" && EASYPPATH="$ws/.easyp" "$easyp" generate) || return 1
 
     # options/ is an input, the only way to put it on EasyP's import
     # path without a git dependency, so its files are generated as well.
@@ -99,11 +101,11 @@ check_easyp() {
                      "update the list of extra modules in $0" >&2
                 return 1
             fi
-            rm "$ws/out/$mode/$extra"
+            rm "$ws/out/$mode/$extra" || return 1
         done
     done
-    find "$ws/out" -type d -empty -delete
-    "$here/compare.sh" "$tmp/protoc" "$ws/out"
+    find "$ws/out" -type d -empty -delete || return 1
+    "$here/compare.sh" "$tmp/protoc" "$ws/out" || return 1
 }
 
 rc=0
