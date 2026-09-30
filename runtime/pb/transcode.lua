@@ -970,14 +970,13 @@ end
 function Router:handle(req, ctx)
     local raw = req.path
     if type(raw) ~= 'string' then return nil end
+    -- Everything after '#' is the fragment, a '?' in it included.
+    local hpos = raw:find('#', 1, true)
+    if hpos ~= nil then raw = raw:sub(1, hpos - 1) end
     local qpos = raw:find('?', 1, true)
     local path, query = raw, nil
     if qpos ~= nil then
         path, query = raw:sub(1, qpos - 1), raw:sub(qpos + 1)
-    end
-    local hpos = (query or path):find('#', 1, true)
-    if hpos ~= nil then
-        if query ~= nil then query = query:sub(1, hpos - 1) else path = path:sub(1, hpos - 1) end
     end
     if path:sub(1, 1) ~= '/' then return nil end
     local segs, n = split(path:sub(2), '/')

@@ -1219,8 +1219,18 @@ for _, mode in ipairs({'full', 'runtime'}) do
     end
 
     g.test_query_after_fragment_and_path_encoding = function()
-        local router, seen = new_router({GetBook = function() return {} end})
+        local router, seen = new_router({
+            GetBook = function() return {} end,
+            ListBooks = function() return {} end,
+        })
         t.assert_equals(handle(router, 'GET', '/v1/shelves/a%20b/books/2#frag').status, 200)
         t.assert_equals(seen[1].req.name, 'shelves/a b/books/2')
+        -- The query ends at the fragment.
+        t.assert_equals(handle(router, 'GET',
+            '/v1/shelves/a%20b/books?pageSize=3&pageToken=t%3Fu#frag&pageSize=9').status, 200)
+        t.assert_equals(seen[2].req, {parent = 'shelves/a b', page_size = 3, page_token = 't?u'})
+        -- A '?' inside the fragment does not start a query.
+        t.assert_equals(handle(router, 'GET', '/v1/shelves/1/books#frag?pageSize=9').status, 200)
+        t.assert_equals(seen[3].req, {parent = 'shelves/1'})
     end
 end
