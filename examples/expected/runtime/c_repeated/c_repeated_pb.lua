@@ -131,4 +131,24 @@ function M.Holder_decode_lazy(b) return pb.decode_lazy(M.Holder_descriptor, b) e
 ---@return string
 function M.Holder_text(t, opts) return pb.text.encode(M.Holder_descriptor, t, opts) end
 
+-- Serialized FileDescriptorProto of c_repeated.proto (source_code_info
+-- stripped), registered with pb.descriptors for server reflection.
+M._file_descriptor = table.concat({
+    "\x0a\x10c_repeated.proto\x12\x0ac_repeated\"#\x0a\x05Inner\x12\x0c\x0a\x01v\x18\x01 \x01",
+    "(\x05R\x01v\x12\x0c\x0a\x01s\x18\x02 \x01(\x09R\x01s\"\xb5\x04\x0a\x06Holder\x12!\x0a\x0cpacked_int32\x18\x01",
+    " \x03(\x05R\x0bpackedInt32\x12!\x0a\x0cpacked_int64\x18\x02 \x03(\x03R\x0bpackedI",
+    "nt64\x12#\x0a\x0dpacked_sint32\x18\x03 \x03(\x11R\x0cpackedSint32\x12#\x0a\x0dpac",
+    "ked_uint32\x18\x04 \x03(\x0dR\x0cpackedUint32\x12%\x0a\x0epacked_fixed32",
+    "\x18\x05 \x03(\x07R\x0dpackedFixed32\x12%\x0a\x0epacked_fixed64\x18\x06 \x03(\x06R\x0dp",
+    "ackedFixed64\x12#\x0a\x0dpacked_double\x18\x07 \x03(\x01R\x0cpackedDoubl",
+    "e\x12!\x0a\x0cpacked_float\x18\x08 \x03(\x02R\x0bpackedFloat\x12\x1f\x0a\x0bpacked_b",
+    "ool\x18\x09 \x03(\x08R\x0apackedBool\x12)\x0a\x0eunpacked_int32\x18\x14 \x03(\x05B\x02\x10",
+    "\x00R\x0dunpackedInt32\x12-\x0a\x10unpacked_fixed64\x18\x15 \x03(\x06B\x02\x10\x00R\x0f",
+    "unpackedFixed64\x12+\x0a\x0funpacked_sint32\x18\x16 \x03(\x11B\x02\x10\x00R\x0eun",
+    "packedSint32\x12\x18\x0a\x07strings\x18\x1e \x03(\x09R\x07strings\x12\x14\x0a\x05blobs\x18",
+    "\x1f \x03(\x0cR\x05blobs\x12-\x0a\x08messages\x18( \x03(\x0b2\x11.c_repeated.Inne",
+    "rR\x08messagesb\x06proto3",
+})
+pb.descriptors.register(M._file_descriptor)
+
 return M

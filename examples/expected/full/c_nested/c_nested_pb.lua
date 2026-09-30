@@ -1029,4 +1029,16 @@ function M.L5_decode_lazy(b) return pb.decode_lazy(M.L5_descriptor, b) end
 ---@return string
 function M.L5_text(t, opts) return pb.text.encode(M.L5_descriptor, t, opts) end
 
+-- Serialized FileDescriptorProto of c_nested.proto (source_code_info
+-- stripped), registered with pb.descriptors for server reflection.
+M._file_descriptor = table.concat({
+    "\x0a\x0ec_nested.proto\x12\x08c_nested\"4\x0a\x02L1\x12 \x0a\x04next\x18\x01 \x01(\x0b2\x0c",
+    ".c_nested.L2R\x04next\x12\x0c\x0a\x01v\x18\x02 \x01(\x05R\x01v\"4\x0a\x02L2\x12 \x0a\x04next\x18\x01",
+    " \x01(\x0b2\x0c.c_nested.L3R\x04next\x12\x0c\x0a\x01v\x18\x02 \x01(\x05R\x01v\"4\x0a\x02L3\x12 \x0a\x04",
+    "next\x18\x01 \x01(\x0b2\x0c.c_nested.L4R\x04next\x12\x0c\x0a\x01v\x18\x02 \x01(\x05R\x01v\"4\x0a\x02",
+    "L4\x12 \x0a\x04next\x18\x01 \x01(\x0b2\x0c.c_nested.L5R\x04next\x12\x0c\x0a\x01v\x18\x02 \x01(\x05R",
+    "\x01v\"\x12\x0a\x02L5\x12\x0c\x0a\x01v\x18\x02 \x01(\x05R\x01vb\x06proto3",
+})
+pb.descriptors.register(M._file_descriptor)
+
 return M

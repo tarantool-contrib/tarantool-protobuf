@@ -256,6 +256,32 @@ local M = {}
 return M
 ```
 
+Every generated module ends by embedding its file's descriptor:
+
+```lua
+M._file_descriptor = table.concat({ "\x0a\x0bhello.proto...", ... })
+pb.descriptors.register(M._file_descriptor)
+```
+
+`M._file_descriptor` is the serialized `google.protobuf.FileDescriptorProto`
+of the source file — exactly what protoc handed the plugin, with
+`source_code_info` stripped (as protoc-gen-go does) and fields in
+deterministic order. Loading the module registers it with
+[`pb.descriptors`](runtime-api.md#descriptor-registry--pbdescriptors),
+the input server reflection answers from. The import graph is covered
+too:
+
+- imports generated in the same protoc run are `require`d even when no
+  field references them, so their modules register themselves;
+- imports that are neither generated in the same run nor shipped with
+  the runtime (the well-known types and `google/api/{annotations,http}.proto`
+  are) — typically option files such as `tarantool/tarantool.proto` that
+  are only on the `-I` path — have their descriptors embedded and
+  registered by the importing module.
+
+Registration runs once per module load and costs nothing on the
+encode/decode paths.
+
 EmmyLua / lua-language-server annotations are emitted alongside each
 descriptor:
 

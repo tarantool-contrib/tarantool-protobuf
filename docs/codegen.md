@@ -158,6 +158,11 @@ M.Greeter_service = { ... }
 function M.Greeter_client(transport) ... end
 function M.Greeter_server(impl) ... end
 
+-- 7. Proto2 extensions (omitted here), then the file's serialized
+--    FileDescriptorProto, registered for server reflection.
+M._file_descriptor = table.concat({ "\x0a\x0bhello.proto...", ... })
+pb.descriptors.register(M._file_descriptor)
+
 return M
 ```
 
@@ -369,11 +374,22 @@ cmd/protoc-gen-tarantool/
     inline.go          # full-mode inline _encode / _decode body emission,
                        # field-kind dispatch, repeated / map / oneof shapes
     service.go         # gRPC client / server factories
+    http.go            # google.api.http rules -> method `http` arrays
+    filedesc.go        # embedded FileDescriptorProto + registration
     name.go            # Lua name + path mangling rules
     types.go           # protoreflect.Kind → scalar name mapping
     options.go         # (tarantool.lua_package) file option lookup
     emmylua.go         # EmmyLua / lua-language-server type annotation
                        # emission (---@class, ---@field, ---@param)
+
+cmd/gen-builtin-descriptors/
+  main.go              # writes runtime/pb/descriptors_builtin.lua from
+                       # protobuf-go's registry (`just gen-builtin-descriptors`)
+
+internal/
+  builtindesc/         # the files whose descriptors the runtime ships
+  luastr/              # byte-exact Lua string literals
+  messageset/          # MessageSet request fix-up shared by both plugins
 ```
 
 **Adding a new wire type or scalar** means touching three places:

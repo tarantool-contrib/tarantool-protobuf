@@ -2515,4 +2515,41 @@ function M.JspbEncodingConfig_decode_lazy(b) return pb.decode_lazy(M.JspbEncodin
 ---@return string
 function M.JspbEncodingConfig_text(t, opts) return pb.text.encode(M.JspbEncodingConfig_descriptor, t, opts) end
 
+-- Serialized FileDescriptorProto of conformance.proto (source_code_info
+-- stripped), registered with pb.descriptors for server reflection.
+M._file_descriptor = table.concat({
+    "\x0a\x11conformance.proto\x12\x0bconformance\"l\x0a\x0aTestStatus\x12\x12",
+    "\x0a\x04name\x18\x01 \x01(\x09R\x04name\x12'\x0a\x0ffailure_message\x18\x02 \x01(\x09R\x0efai",
+    "lureMessage\x12!\x0a\x0cmatched_name\x18\x03 \x01(\x09R\x0bmatchedName\"?",
+    "\x0a\x0aFailureSet\x12+\x0a\x04test\x18\x02 \x03(\x0b2\x17.conformance.TestSta",
+    "tusR\x04testJ\x04\x08\x01\x10\x02\"\xf6\x03\x0a\x12ConformanceRequest\x12+\x0a\x10protob",
+    "uf_payload\x18\x01 \x01(\x0cH\x00R\x0fprotobufPayload\x12#\x0a\x0cjson_payl",
+    "oad\x18\x02 \x01(\x09H\x00R\x0bjsonPayload\x12#\x0a\x0cjspb_payload\x18\x07 \x01(\x09H\x00",
+    "R\x0bjspbPayload\x12#\x0a\x0ctext_payload\x18\x08 \x01(\x09H\x00R\x0btextPaylo",
+    "ad\x12O\x0a\x17requested_output_format\x18\x03 \x01(\x0e2\x17.conformanc",
+    "e.WireFormatR\x15requestedOutputFormat\x12!\x0a\x0cmessage_t",
+    "ype\x18\x04 \x01(\x09R\x0bmessageType\x12>\x0a\x0dtest_category\x18\x05 \x01(\x0e2\x19.",
+    "conformance.TestCategoryR\x0ctestCategory\x12S\x0a\x15jspb_e",
+    "ncoding_options\x18\x06 \x01(\x0b2\x1f.conformance.JspbEncoding",
+    "ConfigR\x13jspbEncodingOptions\x120\x0a\x14print_unknown_fie",
+    "lds\x18\x09 \x01(\x08R\x12printUnknownFieldsB\x09\x0a\x07payload\"\xf3\x02\x0a\x13Con",
+    "formanceResponse\x12!\x0a\x0bparse_error\x18\x01 \x01(\x09H\x00R\x0aparseEr",
+    "ror\x12)\x0a\x0fserialize_error\x18\x06 \x01(\x09H\x00R\x0eserializeError\x12%",
+    "\x0a\x0dtimeout_error\x18\x09 \x01(\x09H\x00R\x0ctimeoutError\x12%\x0a\x0druntime",
+    "_error\x18\x02 \x01(\x09H\x00R\x0cruntimeError\x12+\x0a\x10protobuf_payload",
+    "\x18\x03 \x01(\x0cH\x00R\x0fprotobufPayload\x12#\x0a\x0cjson_payload\x18\x04 \x01(\x09H",
+    "\x00R\x0bjsonPayload\x12\x1a\x0a\x07skipped\x18\x05 \x01(\x09H\x00R\x07skipped\x12#\x0a\x0cjs",
+    "pb_payload\x18\x07 \x01(\x09H\x00R\x0bjspbPayload\x12#\x0a\x0ctext_payload\x18",
+    "\x08 \x01(\x09H\x00R\x0btextPayloadB\x08\x0a\x06result\"N\x0a\x12JspbEncodingCo",
+    "nfig\x128\x0a\x19use_jspb_array_any_format\x18\x01 \x01(\x08R\x15useJspb",
+    "ArrayAnyFormat*P\x0a\x0aWireFormat\x12\x0f\x0a\x0bUNSPECIFIED\x10\x00\x12\x0c\x0a",
+    "\x08PROTOBUF\x10\x01\x12\x08\x0a\x04JSON\x10\x02\x12\x08\x0a\x04JSPB\x10\x03\x12\x0f\x0a\x0bTEXT_FORMAT\x10\x04",
+    "*\x8f\x01\x0a\x0cTestCategory\x12\x14\x0a\x10UNSPECIFIED_TEST\x10\x00\x12\x0f\x0a\x0bBINAR",
+    "Y_TEST\x10\x01\x12\x0d\x0a\x09JSON_TEST\x10\x02\x12$\x0a JSON_IGNORE_UNKNOWN_P",
+    "ARSING_TEST\x10\x03\x12\x0d\x0a\x09JSPB_TEST\x10\x04\x12\x14\x0a\x10TEXT_FORMAT_TEST",
+    "\x10\x05B/\x0a\x1fcom.google.protobuf.conformance\xa2\x02\x0bConforma",
+    "nceb\x06proto3",
+})
+pb.descriptors.register(M._file_descriptor)
+
 return M

@@ -37,6 +37,14 @@ func main() {
 		fail("parse CodeGeneratorRequest: %v", err)
 	}
 
+	// Keep every file's descriptor as protoc sent it: the go_package stub
+	// and the MessageSet strip below mutate the request, and the
+	// descriptors embedded into generated modules must carry neither.
+	originals := make(map[string]*descriptorpb.FileDescriptorProto, len(req.ProtoFile))
+	for _, f := range req.ProtoFile {
+		originals[f.GetName()] = proto.Clone(f).(*descriptorpb.FileDescriptorProto)
+	}
+
 	// protogen requires a go_package on every input file even when we are not
 	// generating Go. Inject a synthetic value when it's missing — it's never
 	// surfaced to the generated Lua.
@@ -81,7 +89,7 @@ func main() {
 			"(runtime mode would require a descriptor flag wired through pb.codec)")
 	}
 	cfg := gen.Config{Mode: mode, Prefix: *prefixFlag, Int64AsNumber: *int64AsNumberFlag,
-		MessageSets: messageSets}
+		MessageSets: messageSets, FileDescriptors: originals}
 
 	// Advertise proto3 optional support so protoc lets us see those fields.
 	plugin.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)

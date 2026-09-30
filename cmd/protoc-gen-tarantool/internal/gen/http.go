@@ -7,6 +7,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+
+	"github.com/tarantool-contrib/tarantool-protobuf/internal/luastr"
 )
 
 // httpBinding is one normalised google.api.http rule: an HTTP method, a
@@ -93,14 +95,14 @@ func httpRulePattern(rule *annotations.HttpRule) (string, string, bool) {
 // luaHTTPBinding renders one binding as a Lua table constructor.
 func luaHTTPBinding(b httpBinding) string {
 	parts := []string{
-		"method = " + luaStringLiteral(b.Method),
-		"pattern = " + luaStringLiteral(b.Pattern),
+		"method = " + luastr.Literal(b.Method),
+		"pattern = " + luastr.Literal(b.Pattern),
 	}
 	if b.Body != "" {
-		parts = append(parts, "body = "+luaStringLiteral(b.Body))
+		parts = append(parts, "body = "+luastr.Literal(b.Body))
 	}
 	if b.ResponseBody != "" {
-		parts = append(parts, "response_body = "+luaStringLiteral(b.ResponseBody))
+		parts = append(parts, "response_body = "+luastr.Literal(b.ResponseBody))
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
 }

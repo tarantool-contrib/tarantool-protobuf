@@ -213,4 +213,23 @@ pb.register_extension(M.Holder_descriptor, {name="ext_kvs", full_name="c_grow_pr
 -- Extension: c_grow_proto2.ext_blob extends c_grow_proto2.Holder (tag 102)
 pb.register_extension(M.Holder_descriptor, {name="ext_blob", full_name="c_grow_proto2.ext_blob", id=102, kind='scalar', proto_type="bytes", optional=true})
 
+-- Serialized FileDescriptorProto of c_grow_proto2.proto (source_code_info
+-- stripped), registered with pb.descriptors for server reflection.
+M._file_descriptor = table.concat({
+    "\x0a\x13c_grow_proto2.proto\x12\x0dc_grow_proto2\",\x0a\x02KV\x12\x10\x0a\x03ke",
+    "y\x18\x01 \x01(\x0cR\x03key\x12\x14\x0a\x05value\x18\x02 \x01(\x0cR\x05value\"\xda\x02\x0a\x06Holder\x12'\x0a",
+    "\x05first\x18\x01 \x01(\x0b2\x11.c_grow_proto2.KVR\x05first\x121\x0a\x05entry\x18",
+    "\x02 \x03(\x0a2\x1b.c_grow_proto2.Holder.EntryR\x05entry\x124\x0a\x06sin",
+    "gle\x18\x05 \x01(\x0a2\x1c.c_grow_proto2.Holder.SingleR\x06single\x12",
+    "%\x0a\x04last\x18\x08 \x01(\x0b2\x11.c_grow_proto2.KVR\x04last\x1a>\x0a\x05Entry\x12",
+    "\x12\x0a\x04blob\x18\x03 \x01(\x0cR\x04blob\x12!\x0a\x02kv\x18\x04 \x01(\x0b2\x11.c_grow_proto2.",
+    "KVR\x02kv\x1aP\x0a\x06Single\x12!\x0a\x02kv\x18\x06 \x01(\x0b2\x11.c_grow_proto2.KVR",
+    "\x02kv\x12#\x0a\x03kvs\x18\x07 \x03(\x0b2\x11.c_grow_proto2.KVR\x03kvs*\x05\x08d\x10\xc8\x01:",
+    "?\x0a\x06ext_kv\x12\x15.c_grow_proto2.Holder\x18d \x01(\x0b2\x11.c_grow_",
+    "proto2.KVR\x05extKv:A\x0a\x07ext_kvs\x12\x15.c_grow_proto2.Hold",
+    "er\x18e \x03(\x0b2\x11.c_grow_proto2.KVR\x06extKvs:0\x0a\x08ext_blob\x12",
+    "\x15.c_grow_proto2.Holder\x18f \x01(\x0cR\x07extBlob",
+})
+pb.descriptors.register(M._file_descriptor)
+
 return M

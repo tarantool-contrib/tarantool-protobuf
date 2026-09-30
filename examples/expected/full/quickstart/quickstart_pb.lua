@@ -399,4 +399,15 @@ function M.User_decode_lazy(b) return pb.decode_lazy(M.User_descriptor, b) end
 ---@return string
 function M.User_text(t, opts) return pb.text.encode(M.User_descriptor, t, opts) end
 
+-- Serialized FileDescriptorProto of quickstart.proto (source_code_info
+-- stripped), registered with pb.descriptors for server reflection.
+M._file_descriptor = table.concat({
+    "\x0a\x10quickstart.proto\x12\x0aquickstart\"h\x0a\x04User\x12\x0e\x0a\x02id\x18\x01 \x01",
+    "(\x05R\x02id\x12\x12\x0a\x04name\x18\x02 \x01(\x09R\x04name\x12$\x0a\x04role\x18\x03 \x01(\x0e2\x10.quick",
+    "start.RoleR\x04role\x12\x16\x0a\x06emails\x18\x04 \x03(\x09R\x06emails*1\x0a\x04Role",
+    "\x12\x14\x0a\x10ROLE_UNSPECIFIED\x10\x00\x12\x08\x0a\x04USER\x10\x01\x12\x09\x0a\x05ADMIN\x10\x02b\x06pro",
+    "to3",
+})
+pb.descriptors.register(M._file_descriptor)
+
 return M

@@ -86,7 +86,14 @@ clean-c:
 # ---------------------------------------------------------------------------
 
 # Regenerate examples/expected/{full,runtime}/* + conformance protos.
-gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number
+gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number gen-builtin-descriptors
+
+# Regenerate runtime/pb/descriptors_builtin.lua: the FileDescriptorProto
+# bytes of the well-known types and google/api/{annotations,http}.proto,
+# taken from protobuf-go's registry, which pb.descriptors ships.
+gen-builtin-descriptors:
+    go run ./cmd/gen-builtin-descriptors > runtime/pb/descriptors_builtin.lua.tmp
+    mv runtime/pb/descriptors_builtin.lua.tmp runtime/pb/descriptors_builtin.lua
 
 # Generate full-mode Lua (inline encode/decode bodies).
 gen-full: build

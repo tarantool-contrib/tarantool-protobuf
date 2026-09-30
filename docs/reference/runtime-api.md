@@ -18,6 +18,7 @@ local view  = pb.decode_lazy(desc, bytes) -- wire bytes -> MessageView
 
 local mod   = pb.parse(proto_source)      -- .proto text -> module
 local set   = pb.from_pb(descset_bytes)   -- FileDescriptorSet -> module set
+pb.descriptors.file('hello.proto')        -- registered FileDescriptorProto bytes
 
 pb.json.encode(desc, t)                   -- proto3 JSON encode
 pb.json.decode(desc, s [, opts])          -- proto3 JSON decode
@@ -149,6 +150,40 @@ local bytes = pb.encode(desc, {name = 'Alice'})
 The submodules behind `pb.parse` / `pb.from_pb`. Exposed for callers
 that want the AST step (`pb.parser.parse(text) -> ast`) or to build
 descriptors by hand (`pb.dynamic.build(ast)`).
+
+## Descriptor registry — `pb.descriptors`
+
+Serialized `google.protobuf.FileDescriptorProto` bytes by `.proto` file
+name: what gRPC server reflection hands to clients. Generated modules
+register their file (and imports not generated alongside them) when
+loaded — see [generated-api.md → File-level boilerplate](generated-api.md#file-level-boilerplate).
+The descriptors of `google/protobuf/{descriptor,any,api,duration,empty,
+field_mask,source_context,struct,timestamp,type,wrappers}.proto`,
+`google/protobuf/compiler/plugin.proto` and
+`google/api/{annotations,http}.proto` ship with the runtime
+(`pb.descriptors_builtin`, loaded on first lookup).
+
+```lua
+require('myapp.hello_pb')                  -- registers 'hello.proto'
+
+pb.descriptors.file('hello.proto')         -- bytes, or nil if unknown
+pb.descriptors.files()                     -- sorted names, built-ins included
+pb.descriptors.dependencies('hello.proto') -- {'google/protobuf/timestamp.proto', ...}
+pb.descriptors.package('hello.proto')      -- 'hello'
+pb.descriptors.register(bytes)             -- -> 'hello.proto'
+```
+
+| Function | Semantics |
+|---|---|
+| `register(bytes) -> name` | Add a serialized `FileDescriptorProto`; returns its `name`. Identical bytes again are a no-op; different bytes under a registered name replace the earlier entry (the latest loaded module wins, as a hot code reload needs). Errors on non-string input, undecodable bytes, or a missing `name`. |
+| `file(name) -> bytes?` | The registered bytes for a file name as imported (`'google/api/http.proto'`). |
+| `files() -> {name, ...}` | Every registered name, sorted. |
+| `dependencies(name) -> {name, ...}?` | The file's direct imports, in declaration order. |
+| `package(name) -> string?` | The file's proto package (`''` when none). |
+
+To decode an entry, feed it to `pb.from_pb` wrapped in a one-file
+`FileDescriptorSet` (`'\x0a' .. pb.wire.encode_varint(#b) .. b`) or to
+`pb.decode(require('pb.descriptor_pb').FileDescriptorProto, b)`.
 
 ## Codec dialects
 

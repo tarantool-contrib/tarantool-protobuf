@@ -19,6 +19,7 @@ local pbjson  = require('pb.json')
 local pbtext  = require('pb.text')
 local lazy    = require('pb.lazy')
 local tuple   = require('pb.tuple')
+local descriptors = require('pb.descriptors')
 
 -- C-acceleration opt-in: PB_ENABLE_C=1 and a loadable pb.c_runtime. The
 -- decision lives in pb.c_loader, shared with pb.tuple.
@@ -127,6 +128,14 @@ return {
     --
     -- Returns {files = {[name] = module}, order = {names...}, lookup = fn}.
     from_pb = fileset.parse,
+
+    -- Registry of serialized FileDescriptorProto bytes by file name.
+    -- Generated modules register their file on load; the well-known
+    -- types and google/api/{annotations,http}.proto ship built in.
+    --
+    --   pb.descriptors.file('hello.proto') -> bytes | nil
+    --   pb.descriptors.files()             -> sorted file names
+    descriptors = descriptors,
 
     -- Low-level access for advanced use.
     parser  = parser,

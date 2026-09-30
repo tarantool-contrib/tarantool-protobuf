@@ -169,6 +169,8 @@ per-enum / per-service surface. Both modes always emit:
 - `M.<Msg>_has_<field>` / `M.<Msg>_clear_<field>` (proto3 explicit-optional)
 - `M.<Enum>_descriptor`, `M.<Enum>` (alias for `by_name`)
 - `M.<Service>_service`, `M.<Service>_client`, `M.<Service>_server`
+- `M._file_descriptor` (serialized `FileDescriptorProto`) and its
+  registration with `pb.descriptors`
 - EmmyLua / lua-language-server annotations
 - Reserved-name table (`reserved_names`) for the text-format parser
 

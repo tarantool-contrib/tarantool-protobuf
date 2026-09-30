@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/tarantool-contrib/tarantool-protobuf/internal/messageset"
 )
@@ -62,6 +63,10 @@ type Config struct {
 	// MessageSets names the messages declared with
 	// `option message_set_wire_format = true` (see messageset.Strip).
 	MessageSets messageset.Set
+	// FileDescriptors holds every file of the request, by name, as
+	// protoc sent it (before the plugin's own request fix-ups). Each
+	// generated module embeds its file's entry; see filedesc.go.
+	FileDescriptors map[string]*descriptorpb.FileDescriptorProto
 }
 
 // GenerateFile emits one `<lua_pkg>.lua` file per input `.proto`.
@@ -84,6 +89,15 @@ func GenerateFile(plug *protogen.Plugin, file *protogen.File, cfg Config) error 
 
 	emitHeader(w, file)
 	imports := collectImports(file, allMsgs, cfg.Prefix)
+	// Imports generated in this run register their own descriptors when
+	// loaded; require them even when no field references them, so the
+	// descriptor registry holds this file's whole import graph.
+	generatedDeps, embeddedDeps := registrationDeps(plug, file)
+	for _, d := range generatedDeps {
+		if lp := luaPackagePath(d, cfg.Prefix); lp != luaPackagePath(file.Desc, cfg.Prefix) {
+			imports[lp] = importAlias(lp)
+		}
+	}
 	emitRequires(w, imports)
 
 	w.line("local M = {}")
@@ -165,6 +179,12 @@ func GenerateFile(plug *protogen.Plugin, file *protogen.File, cfg Config) error 
 	emitExtensions(w, file, file.Extensions, imports, cfg.Prefix)
 	for _, m := range allMsgs {
 		emitExtensions(w, file, m.Extensions, imports, cfg.Prefix)
+	}
+
+	// 7) Serialized FileDescriptorProto of this file (and of imports not
+	// generated with it), registered with pb.descriptors at load time.
+	if err := emitFileDescriptors(w, file, cfg, embeddedDeps); err != nil {
+		return err
 	}
 
 	w.line("return M")

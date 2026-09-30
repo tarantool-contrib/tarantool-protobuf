@@ -67,4 +67,14 @@ function M.Wide_decode_lazy(b) return pb.decode_lazy(M.Wide_descriptor, b) end
 ---@return string
 function M.Wide_text(t, opts) return pb.text.encode(M.Wide_descriptor, t, opts) end
 
+-- Serialized FileDescriptorProto of c_int64.proto (source_code_info
+-- stripped), registered with pb.descriptors for server reflection.
+M._file_descriptor = table.concat({
+    "\x0a\x0dc_int64.proto\x12\x07c_int64\"\x91\x01\x0a\x04Wide\x12\x17\x0a\x07a_int64\x18\x01 \x01",
+    "(\x03R\x06aInt64\x12\x19\x0a\x08a_uint64\x18\x02 \x01(\x04R\x07aUint64\x12\x19\x0a\x08a_sint6",
+    "4\x18\x03 \x01(\x12R\x07aSint64\x12\x1b\x0a\x09a_fixed64\x18\x04 \x01(\x06R\x08aFixed64\x12\x1d\x0a",
+    "\x0aa_sfixed64\x18\x05 \x01(\x10R\x09aSfixed64b\x06proto3",
+})
+pb.descriptors.register(M._file_descriptor)
+
 return M
