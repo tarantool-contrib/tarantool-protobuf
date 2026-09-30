@@ -5,7 +5,8 @@
 # `path` is relative to `root`, and `root` is the import root, so file
 # names match `protoc -I examples/proto -I options`. options/ has to be
 # an input to be on the import path without a git dependency, which
-# makes EasyP generate its files too; check.sh drops those modules.
+# makes EasyP generate its files too; check.sh compares those modules
+# with protoc's output for options/*.proto separately.
 # Plugin options mirror `just gen-full` and `just gen-runtime`.
 generate:
   inputs:

@@ -92,20 +92,28 @@ check_easyp() {
 
     # options/ is an input, the only way to put it on EasyP's import
     # path without a git dependency, so its files are generated as well.
-    # Those modules are not part of the comparison.
-    local mode extra
+    # Those modules are moved to a tree of their own and compared with
+    # protoc's output for options/*.proto.
+    local base="$tmp/protoc-options" mode f
+    mkdir -p "$base" "$ws/options-out" || return 1
     for mode in full runtime; do
-        for extra in tarantool/tarantool_pb.lua google/api/annotations_pb.lua google/api/http_pb.lua; do
-            if [ ! -f "$ws/out/$mode/$extra" ]; then
-                echo "FAIL: easyp did not generate $mode/$extra from options/;" \
-                     "update the list of extra modules in $0" >&2
-                return 1
-            fi
-            rm "$ws/out/$mode/$extra" || return 1
-        done
+        (cd options && find . -name '*.proto' | sort | xargs protoc \
+            --plugin=../protoc-gen-tarantool \
+            --tarantool_out="$base" \
+            --tarantool_opt="mode=$mode,prefix=$mode" \
+            -I .) || return 1
     done
+    while IFS= read -r f; do
+        if [ ! -f "$ws/out/$f" ]; then
+            echo "FAIL: easyp did not generate $f from options/" >&2
+            return 1
+        fi
+        mkdir -p "$(dirname "$ws/options-out/$f")" || return 1
+        mv "$ws/out/$f" "$ws/options-out/$f" || return 1
+    done < <(cd "$base" && find . -type f -name '*.lua' | sort)
     find "$ws/out" -type d -empty -delete || return 1
     "$here/compare.sh" "$tmp/protoc" "$ws/out" || return 1
+    "$here/compare.sh" "$base" "$ws/options-out" || return 1
 }
 
 rc=0
