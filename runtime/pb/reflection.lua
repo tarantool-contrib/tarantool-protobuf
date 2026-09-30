@@ -26,7 +26,10 @@
 -- messages (nested included), enums, enum values (in the scope enclosing
 -- their enum), fields, oneofs, extensions, services and methods. The
 -- symbol index is built from the registered descriptor bytes on first
--- use and rebuilt whenever pb.descriptors changes.
+-- use and rebuilt whenever pb.descriptors changes. Files are indexed in
+-- registration order; a file declaring a name an earlier file declares
+-- is left out whole (with a warning), as protobuf-go's registry refuses
+-- it.
 local codec       = require('pb.codec')
 local descriptors = require('pb.descriptors')
 local grpc        = require('pb.grpc')
@@ -109,57 +112,83 @@ local function join(scope, name)
     return scope .. '.' .. name
 end
 
-local function build_index()
-    local symbols, extensions = {}, {}
-    local function add(full, file)
-        -- The first file (in sorted order) that declares a name keeps it,
-        -- as a registry that refuses conflicting registrations would.
-        if symbols[full] == nil then symbols[full] = file end
-    end
-    local function add_extension(ext, file)
+-- file_symbols(fdp) -> array of the full names a file declares, array
+-- of its extensions {extendee, number}.
+local function file_symbols(fdp)
+    local names, exts = {}, {}
+    local function add_extension(ext, full)
+        names[#names + 1] = full
         local extendee = ext.extendee or ''
         if extendee:sub(1, 1) == '.' then extendee = extendee:sub(2) end
-        local by_number = extensions[extendee]
-        if by_number == nil then
-            by_number = {}
-            extensions[extendee] = by_number
-        end
-        if ext.number ~= nil and by_number[ext.number] == nil then
-            by_number[ext.number] = file
-        end
+        if ext.number ~= nil then exts[#exts + 1] = {extendee, ext.number} end
     end
-    local function add_enum(e, scope, file)
-        add(join(scope, e.name), file)
+    local function add_enum(e, scope)
+        names[#names + 1] = join(scope, e.name)
         -- Enum values are siblings of their enum (C++ scoping rules).
-        for _, v in ipairs(e.value or {}) do add(join(scope, v.name), file) end
+        for _, v in ipairs(e.value or {}) do names[#names + 1] = join(scope, v.name) end
     end
-    local function add_message(m, scope, file)
+    local function add_message(m, scope)
         local full = join(scope, m.name)
-        add(full, file)
-        for _, f in ipairs(m.field or {}) do add(join(full, f.name), file) end
-        for _, o in ipairs(m.oneof_decl or {}) do add(join(full, o.name), file) end
-        for _, e in ipairs(m.enum_type or {}) do add_enum(e, full, file) end
-        for _, x in ipairs(m.extension or {}) do
-            add(join(full, x.name), file)
-            add_extension(x, file)
-        end
-        for _, n in ipairs(m.nested_type or {}) do add_message(n, full, file) end
+        names[#names + 1] = full
+        for _, f in ipairs(m.field or {}) do names[#names + 1] = join(full, f.name) end
+        for _, o in ipairs(m.oneof_decl or {}) do names[#names + 1] = join(full, o.name) end
+        for _, e in ipairs(m.enum_type or {}) do add_enum(e, full) end
+        for _, x in ipairs(m.extension or {}) do add_extension(x, join(full, x.name)) end
+        for _, n in ipairs(m.nested_type or {}) do add_message(n, full) end
     end
+    local pkg = fdp.package or ''
+    for _, e in ipairs(fdp.enum_type or {}) do add_enum(e, pkg) end
+    for _, m in ipairs(fdp.message_type or {}) do add_message(m, pkg) end
+    for _, x in ipairs(fdp.extension or {}) do add_extension(x, join(pkg, x.name)) end
+    for _, s in ipairs(fdp.service or {}) do
+        local full = join(pkg, s.name)
+        names[#names + 1] = full
+        for _, meth in ipairs(s.method or {}) do names[#names + 1] = join(full, meth.name) end
+    end
+    return names, exts
+end
 
-    for _, name in ipairs(descriptors.files()) do
+-- Files already warned about for a symbol conflict (warn once each).
+local warned = {}
+
+-- Internal: where conflict warnings go. A field so tests can observe it.
+function M._warn(msg)
+    require('log').warn(msg)
+end
+
+-- Files are indexed in registration order. A file declaring a name an
+-- earlier file already declares is left out as a whole, as protobuf-go's
+-- registry refuses it ("name conflict"): mixing two files' symbols would
+-- hand a client two files that define the same type and cannot link.
+local function build_index()
+    local symbols, extensions = {}, {}
+    for _, name in ipairs(descriptors.registration_order()) do
         local ok, fdp = pcall(codec.decode, File, descriptors.file(name))
         if ok then
-            local pkg = fdp.package or ''
-            for _, e in ipairs(fdp.enum_type or {}) do add_enum(e, pkg, name) end
-            for _, m in ipairs(fdp.message_type or {}) do add_message(m, pkg, name) end
-            for _, x in ipairs(fdp.extension or {}) do
-                add(join(pkg, x.name), name)
-                add_extension(x, name)
+            local names, exts = file_symbols(fdp)
+            local conflict
+            for _, full in ipairs(names) do
+                if symbols[full] ~= nil then
+                    conflict = full
+                    break
+                end
             end
-            for _, s in ipairs(fdp.service or {}) do
-                local full = join(pkg, s.name)
-                add(full, name)
-                for _, meth in ipairs(s.method or {}) do add(join(full, meth.name), name) end
+            if conflict ~= nil then
+                if not warned[name] then
+                    warned[name] = true
+                    M._warn(('pb.reflection: %q declares %q, already declared by %q; '
+                        .. 'its symbols are not served'):format(name, conflict, symbols[conflict]))
+                end
+            else
+                for _, full in ipairs(names) do symbols[full] = name end
+                for _, x in ipairs(exts) do
+                    local by_number = extensions[x[1]]
+                    if by_number == nil then
+                        by_number = {}
+                        extensions[x[1]] = by_number
+                    end
+                    if by_number[x[2]] == nil then by_number[x[2]] = name end
+                end
             end
         end
     end

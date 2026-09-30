@@ -343,6 +343,18 @@ g.test_generation_changes_with_the_registry = function()
     t.assert_not_equals(pb.descriptors.generation(), g1)
 end
 
+g.test_registration_order = function()
+    pb.descriptors.register(tiny_fdp('order/z.proto', 'z'))
+    pb.descriptors.register(tiny_fdp('order/a.proto', 'a'))
+    -- Replacing keeps the first registration's place.
+    pb.descriptors.register(tiny_fdp('order/z.proto', 'z2'))
+    local pos = {}
+    local order = pb.descriptors.registration_order()
+    for i, name in ipairs(order) do pos[name] = i end
+    t.assert(pos['order/z.proto'] < pos['order/a.proto'])
+    t.assert_equals(#order, #pb.descriptors.files())
+end
+
 g.test_register_rejects_bad_input = function()
     t.assert_error_msg_contains('expected FileDescriptorProto bytes',
         pb.descriptors.register, 42)

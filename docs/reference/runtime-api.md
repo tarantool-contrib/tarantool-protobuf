@@ -197,6 +197,7 @@ pb.descriptors.register(bytes, {snapshot = true}) -- a copy of an import
 | `files() -> {name, ...}` | Every registered name, sorted. |
 | `dependencies(name) -> {name, ...}?` | The file's direct imports, in declaration order. |
 | `package(name) -> string?` | The file's proto package (`''` when none). |
+| `registration_order() -> {name, ...}` | Every registered name in the order it was first registered; replacing a file keeps its place. |
 | `generation() -> integer` | Changes whenever a file is added or replaced; anything derived from the registry (the reflection symbol index) caches against it. |
 
 To decode an entry, feed it to `pb.from_pb` wrapped in a one-file
@@ -486,6 +487,12 @@ Behaviour, following grpc-go's reflection service:
   oneofs, extensions, services and methods (`hello.Greeter.SayHello`).
   The index is built from the descriptor bytes on first use and rebuilt
   when `pb.descriptors` changes.
+- Files are indexed in registration order. A file that declares a name
+  an earlier file already declares is left out of the symbol index as a
+  whole, and a warning is logged once, as protobuf-go's registry refuses
+  it with "name conflict": serving symbols from both would hand a client
+  two files defining one type, which do not link. Replacing a file under
+  its own name is not a conflict.
 - Extensions are indexed from the registered descriptors:
   `all_extension_numbers_of_type` answers the sorted numbers (an empty
   list for a known type without extensions).

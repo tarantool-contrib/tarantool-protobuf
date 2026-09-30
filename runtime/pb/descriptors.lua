@@ -93,13 +93,15 @@ local function add(bytes, snapshot)
             return name
         end
     end
+    generation = generation + 1
     registry[name] = {
         bytes        = bytes,
         package      = hdr.package or '',
         dependencies = hdr.dependency or {},
         snapshot     = snapshot and true or false,
+        -- A replacement keeps the place of the name's first registration.
+        seq          = cur and cur.seq or generation,
     }
-    generation = generation + 1
     return name
 end
 
@@ -159,6 +161,19 @@ function M.files()
     local out = {}
     for name in pairs(registry) do out[#out + 1] = name end
     table.sort(out)
+    return out
+end
+
+-- registration_order() -> every registered file name (built-ins
+-- included) in the order the names were first registered; replacing a
+-- file keeps its place. Where two files declare the same symbol, the
+-- earlier one wins, as in a registry that refuses the later file.
+---@return string[]
+function M.registration_order()
+    load_builtins()
+    local out = {}
+    for name in pairs(registry) do out[#out + 1] = name end
+    table.sort(out, function(a, b) return registry[a].seq < registry[b].seq end)
     return out
 end
 

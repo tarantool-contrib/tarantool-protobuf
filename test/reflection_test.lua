@@ -223,6 +223,50 @@ g.test_index_follows_the_registry = function()
     t.assert_equals(pb.reflection.file_containing_symbol('late.Added'), nil)
 end
 
+-- Two files declaring one type: the first registered keeps all of its
+-- symbols, the second is left out whole (protobuf-go: "name conflict").
+g.test_conflicting_file_is_left_out_whole = function()
+    local warnings = {}
+    local orig_warn = pb.reflection._warn
+    pb.reflection._warn = function(msg) warnings[#warnings + 1] = msg end
+
+    local function file(name, nested)
+        return codec.encode(descpb.FileDescriptorProto, {
+            name = name,
+            package = 'collision',
+            message_type = {{name = 'Shared', nested_type = {{name = nested}}}},
+        })
+    end
+    local ok, err = pcall(function()
+        -- Registered first, sorts last.
+        pb.descriptors.register(file('z-original.proto', 'Old'))
+        pb.descriptors.register(file('a-new.proto', 'New'))
+
+        local r = pb.reflection
+        t.assert_equals(r.file_containing_symbol('collision.Shared'), 'z-original.proto')
+        t.assert_equals(r.file_containing_symbol('collision.Shared.Old'), 'z-original.proto')
+        t.assert_equals(r.file_containing_symbol('collision.Shared.New'), nil)
+        t.assert_equals(#warnings, 1)
+        t.assert_str_contains(warnings[1], 'a-new.proto')
+        t.assert_str_contains(warnings[1], 'collision.Shared')
+
+        local s = session(pb.grpc.multiplex(pb.reflection.servers()))
+        local resp = s:ask({file_containing_symbol = 'collision.Shared.New'})
+        t.assert_equals(resp.error_response.error_code, NOT_FOUND)
+        t.assert_equals(names_of(s:ask({file_containing_symbol = 'collision.Shared'})),
+                        {'z-original.proto'})
+
+        -- Replacing the winning file is not a conflict with itself, and
+        -- the loser is not warned about twice.
+        pb.descriptors.register(file('z-original.proto', 'Older'))
+        t.assert_equals(r.file_containing_symbol('collision.Shared.Older'), 'z-original.proto')
+        t.assert_equals(r.file_containing_symbol('collision.Shared.New'), nil)
+        t.assert_equals(#warnings, 1)
+    end)
+    pb.reflection._warn = orig_warn
+    if not ok then error(err, 0) end
+end
+
 g.test_services_forms = function()
     local hello = require('full.hello.hello_pb')
     local refl = pb.reflection.new({services = {
