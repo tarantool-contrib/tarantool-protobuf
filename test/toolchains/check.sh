@@ -32,6 +32,25 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# list_modules <dir> <file>: writes the *.lua files under <dir>, sorted,
+# one per line, to <file>. Fails when find fails or finds nothing, so
+# a loop reading the list cannot pass over a listing that went wrong.
+# Callers check its status: it also runs where errexit does not apply.
+list_modules() {
+    local found
+    found=$(cd "$1" && find . -type f -name '*.lua') || {
+        echo "FAIL: cannot list the modules under $1" >&2
+        return 1
+    }
+    if [ -z "$found" ]; then
+        echo "FAIL: no modules under $1" >&2
+        return 1
+    fi
+    printf '%s\n' "$found" | sort > "$2" || return 1
+}
+
+protoc_version=$(protoc --version)
+
 mkdir -p "$tmp/protoc"
 for mode in full runtime; do
     protoc \
@@ -42,6 +61,7 @@ for mode in full runtime; do
         examples/proto/*.proto
 done
 
+list_modules "$tmp/protoc" "$tmp/protoc.list"
 stale=0
 while IFS= read -r f; do
     if ! cmp -s "$tmp/protoc/$f" "examples/expected/$f"; then
@@ -49,7 +69,7 @@ while IFS= read -r f; do
              "or align this script with the Justfile)" >&2
         stale=$((stale + 1))
     fi
-done < <(cd "$tmp/protoc" && find . -type f -name '*.lua' | sort)
+done < "$tmp/protoc.list"
 [ "$stale" -eq 0 ]
 
 check_buf() {
@@ -57,9 +77,14 @@ check_buf() {
         echo "buf: SKIP: buf is not installed (https://buf.build/docs/installation)"
         return 0
     fi
-    echo "buf: $(buf --version 2>&1) against $(protoc --version)"
     # The check functions run as `check_x || rc=1`, where errexit does
     # not apply: every step propagates its failure itself.
+    local version
+    version=$(buf --version 2>&1) || {
+        echo "FAIL: buf --version failed: $version" >&2
+        return 1
+    }
+    echo "buf: $version against $protoc_version"
     buf generate examples/proto \
         --config "$here/buf.yaml" \
         --template "$here/buf.gen.yaml" \
@@ -77,7 +102,12 @@ check_easyp() {
              "go install github.com/easyp-tech/easyp/cmd/easyp@latest)"
         return 0
     fi
-    echo "easyp: $("$easyp" --version 2>&1) against $(protoc --version)"
+    local version
+    version=$("$easyp" --version 2>&1) || {
+        echo "FAIL: $easyp --version failed: $version" >&2
+        return 1
+    }
+    echo "easyp: $version against $protoc_version"
 
     # EasyP resolves paths against its working directory, so it runs in
     # a scratch workspace with copies of the inputs; EASYPPATH keeps its
@@ -103,6 +133,7 @@ check_easyp() {
             --tarantool_opt="mode=$mode,prefix=$mode" \
             -I .) || return 1
     done
+    list_modules "$base" "$tmp/protoc-options.list" || return 1
     while IFS= read -r f; do
         if [ ! -f "$ws/out/$f" ]; then
             echo "FAIL: easyp did not generate $f from options/" >&2
@@ -110,7 +141,7 @@ check_easyp() {
         fi
         mkdir -p "$(dirname "$ws/options-out/$f")" || return 1
         mv "$ws/out/$f" "$ws/options-out/$f" || return 1
-    done < <(cd "$base" && find . -type f -name '*.lua' | sort)
+    done < "$tmp/protoc-options.list"
     find "$ws/out" -type d -empty -delete || return 1
     "$here/compare.sh" "$tmp/protoc" "$ws/out" || return 1
     "$here/compare.sh" "$base" "$ws/options-out" || return 1
