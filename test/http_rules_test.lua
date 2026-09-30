@@ -13,7 +13,7 @@ local pb  = require('pb')
 local REPO_ROOT = fio.abspath(fio.pathjoin(
     fio.dirname(debug.getinfo(1, 'S').source:sub(2)), '..'))
 local PROTO_DIR   = fio.pathjoin(REPO_ROOT, 'examples', 'proto')
-local OPTIONS_DIR = fio.pathjoin(REPO_ROOT, 'options')
+local GOOGLEAPIS_DIR = fio.pathjoin(REPO_ROOT, 'third_party', 'googleapis')
 
 -- Written out from library.proto by hand, not copied from generated code.
 local EXPECTED = {
@@ -70,7 +70,7 @@ local function library_set()
     local out = fio.pathjoin(fio.tempdir(), 'library.descpb')
     local cmd = string.format(
         'protoc --descriptor_set_out=%q -I %q -I %q %q',
-        out, PROTO_DIR, OPTIONS_DIR, fio.pathjoin(PROTO_DIR, 'library.proto'))
+        out, PROTO_DIR, GOOGLEAPIS_DIR, fio.pathjoin(PROTO_DIR, 'library.proto'))
     local ok = os.execute(cmd)
     assert(ok == 0 or ok == true, 'protoc --descriptor_set_out failed: ' .. cmd)
     return pb.from_pb(slurp(out))
@@ -172,7 +172,7 @@ u.test_protoc_reads_last_member = function()
     spit_bytes(bin, RULE)
     local cmd = string.format(
         'protoc --decode=google.api.HttpRule -I %q google/api/http.proto < %q > %q',
-        OPTIONS_DIR, bin, txt)
+        GOOGLEAPIS_DIR, bin, txt)
     local ok = os.execute(cmd)
     t.assert(ok == 0 or ok == true, cmd)
     local text = slurp(txt)

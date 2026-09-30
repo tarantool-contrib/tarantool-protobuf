@@ -2,7 +2,7 @@
 --
 -- The router maps plain HTTP requests onto the unary methods of
 -- generated gRPC servers, following google/api/http.proto (vendored at
--- options/google/api/http.proto; its long doc comment is the spec) and
+-- third_party/googleapis/google/api/http.proto; its long doc comment is the spec) and
 -- AIP-127. It is a pure function over request/response tables — no
 -- sockets — so an HTTP server hands it a request and sends back what it
 -- returns:

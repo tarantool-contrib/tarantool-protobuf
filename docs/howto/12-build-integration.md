@@ -176,15 +176,17 @@ deps:
   `buf`; nothing to add.
 
 Without the registry (offline builds, air-gapped CI), make this
-repository's `options/` directory a module instead of the `deps`
-entry. It carries `google/api/annotations.proto`, `google/api/http.proto`
-and `tarantool/tarantool.proto`:
+repository's `third_party/googleapis/` directory a module instead of
+the `deps` entry. It carries `google/api/annotations.proto` and
+`google/api/http.proto`; the repository's `options/` directory, which
+carries only `tarantool/tarantool.proto`, can stand in for the copy:
 
 ```yaml
 version: v2
 modules:
   - path: proto
   - path: vendor/tarantool-protobuf/options
+  - path: vendor/tarantool-protobuf/third_party/googleapis
 ```
 
 Use one source or the other: with both, `buf` refuses to build

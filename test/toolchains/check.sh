@@ -15,8 +15,8 @@
 # to examples/expected/, so a drift between this script and the
 # Justfile fails here too.
 #
-# Offline: both tools take google/api from options/, not from a
-# registry or a git dependency. A tool that is not installed is skipped
+# Offline: both tools take google/api from third_party/googleapis/, not
+# from a registry or a git dependency. A tool that is not installed is skipped
 # with a message: buf is looked up on PATH, EasyP as $EASYP or `easyp`
 # on PATH.
 set -euo pipefail
@@ -57,7 +57,7 @@ for mode in full runtime; do
         --plugin=./protoc-gen-tarantool \
         --tarantool_out="$tmp/protoc" \
         --tarantool_opt="mode=$mode,prefix=$mode" \
-        -I examples/proto -I options \
+        -I examples/proto -I options -I third_party/googleapis \
         examples/proto/*.proto
 done
 
@@ -116,27 +116,34 @@ check_easyp() {
     mkdir -p "$ws" || return 1
     cp -R examples/proto "$ws/proto" || return 1
     cp -R options "$ws/options" || return 1
+    cp -R third_party/googleapis "$ws/googleapis" || return 1
     cp protoc-gen-tarantool "$ws/" || return 1
     cp "$here/easyp.yaml" "$ws/" || return 1
     (cd "$ws" && EASYPPATH="$ws/.easyp" "$easyp" generate) || return 1
 
-    # options/ is an input, the only way to put it on EasyP's import
-    # path without a git dependency, so its files are generated as well.
-    # Those modules are moved to a tree of their own and compared with
-    # protoc's output for options/*.proto.
-    local base="$tmp/protoc-options" mode f
+    # options/ and googleapis/ are inputs, the only way to put them on
+    # EasyP's import path without a git dependency, so their files are
+    # generated as well. Those modules are moved to a tree of their own
+    # and compared with protoc's output for options/*.proto and
+    # third_party/googleapis/*.proto, each compiled from its own import
+    # root. compare.sh checks that each pair of trees holds the same
+    # files, so both comparisons together cover exactly what EasyP
+    # generated.
+    local base="$tmp/protoc-options" plugin="$PWD/protoc-gen-tarantool" mode root f
     mkdir -p "$base" "$ws/options-out" || return 1
-    for mode in full runtime; do
-        (cd options && find . -name '*.proto' | sort | xargs protoc \
-            --plugin=../protoc-gen-tarantool \
-            --tarantool_out="$base" \
-            --tarantool_opt="mode=$mode,prefix=$mode" \
-            -I .) || return 1
+    for root in options third_party/googleapis; do
+        for mode in full runtime; do
+            (cd "$root" && find . -name '*.proto' | sort | xargs protoc \
+                --plugin="$plugin" \
+                --tarantool_out="$base" \
+                --tarantool_opt="mode=$mode,prefix=$mode" \
+                -I .) || return 1
+        done
     done
     list_modules "$base" "$tmp/protoc-options.list" || return 1
     while IFS= read -r f; do
         if [ ! -f "$ws/out/$f" ]; then
-            echo "FAIL: easyp did not generate $f from options/" >&2
+            echo "FAIL: easyp did not generate $f from options/ or googleapis/" >&2
             return 1
         fi
         mkdir -p "$(dirname "$ws/options-out/$f")" || return 1

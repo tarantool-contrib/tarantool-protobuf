@@ -9,13 +9,13 @@
 // --descriptor_set_out`), read off the FileDescriptorSet wire, so they
 // match what that protoc hands the plugin for the same files. The WKT
 // sources are protoc's own bundled copies; google/api comes from the
-// vendored options/ directory. The protoc version is recorded in the
+// vendored third_party/googleapis directory. The protoc version is recorded in the
 // generated header: keep it at the same release as the conformance
 // image (and the protoc that runs `just gen`).
 //
 // Usage:
 //
-//	go run ./cmd/gen-builtin-descriptors -I options > runtime/pb/descriptors_builtin.lua
+//	go run ./cmd/gen-builtin-descriptors -I third_party/googleapis >runtime/pb/descriptors_builtin.lua
 package main
 
 import (
@@ -33,7 +33,7 @@ import (
 )
 
 func main() {
-	include := flag.String("I", "options", "include directory holding google/api/*.proto")
+	include := flag.String("I", "third_party/googleapis","include directory holding google/api/*.proto")
 	protoc := flag.String("protoc", "protoc", "protoc binary")
 	flag.Parse()
 

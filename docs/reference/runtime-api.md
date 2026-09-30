@@ -333,7 +333,7 @@ table implementing those four methods plugs into a generated client.
 
 Maps plain HTTP requests onto the unary methods of generated servers by
 their `google.api.http` rules, the scheme of
-[`google/api/http.proto`](../../options/google/api/http.proto) and
+[`google/api/http.proto`](../../third_party/googleapis/google/api/http.proto) and
 [AIP-127](https://google.aip.dev/127). Pure Lua over request/response
 tables, no sockets: an HTTP server passes each request in and sends back
 what comes out. A walkthrough is in

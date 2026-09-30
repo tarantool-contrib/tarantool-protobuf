@@ -205,7 +205,8 @@ small preprocessor is the typical path.
 
 **`google/api/annotations.proto` is supported.** The repository ships
 `google/api/annotations.proto` and `google/api/http.proto` (vendored
-from googleapis, Apache-2.0) under `options/`, so with `-I options` an
+from googleapis, Apache-2.0) under `third_party/googleapis/`, so with
+`-I third_party/googleapis` an
 `import "google/api/annotations.proto";` resolves, and every
 `option (google.api.http) = {...}` is carried into the generated
 service descriptor as a normalised `http` array on the method (see

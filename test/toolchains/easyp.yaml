@@ -1,12 +1,14 @@
 # The EasyP configuration test/toolchains/check.sh generates the
-# examples with. check.sh copies examples/proto to proto/ and options/
-# to options/ in a scratch workspace next to this file and the plugin.
+# examples with. check.sh copies examples/proto to proto/, options/ to
+# options/ and third_party/googleapis/ to googleapis/ in a scratch
+# workspace next to this file and the plugin.
 #
 # `path` is relative to `root`, and `root` is the import root, so file
-# names match `protoc -I examples/proto -I options`. options/ has to be
-# an input to be on the import path without a git dependency, which
-# makes EasyP generate its files too; check.sh compares those modules
-# with protoc's output for options/*.proto separately.
+# names match `protoc -I examples/proto -I options -I
+# third_party/googleapis`. options/ and googleapis/ have to be inputs to
+# be on the import path without a git dependency, which makes EasyP
+# generate their files too; check.sh compares those modules with
+# protoc's output for options/*.proto and googleapis/*.proto separately.
 # Plugin options mirror `just gen-full` and `just gen-runtime`.
 generate:
   inputs:
@@ -16,6 +18,9 @@ generate:
     - directory:
         path: .
         root: options
+    - directory:
+        path: .
+        root: googleapis
   plugins:
     - path: ./protoc-gen-tarantool
       out: out

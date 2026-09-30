@@ -14,7 +14,7 @@ rpc GetBook(GetBookRequest) returns (Book) {
 `GET /v1/shelves/1/books/2` becomes `GetBook(name: "shelves/1/books/2")`
 and the `Book` comes back as proto3 JSON. This is the scheme Google APIs,
 grpc-gateway, ESP and Envoy use, specified in
-[`google/api/http.proto`](../../options/google/api/http.proto) (its doc
+[`google/api/http.proto`](../../third_party/googleapis/google/api/http.proto) (its doc
 comment) and [AIP-127](https://google.aip.dev/127).
 
 `pb.transcode` is the routing and binding half of it: a pure function
@@ -67,8 +67,10 @@ service Library {
 }
 ```
 
-Generate as usual; `google/api/annotations.proto` and `http.proto` are
-under `options/`, so pass `-I options`. The plugin copies the rules into
+Generate as usual; this repository vendors `google/api/annotations.proto`
+and `http.proto` under `third_party/googleapis/`, so pass
+`-I third_party/googleapis` (or the import root of your own googleapis
+copy). The plugin copies the rules into
 the service descriptor (`M.Library_service.methods.GetBook.http`).
 
 ## 2. Build a router
@@ -199,7 +201,7 @@ with a warning in the log.
 - [Reference: runtime API → `pb.transcode`](../reference/runtime-api.md#httpjson-transcoding--pbtranscode)
   — every rule the router follows (template syntax, route priority,
   binding and error mapping).
-- [`options/google/api/http.proto`](../../options/google/api/http.proto)
+- [`third_party/googleapis/google/api/http.proto`](../../third_party/googleapis/google/api/http.proto)
   — the specification the router implements.
 - [gRPC with the loopback transport](03-grpc-loopback.md) — the same
   server table, called from Lua.

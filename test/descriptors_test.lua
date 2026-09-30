@@ -12,6 +12,7 @@ local REPO_ROOT = fio.abspath(fio.pathjoin(
     fio.dirname(debug.getinfo(1, 'S').source:sub(2)), '..'))
 local PROTO_DIR   = fio.pathjoin(REPO_ROOT, 'examples', 'proto')
 local OPTIONS_DIR = fio.pathjoin(REPO_ROOT, 'options')
+local GOOGLEAPIS_DIR = fio.pathjoin(REPO_ROOT, 'third_party', 'googleapis')
 local PLUGIN      = fio.pathjoin(REPO_ROOT, 'protoc-gen-tarantool')
 
 local function slurp(path)
@@ -54,8 +55,8 @@ end
 local function protoc_descriptor(proto, dir)
     dir = dir or PROTO_DIR
     local out = fio.pathjoin(fio.tempdir(), 'set.pb')
-    sh(string.format('protoc --descriptor_set_out=%q -I %q -I %q %q',
-        out, dir, OPTIONS_DIR, fio.pathjoin(dir, proto)))
+    sh(string.format('protoc --descriptor_set_out=%q -I %q -I %q -I %q %q',
+        out, dir, OPTIONS_DIR, GOOGLEAPIS_DIR, fio.pathjoin(dir, proto)))
     return only_file_of_set(slurp(out))
 end
 
@@ -214,7 +215,7 @@ g.test_builtins_match_protoc = function()
     local names = {}
     for _, row in ipairs(BUILTIN) do names[#names + 1] = ('%q'):format(row[1]) end
     sh(string.format('protoc --include_imports --descriptor_set_out=%q -I %q %s',
-        out, OPTIONS_DIR, table.concat(names, ' ')))
+        out, GOOGLEAPIS_DIR, table.concat(names, ' ')))
     local SET = {
         name = 'google.protobuf.FileDescriptorSet',
         fields = {{name = 'file', id = 1, kind = 'scalar', proto_type = 'bytes',

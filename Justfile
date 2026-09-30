@@ -30,6 +30,11 @@ proto2_test_dir   := "test/proto"
 luatest           := ".rocks/bin/luatest"
 image             := "tarantool-protobuf-conformance:latest"
 
+# Import paths every protoc run shares: options/ holds this project's
+# tarantool/tarantool.proto (the published options module), and
+# third_party/googleapis the vendored google/api/{annotations,http}.proto.
+includes          := "-I options -I third_party/googleapis"
+
 # pb.server serves over the tarantool-http2 rock (`require('http2')`). Until
 # the rock is published, point TARANTOOL_HTTP2_RUNTIME at the `runtime/`
 # directory of a tarantool-http2 checkout; it is appended to LUA_PATH for
@@ -117,7 +122,7 @@ gen-grpc-services: build
 # release as PROTOBUF_TAG in docker/conformance.Dockerfile — the same
 # rule as for `just gen`; nothing checks it automatically.
 gen-builtin-descriptors:
-    go run ./cmd/gen-builtin-descriptors -I options > runtime/pb/descriptors_builtin.lua.tmp
+    go run ./cmd/gen-builtin-descriptors -I third_party/googleapis >runtime/pb/descriptors_builtin.lua.tmp
     mv runtime/pb/descriptors_builtin.lua.tmp runtime/pb/descriptors_builtin.lua
 
 # Generate full-mode Lua (inline encode/decode bodies).
@@ -127,7 +132,7 @@ gen-full: build
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=full,prefix=full \
-        -I {{proto_dir}} -I options \
+        -I {{proto_dir}} {{includes}} \
         {{proto_dir}}/*.proto
 
 # Generate runtime-mode Lua (delegates to pb.encode / pb.decode).
@@ -137,7 +142,7 @@ gen-runtime: build
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=runtime,prefix=runtime \
-        -I {{proto_dir}} -I options \
+        -I {{proto_dir}} {{includes}} \
         {{proto_dir}}/*.proto
 
 # Generate the Google conformance protos (TestAllTypesProto3) in both modes.
@@ -147,13 +152,13 @@ gen-conformance: build
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=full,prefix=full \
-        -I {{conformance_proto}} -I options \
+        -I {{conformance_proto}} {{includes}} \
         {{conformance_proto}}/*.proto
     protoc \
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=runtime,prefix=runtime \
-        -I {{conformance_proto}} -I options \
+        -I {{conformance_proto}} {{includes}} \
         {{conformance_proto}}/*.proto
 
 # Generate the proto2 test fixtures (test/proto/*.proto) in both modes.
@@ -165,13 +170,13 @@ gen-proto2-tests: build
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=full,prefix=full \
-        -I {{proto2_test_dir}} -I options \
+        -I {{proto2_test_dir}} {{includes}} \
         {{proto2_test_dir}}/*.proto
     protoc \
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=runtime,prefix=runtime \
-        -I {{proto2_test_dir}} -I options \
+        -I {{proto2_test_dir}} {{includes}} \
         {{proto2_test_dir}}/*.proto
 
 # Generate the c_int64 fixture into examples/expected/full_n/ with the
@@ -185,7 +190,7 @@ gen-int64-as-number: build
         --plugin=./{{plugin}} \
         --tarantool_out={{gen_dir}} \
         --tarantool_opt=mode=full,prefix=full_n,int64_as_number=true \
-        -I {{proto2_test_dir}} -I options \
+        -I {{proto2_test_dir}} {{includes}} \
         {{proto2_test_dir}}/c_int64.proto
 
 # Regenerate Markdown reference docs (examples/docs/*.md) — committed output.
@@ -194,7 +199,7 @@ gen-docs: build-doc
     protoc \
         --plugin=./{{doc_plugin}} \
         --tarantool-doc_out={{docs_dir}} \
-        -I {{proto_dir}} -I options \
+        -I {{proto_dir}} {{includes}} \
         {{proto_dir}}/*.proto
 
 # Regenerate test/interop/fixtures/*.bin via mainline `protoc --encode`.
@@ -203,7 +208,7 @@ goldens:
         type=$(awk '/^# type:/ {print $3; exit}' "$f"); \
         out="${f%.txtpb}.bin"; \
         echo "  protoc --encode=$type < $f > $out"; \
-        protoc --encode="$type" -I {{proto_dir}} -I options {{proto_dir}}/hello.proto < "$f" > "$out" || exit $?; \
+        protoc --encode="$type" -I {{proto_dir}} {{includes}} {{proto_dir}}/hello.proto < "$f" > "$out" || exit $?; \
     done
 
 # ---------------------------------------------------------------------------

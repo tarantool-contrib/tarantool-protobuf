@@ -36,7 +36,8 @@ if ! diff -u "$work/expected.list" "$work/actual.list"; then
 fi
 
 decode() {
-    protoc --decode=google.protobuf.FileDescriptorProto -I options \
+    protoc --decode=google.protobuf.FileDescriptorProto \
+        -I options -I third_party/googleapis \
         google/protobuf/descriptor.proto \
         google/api/annotations.proto \
         tarantool/tarantool.proto < "$1" > "$2"

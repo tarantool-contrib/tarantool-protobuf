@@ -1,7 +1,7 @@
 -- pb.transcode: google.api.http path templates, binding and the router.
 --
 -- The `http_proto` group turns every example of the doc comment in
--- options/google/api/http.proto (an HTTP request and the gRPC call it
+-- third_party/googleapis/google/api/http.proto (an HTTP request and the gRPC call it
 -- becomes) into a test. The schemas are parsed at runtime and served by
 -- a recording fake server, so the assertion is on the request message
 -- the handler actually decoded from the wire.
