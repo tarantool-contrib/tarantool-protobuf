@@ -597,6 +597,19 @@ end
 local Router = {}
 Router.__index = Router
 
+-- pb.json.encode options a router accepts in opts.json, by value type.
+local JSON_OPTS = {
+    use_proto_names = 'boolean',
+    emit_defaults = 'boolean',
+    always_emit_zero_value = 'boolean',
+    emit_null_messages = 'boolean',
+    indent = 'string',
+}
+
+-- Options for the last-resort status body, independent of opts.json so
+-- that a status can always be rendered.
+local FALLBACK_JSON = {emit_defaults = true}
+
 ---@class pb.TranscodeOpts
 ---@field unbound? boolean   expose unannotated unary methods as POST /pkg.Service/Method
 ---@field json?    pb.JsonEncodeOpts  response JSON options, merged over the default
@@ -621,7 +634,23 @@ function M.new(servers, opts)
         if type(opts.json) ~= 'table' then
             error('pb.transcode.new: opts.json must be a table', 2)
         end
-        for k, v in pairs(opts.json) do json_opts[k] = v end
+        for k, v in pairs(opts.json) do
+            local want = JSON_OPTS[k]
+            if want == nil then
+                error(('pb.transcode.new: unknown opts.json option %q'):format(tostring(k)), 2)
+            end
+            if type(v) ~= want then
+                error(('pb.transcode.new: opts.json.%s must be a %s, got %s')
+                    :format(k, want, type(v)), 2)
+            end
+            json_opts[k] = v
+        end
+    end
+    -- Every response goes through these options; an encode they break
+    -- must fail here, at startup, not on each request.
+    local ok, err = pcall(pbjson.encode, status_descriptor(pb), {code = 0}, json_opts)
+    if not ok then
+        error('pb.transcode.new: invalid opts.json: ' .. tostring(err), 2)
     end
 
     local routes, decl = {}, 0
@@ -812,25 +841,30 @@ local function copy_metadata(dst, md)
     end
 end
 
-function Router:_status_response(st, ctx)
+-- _status_response(st, ctx[, json_opts]) -> google.rpc.Status response.
+-- When the status cannot be rendered with json_opts (details that do not
+-- encode), it falls back to code and message under FALLBACK_JSON, which
+-- does not depend on anything the caller configured.
+function Router:_status_response(st, ctx, json_opts)
     local code = st.code
     local headers = {}
     if ctx ~= nil then copy_metadata(headers, ctx.response_metadata) end
     headers['content-type'] = 'application/json'
     local ok, body = pcall(pbjson.encode, self._status_desc, {
         code = code, message = st.message, details = st.details,
-    }, self._json)
+    }, json_opts or self._json)
     if not ok then
-        log.error('pb.transcode: cannot encode status details: %s', tostring(body))
+        log.error('pb.transcode: cannot encode status: %s', tostring(body))
         body = pbjson.encode(self._status_desc, {code = code, message = st.message},
-                             self._json)
+                             FALLBACK_JSON)
     end
     return {status = grpc.http_status[code] or 500, headers = headers, body = body}
 end
 
 function Router:_internal(ctx, path, err)
     log.error('pb.transcode: %s: %s', path, tostring(err))
-    return self:_status_response(grpc.status(grpc.code.INTERNAL, 'internal error'), ctx)
+    return self:_status_response(grpc.status(grpc.code.INTERNAL, 'internal error'), ctx,
+                                 FALLBACK_JSON)
 end
 
 local function new_ctx(r, req)

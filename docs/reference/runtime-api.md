@@ -349,7 +349,8 @@ router:routes()                              -- {{method, pattern, path, body?, 
   is present and an unset singular message is `null` (protojson's
   `EmitUnpopulated`). `{emit_defaults = false, emit_null_messages =
   false}` gives proto3's elided form, `{use_proto_names = true}`
-  snake_case names.
+  snake_case names. `new()` rejects unknown keys and wrong value types.
+  The body of a 500 does not depend on these options.
 - `req = {method, path, headers, body, version, peer}` — `path` as
   received, query string included; header names lowercased.
 - `resp = {status, headers, body}` — `content-type: application/json`

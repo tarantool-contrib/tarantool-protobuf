@@ -732,6 +732,21 @@ gn.test_bad_arguments = function()
     t.assert_error_msg_contains('servers must be an array', tc.new, 'x')
     t.assert_error_msg_contains('servers[1] is not a generated server table', tc.new, {{}})
     t.assert_error_msg_contains('opts.json must be a table', tc.new, {}, {json = 1})
+    -- Bad JSON options fail at startup, not on every request.
+    t.assert_error_msg_contains('opts.json.indent must be a string', tc.new, {},
+                                {json = {indent = 1}})
+    t.assert_error_msg_contains('opts.json.emit_defaults must be a boolean', tc.new, {},
+                                {json = {emit_defaults = 'yes'}})
+    t.assert_error_msg_contains('unknown opts.json option "emit_default"', tc.new, {},
+                                {json = {emit_default = true}})
+end
+
+gn.test_json_options_apply_to_responses = function()
+    local m = pb.parse(NEW_SCHEMA)
+    local srv = fake_server(m.N_service, {Get = {{method = 'GET', pattern = '/v1/get/{name}'}}},
+                            function() return {text = 'x'} end)
+    local router = tc.new({srv}, {json = {indent = '  ', emit_null_messages = false}})
+    t.assert_equals(router:handle(request('GET', '/v1/get/a')).body, '{\n  "text": "x"\n}')
 end
 
 gn.test_streaming_rules_are_skipped = function()
