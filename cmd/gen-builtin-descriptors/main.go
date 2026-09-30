@@ -33,7 +33,7 @@ import (
 )
 
 func main() {
-	include := flag.String("I", "third_party/googleapis","include directory holding google/api/*.proto")
+	include := flag.String("I", "third_party/googleapis", "include directory holding google/api/*.proto")
 	protoc := flag.String("protoc", "protoc", "protoc binary")
 	flag.Parse()
 
