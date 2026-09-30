@@ -967,31 +967,30 @@ end
 
 to_json_value = encode_message
 
----@param desc pb.Descriptor
----@param t    table
----@param opts? pb.JsonEncodeOpts
----@return string
-function M.encode(desc, t, opts)
-    if opts ~= nil and type(opts) ~= 'table' then
-        error('pb.json.encode: opts must be a table, got ' .. type(opts), 0)
+-- Normalize encode opts once so the hot path reads a single boolean.
+local function normalize_encode_opts(opts, fname)
+    if opts == nil then return nil end
+    if type(opts) ~= 'table' then
+        error('pb.json.' .. fname .. ': opts must be a table, got ' .. type(opts), 0)
     end
-    -- Normalize once so the hot path reads a single boolean.
-    local norm
-    if opts ~= nil then
-        norm = {
-            use_proto_names = opts.use_proto_names and true or false,
-            emit_defaults   = (opts.emit_defaults or opts.always_emit_zero_value)
-                              and true or false,
-            indent          = opts.indent,
-        }
-        if norm.indent ~= nil and type(norm.indent) ~= 'string' then
-            error('pb.json.encode: indent must be a string', 0)
-        end
-        if norm.indent == '' then norm.indent = nil end
+    local norm = {
+        use_proto_names = opts.use_proto_names and true or false,
+        emit_defaults   = (opts.emit_defaults or opts.always_emit_zero_value)
+                          and true or false,
+        indent          = opts.indent,
+    }
+    if norm.indent ~= nil and type(norm.indent) ~= 'string' then
+        error('pb.json.' .. fname .. ': indent must be a string', 0)
     end
+    if norm.indent == '' then norm.indent = nil end
+    return norm
+end
+
+-- Run fn(...) with CURRENT_ENCODE_OPTS installed and render its result.
+local function encode_with(norm, fn, ...)
     local prev = CURRENT_ENCODE_OPTS
     CURRENT_ENCODE_OPTS = norm
-    local ok, root_or_err = pcall(encode_message, desc, t)
+    local ok, root_or_err = pcall(fn, ...)
     CURRENT_ENCODE_OPTS = prev
     if not ok then error(root_or_err, 0) end
     if norm and norm.indent then
@@ -999,6 +998,67 @@ function M.encode(desc, t, opts)
     end
     return encode_json(root_or_err)
 end
+
+---@param desc pb.Descriptor
+---@param t    table
+---@param opts? pb.JsonEncodeOpts
+---@return string
+function M.encode(desc, t, opts)
+    return encode_with(normalize_encode_opts(opts, 'encode'), encode_message, desc, t)
+end
+
+-- JSON value of one top-level field of `desc` taken from `t`, the way
+-- it would appear under its key in M.encode's output. An unset field
+-- renders as its default: `{}` for a message or map, `[]` for a
+-- repeated field, the zero value for a scalar or enum. Used by HTTP
+-- transcoding for `response_body`.
+local function encode_one_field(desc, f, t)
+    local v = t[f.name]
+    local empty_map = setmetatable({}, {__serialize='map'})
+    local empty_seq = setmetatable({}, {__serialize='seq'})
+    if f.kind == 'map' then
+        if rawequal(v, nil) then return empty_map end
+        local obj = setmetatable({}, {__serialize='map'})
+        for k, mv in pairs(v) do
+            obj[encode_map_key(f.key, k)] = encode_field_value(f.value, mv)
+        end
+        return obj
+    end
+    if f.repeated then
+        if rawequal(v, nil) then return empty_seq end
+        local arr = setmetatable({}, {__serialize='seq'})
+        for i = 1, #v do arr[i] = encode_field_value(f, v[i]) end
+        return arr
+    end
+    if rawequal(v, nil) then
+        if f.kind == 'message' then
+            local out = encode_message(f.message, {})
+            if rawequal(out, nil) then return empty_map end
+            return out
+        end
+        v = zero_value_for_field(f)
+    end
+    return encode_field_value(f, v)
+end
+
+---@param desc pb.Descriptor
+---@param t    table
+---@param field_name string   proto name of a top-level field of desc
+---@param opts? pb.JsonEncodeOpts
+---@return string
+function M.encode_field(desc, t, field_name, opts)
+    local f = desc.field_by_name and desc.field_by_name[field_name]
+    if f == nil then
+        error('pb.json.encode_field: ' .. tostring(desc.name) ..
+              ' has no field "' .. tostring(field_name) .. '"', 0)
+    end
+    return encode_with(normalize_encode_opts(opts, 'encode_field'),
+                       encode_one_field, desc, f, t)
+end
+
+-- JSON name of a proto field name (lowerCamelCase per the proto3 JSON
+-- mapping).
+M.json_name = function(name) return to_camel(name) end
 
 -- ---------------------------------------------------------------------------
 -- Decode (JSON -> proto-Lua table)
@@ -1514,6 +1574,35 @@ function M.decode(desc, s, opts)
     CURRENT_OPTS = nil
     if not ok then error(out, 0) end
     return out
+end
+
+-- decode_field(desc, field_name, s, opts) -> value of one top-level
+-- field of `desc` parsed from the JSON text `s` (an object for a
+-- message or map field, an array for a repeated one, a scalar
+-- otherwise). Returns nil for JSON null. Used by HTTP transcoding for
+-- `body: "<field>"`.
+---@param desc pb.Descriptor
+---@param field_name string   proto name of a top-level field of desc
+---@param s    string
+---@param opts? pb.JsonDecodeOpts
+---@return any
+function M.decode_field(desc, field_name, s, opts)
+    local f = desc.field_by_name and desc.field_by_name[field_name]
+    if f == nil then
+        error('pb.json.decode_field: ' .. tostring(desc.name) ..
+              ' has no field "' .. tostring(field_name) .. '"', 0)
+    end
+    local dup_err = find_duplicate_json_keys(s)
+    if dup_err ~= nil then error(dup_err, 0) end
+    local v = json.decode(s)
+    if v == nil or v == box.NULL then return nil end
+    -- Decode through a one-key wrapper so repeated, map and null
+    -- handling is exactly the one M.decode applies to that field.
+    CURRENT_OPTS = opts
+    local ok, out = pcall(decode_message, desc, {[f.name] = v})
+    CURRENT_OPTS = nil
+    if not ok then error(out, 0) end
+    return out[f.name]
 end
 
 M.to_json_value   = to_json_value

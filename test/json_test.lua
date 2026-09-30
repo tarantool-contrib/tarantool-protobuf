@@ -548,3 +548,61 @@ gparity.test_indent = function()
     -- the byte output stays equal.
     assert_parity({name = 'Alice', emails = {'a@x'}}, {indent = '  '})
 end
+
+-- encode_field / decode_field: one top-level field as a JSON document
+-- (what HTTP transcoding needs for `response_body` and `body: "<field>"`).
+local gfield = t.group('json.field')
+local library = require('runtime.library.library_pb')
+
+gfield.test_encode_field_message = function()
+    local s = pb.json.encode_field(library.LookupBookResponse_descriptor,
+        {book = {isbn = '42', title = 'T'}}, 'book')
+    t.assert_equals(reparse(s), {isbn = '42', title = 'T'})
+end
+
+gfield.test_encode_field_repeated_and_defaults = function()
+    local d = library.ListBooksResponse_descriptor
+    local s = pb.json.encode_field(d, {books = {{name = 'a'}, {name = 'b'}}}, 'books')
+    t.assert_equals(reparse(s), {{name = 'a'}, {name = 'b'}})
+    t.assert_equals(pb.json.encode_field(d, {}, 'books'), '[]')
+    t.assert_equals(pb.json.encode_field(d, {}, 'next_page_token'), '""')
+    t.assert_equals(pb.json.encode_field(library.LookupBookResponse_descriptor, {}, 'book'), '{}')
+end
+
+gfield.test_encode_field_honours_opts = function()
+    local s = pb.json.encode_field(library.MoveBookRequest_descriptor,
+        {destination_shelf = 'x'}, 'destination_shelf', {emit_defaults = true})
+    t.assert_equals(s, '"x"')
+    s = pb.json.encode_field(library.ListBooksResponse_descriptor,
+        {books = {{}}}, 'books', {emit_defaults = true, use_proto_names = true})
+    t.assert_equals(reparse(s)[1].name, '')
+end
+
+gfield.test_encode_field_unknown_field = function()
+    t.assert_error_msg_contains('has no field "nope"', pb.json.encode_field,
+        library.Book_descriptor, {}, 'nope')
+end
+
+gfield.test_decode_field = function()
+    local d = library.CreateBookRequest_descriptor
+    t.assert_equals(pb.json.decode_field(d, 'book', '{"title":"T","isbn":"1"}'),
+                    {title = 'T', isbn = '1'})
+    t.assert_equals(pb.json.decode_field(d, 'parent', '"shelves/1"'), 'shelves/1')
+    t.assert_equals(pb.json.decode_field(d, 'book', 'null'), nil)
+    t.assert_equals(pb.json.decode_field(library.ListBooksResponse_descriptor,
+        'books', '[{"name":"a"}]'), {{name = 'a'}})
+end
+
+gfield.test_decode_field_rejects_bad_input = function()
+    local d = library.CreateBookRequest_descriptor
+    t.assert_error_msg_contains('duplicate JSON key', pb.json.decode_field,
+        d, 'book', '{"title":"a","title":"b"}')
+    t.assert_error_msg_contains('expected JSON object', pb.json.decode_field,
+        d, 'book', '"str"')
+    t.assert_error_msg_contains('has no field', pb.json.decode_field, d, 'nope', '{}')
+end
+
+gfield.test_json_name = function()
+    t.assert_equals(pb.json.json_name('destination_shelf'), 'destinationShelf')
+    t.assert_equals(pb.json.json_name('name'), 'name')
+end
