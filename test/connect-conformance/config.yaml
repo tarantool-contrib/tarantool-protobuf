@@ -1,0 +1,34 @@
+# What pb.server supports, for `connectconformance --mode server`
+# (the schema is connectrpc.conformance.v1.Config). One server process
+# answers gRPC and Connect over HTTP/1.1 and h2c.
+features:
+  versions:
+    - HTTP_VERSION_1
+    - HTTP_VERSION_2
+  protocols:
+    - PROTOCOL_CONNECT
+    - PROTOCOL_GRPC
+  codecs:
+    - CODEC_PROTO
+    - CODEC_JSON
+  compressions:
+    - COMPRESSION_IDENTITY
+  stream_types:
+    - STREAM_TYPE_UNARY
+    - STREAM_TYPE_CLIENT_STREAM
+    - STREAM_TYPE_SERVER_STREAM
+    - STREAM_TYPE_HALF_DUPLEX_BIDI_STREAM
+    - STREAM_TYPE_FULL_DUPLEX_BIDI_STREAM
+  supports_h2c: true
+  supports_tls: false
+  supports_trailers: true
+  supports_half_duplex_bidi_over_http1: false
+  supports_connect_get: true
+  # pb.server enforces limits.max_recv_message_size for gRPC and Connect.
+  supports_message_receive_limit: true
+exclude_cases:
+  # gRPC with the JSON codec (application/grpc+json): the gRPC path
+  # passes message bytes through as protobuf and does not transcode
+  # JSON.
+  - protocol: PROTOCOL_GRPC
+    codec: CODEC_JSON

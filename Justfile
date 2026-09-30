@@ -100,7 +100,19 @@ clean-c:
 # ---------------------------------------------------------------------------
 
 # Regenerate examples/expected/{full,runtime}/* + conformance protos.
-gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number gen-builtin-descriptors gen-grpc-services
+gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number gen-builtin-descriptors gen-grpc-services gen-connect-conformance
+
+# Generate the Connect conformance suite's service and handshake protos
+# (third_party/connect-conformance) in full mode, for
+# test/connect-conformance/server.lua.
+gen-connect-conformance: build
+    mkdir -p {{gen_dir}}
+    protoc \
+        --plugin=./{{plugin}} \
+        --tarantool_out={{gen_dir}} \
+        --tarantool_opt=mode=full,prefix=full \
+        -I third_party/connect-conformance \
+        third_party/connect-conformance/connectrpc/conformance/v1/*.proto
 
 # Regenerate runtime/pb/gen/: the gRPC reflection (v1, v1alpha) and health
 # services from the vendored upstream protos (third_party/grpc-proto),
@@ -274,6 +286,30 @@ test-reflection-go: gen
 # http2 rock: see TARANTOOL_HTTP2_RUNTIME above.
 test-server-go: gen
     cd test/server-go && TARANTOOL_HTTP2_RUNTIME="{{http2_runtime}}" go test -v -count=1 ./...
+
+# Release of the Connect conformance suite: the runner installed below and
+# the protos vendored in third_party/connect-conformance must match.
+connect_conformance_version := "v1.0.5"
+
+# Run the Connect conformance suite (connectrpc/conformance) against
+# pb.server: its reference clients (connect-go for Connect and gRPC, and
+# grpc-go) drive test/connect-conformance/server.lua over HTTP/1.1 and
+# h2c, Connect and gRPC, proto and JSON. The runner is `go install`ed
+# into a temporary GOBIN. test/connect-conformance/known-failing.txt and
+# known-flaky.txt list the cases expected to fail and why. Needs the http2 rock: see
+# TARANTOOL_HTTP2_RUNTIME above.
+connect-conformance: gen-connect-conformance
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gobin=$(mktemp -d)
+    trap 'rm -rf "$gobin"' EXIT
+    GOBIN="$gobin" go install connectrpc.com/conformance/cmd/connectconformance@{{connect_conformance_version}}
+    TARANTOOL_HTTP2_RUNTIME="{{http2_runtime}}" "$gobin/connectconformance" \
+        --mode server \
+        --conf test/connect-conformance/config.yaml \
+        --known-failing @test/connect-conformance/known-failing.txt \
+        --known-flaky @test/connect-conformance/known-flaky.txt \
+        -- tarantool test/connect-conformance/server.lua
 
 # ---------------------------------------------------------------------------
 # Bench
