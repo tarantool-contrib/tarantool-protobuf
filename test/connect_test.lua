@@ -628,6 +628,28 @@ d.test_encoding_past_the_deadline = function()
     t.assert_equals(seen.ctx:is_cancelled(), true)
 end
 
+-- A handler that never yields cannot lose to the wait's timeout: it
+-- puts its result before the wait even starts timing. The status it
+-- raises after the deadline must still give way to the deadline. (A
+-- successful result would also be caught by the check after encoding;
+-- a raised status is decided in invoke alone.)
+d.test_non_yielding_handler_past_the_deadline = function()
+    local seen = {}
+    local h = connect.new({raw_server(function(_, ctx)
+        spin(ctx.deadline + 0.02)
+        seen.cancelled = ctx:is_cancelled()
+        grpc.error(grpc.code.NOT_FOUND, 'late')
+    end)})
+    local r = call(h, 20)
+    t.assert_equals(r.status, 504)
+    t.assert_equals(json.decode(r.body).code, 'deadline_exceeded')
+    t.assert_equals(seen.cancelled, true, 'is_cancelled reads a fresh clock')
+    -- The same handler raising before its deadline keeps its status.
+    h = connect.new({raw_server(function() grpc.error(grpc.code.NOT_FOUND, 'on time') end)})
+    r = call(h, 5000)
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 'not_found'})
+end
+
 -- A server stream whose sends run past the deadline without yielding
 -- ends with deadline_exceeded.
 d.test_stream_past_the_deadline = function()
