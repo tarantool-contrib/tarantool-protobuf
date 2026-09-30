@@ -48,6 +48,9 @@ wire format. Only editions are out of scope for now.
 | gRPC over HTTP/2 (h2c) network server, all four call kinds (`pb.server`)¹ | ✅ |
 | HTTP/JSON transcoding over HTTP/1.1 and HTTP/2 on the gRPC port (`pb.server`)¹ | ✅ |
 | Reflection and health served over the network (`pb.server`)¹ | ✅ |
+| Connect protocol on the same port: unary POST + GET, client / server / half-duplex bidi streams (`pb.connect`)¹ | ✅ |
+| Connect full-duplex bidi and incremental server streams | ❌ needs a streaming HTTP handler in tarantool-http2 |
+| **Connect conformance suite (server mode, Connect + gRPC)** | **516 ✓**, 72 known failures (Connect full-duplex, tarantool-http2) |
 | WKT: Timestamp ↔ `datetime`      | ✅           |
 | WKT: Duration, Empty, wrappers   | ✅           |
 | WKT: Struct, Value, ListValue    | ✅           |
@@ -136,8 +139,10 @@ encoding and decoding it, see **[docs/howto/01-first-message.md](docs/howto/01-f
 dependency and copy `options/tarantool/tarantool.proto` into one of your
 modules if you use `(tarantool.lua_package)`. The output matches
 `protoc`'s (`just test-buf` checks it). A server built with `pb.server`
-answers `buf curl --protocol grpc --http2-prior-knowledge`; the default
-Connect protocol is not supported yet. See
+answers `buf curl` over its default Connect protocol given a local
+`--schema`, and through server reflection with `--protocol grpc
+--http2-prior-knowledge` (reflection over Connect is a full-duplex
+stream, not served yet). See
 [docs/howto/12-build-integration.md](docs/howto/12-build-integration.md#buf)
 and [docs/howto/16-network-server.md](docs/howto/16-network-server.md#3-talk-to-it).
 
@@ -154,8 +159,10 @@ and [docs/howto/16-network-server.md](docs/howto/16-network-server.md#3-talk-to-
 
 `pb.server` serves the generated services over the network: gRPC over
 HTTP/2 (h2c) that grpc-go, grpcurl and other stock clients talk to,
-server reflection, health, and HTTP/JSON transcoding of the
-`google.api.http` rules over HTTP/1.1 and HTTP/2, all on one port:
+server reflection, health, HTTP/JSON transcoding of the
+`google.api.http` rules and the
+[Connect protocol](docs/howto/17-connect.md) over HTTP/1.1 and HTTP/2,
+all on one port:
 
 ```lua
 local server = require('pb').server.new({
@@ -173,11 +180,13 @@ it. See **[docs/howto/16-network-server.md](docs/howto/16-network-server.md)**.
 ## Development
 
 The [Justfile](Justfile) is the entry point (`just --list`): `just gen`,
-`just test`, `just test-c`, `just examples all`, and the Go end-to-end
-checks `just test-reflection-go` and `just test-server-go`.
+`just test`, `just test-c`, `just examples all`, the Go end-to-end
+checks `just test-reflection-go` and `just test-server-go`, and the
+Connect conformance suite `just connect-conformance`.
 
 The recipes that start a server (`just test`, `just test-c`,
-`just examples network-server`, `just test-server-go`) find the
+`just examples network-server`, `just test-server-go`,
+`just connect-conformance`) find the
 tarantool-http2 rock through `require('http2')`. To use a checkout of
 the rock instead of an installed one, export its `runtime/` directory
 (an absolute path); the Justfile appends it to `LUA_PATH`:
@@ -427,6 +436,7 @@ runtime/pb/                  pure-Lua runtime (`require('pb')`)
   reflection.lua             gRPC server reflection (v1, v1alpha)
   health.lua                 gRPC health service
   transcode.lua              google.api.http HTTP/JSON router
+  connect.lua                the Connect protocol over buffered HTTP requests
   server.lua                 network server over the tarantool-http2 rock
   gen/                       reflection + health modules generated from
                              third_party/grpc-proto by this plugin

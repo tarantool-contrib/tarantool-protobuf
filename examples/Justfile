@@ -13,7 +13,7 @@
 #   just examples tuple-layouts     # one nested message as a map, an array, raw bytes
 #   just examples json-http        # JSON-over-HTTP server (needs `tt rocks install http`)
 #   just examples transcode         # google.api.http routing of the library service
-#   just examples network-server    # pb.server: gRPC + HTTP/JSON on one port (needs http2)
+#   just examples network-server    # pb.server: gRPC + Connect + HTTP/JSON on one port (needs http2)
 #
 # With PB_ENABLE_C=1 set (and `just build-c` run), the examples go
 # through the C runtime.
@@ -86,7 +86,7 @@ transcode:
 network-server:
     @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/grpc/network_server.lua --self-check < /dev/null
 
-# Interactive pb.server (gRPC, reflection, health, HTTP/JSON) until Ctrl-C.
+# Interactive pb.server (gRPC, Connect, reflection, health, HTTP/JSON) until Ctrl-C.
 network-server-listen port="8080":
     @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/grpc/network_server.lua {{port}}
 

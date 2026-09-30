@@ -39,9 +39,12 @@ links to the next.
 14. **[HTTP/JSON transcoding](howto/15-http-transcoding.md)** —
     `pb.transcode`: route HTTP requests to gRPC handlers by their
     `google.api.http` rules.
-15. **[A gRPC and HTTP/JSON server on one port](howto/16-network-server.md)** —
-    `pb.server`: real gRPC, reflection, health and transcoding over
-    the network (needs the tarantool-http2 rock).
+15. **[A gRPC, Connect and HTTP/JSON server on one port](howto/16-network-server.md)** —
+    `pb.server`: real gRPC, reflection, health, transcoding and Connect
+    over the network (needs the tarantool-http2 rock).
+16. **[The Connect protocol](howto/17-connect.md)** — `pb.connect`:
+    unary POST and GET, streaming envelopes, errors, and what the
+    buffered HTTP transport cannot do yet.
 
 When something doesn't work, **[troubleshooting](troubleshooting.md)**
 collects the common errors and their fixes.

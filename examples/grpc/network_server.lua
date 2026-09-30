@@ -1,6 +1,6 @@
--- A real gRPC + HTTP/JSON server: Greeter (all four call kinds) and the
--- library service, with server reflection, health and google.api.http
--- transcoding, all on one port.
+-- A real gRPC + Connect + HTTP/JSON server: Greeter (all four call
+-- kinds) and the library service, with server reflection, health,
+-- google.api.http transcoding and the Connect protocol, all on one port.
 --
 -- Needs the tarantool-http2 rock (and the system libnghttp2).
 --
@@ -105,7 +105,7 @@ local port = self_check and 0 or tonumber(arg[1] or os.getenv('PB_SERVER_PORT') 
 local server = pb.server.new({
     listen = '127.0.0.1:' .. port,
     services = {greeter, library},
-    -- reflection, health and transcoding are on by default.
+    -- reflection, health, transcoding and Connect are on by default.
     transcoding = {json = {emit_defaults = false, emit_null_messages = false}},
     http = function(req)
         if req.path == '/' then
@@ -122,6 +122,8 @@ if not self_check then
     print(('      grpcurl -plaintext -d \'{"name": "Ann"}\' %s:%d hello.Greeter/SayHello')
         :format(addr.host, addr.port))
     print(('      curl http://%s:%d/v1/shelves/1/books/1'):format(addr.host, addr.port))
+    print(('      buf curl --schema examples/proto/hello.proto -d \'{"name": "Ann"}\' '
+        .. 'http://%s:%d/hello.Greeter/SayHello'):format(addr.host, addr.port))
     return -- the event loop keeps serving
 end
 
@@ -157,6 +159,36 @@ assert(r.status == 200 and json.decode(r.body).name == 'shelves/1/books/2')
 r = http.get(base .. '/v1/shelves/1/books/9', {timeout = 5})
 show('GET', '/v1/shelves/1/books/9', r)
 assert(r.status == 404 and json.decode(r.body).code == pb.grpc.code.NOT_FOUND)
+
+-- The Connect protocol over HTTP/1.1, on the procedure paths
+-- /<package.Service>/<Method>: a unary JSON call, its error shape, a GET
+-- (library.Library/GetBook is NO_SIDE_EFFECTS) and a server stream,
+-- whose messages come in 5-byte-prefixed envelopes.
+local CONNECT_JSON = {timeout = 5, headers = {['content-type'] = 'application/json',
+                                              ['connect-protocol-version'] = '1'}}
+r = http.post(base .. '/hello.Greeter/SayHello', '{"name": "Ann"}', CONNECT_JSON)
+show('Connect POST', '/hello.Greeter/SayHello', r)
+assert(r.status == 200 and json.decode(r.body).greeting == 'Hello, Ann')
+
+r = http.post(base .. '/hello.Greeter/SayHello', '{}', CONNECT_JSON)
+show('Connect POST', '/hello.Greeter/SayHello', r)
+assert(r.status == 400 and json.decode(r.body).code == 'invalid_argument')
+
+local query = '?connect=v1&encoding=json&message=%7B%22name%22%3A%22shelves%2F1%2Fbooks%2F1%22%7D'
+r = http.get(base .. '/library.Library/GetBook' .. query, {timeout = 5})
+show('Connect GET', '/library.Library/GetBook', r)
+assert(r.status == 200 and json.decode(r.body).title == 'Dune')
+
+r = http.post(base .. '/hello.Greeter/StreamHellos', pb.connect.envelope(0, '{"name": "Ann"}'),
+              {timeout = 5, headers = {['content-type'] = 'application/connect+json'}})
+assert(r.status == 200)
+local body = r.body
+while #body >= 5 do
+    local flags = body:byte(1)
+    local len = ((body:byte(2) * 256 + body:byte(3)) * 256 + body:byte(4)) * 256 + body:byte(5)
+    print(('Connect StreamHellos <- flags %d %s'):format(flags, body:sub(6, 5 + len)))
+    body = body:sub(6 + len)
+end
 
 -- gRPC over HTTP/2 (prior knowledge): one length-prefixed message in,
 -- one out. The status travels in trailers, which http.client does not

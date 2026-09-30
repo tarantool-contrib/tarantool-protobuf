@@ -2,8 +2,10 @@
 
 Status: **shipped** — `pb.transcode`, `pb.reflection`, `pb.health` and
 `pb.server` over the tarantool-http2 rock, verified against grpc-go,
-grpcurl and net/http (`test/server-go`). The non-goals below stay
-deferred. The in-process transport contract
+grpcurl and net/http (`test/server-go`). The Connect protocol
+(`pb.connect`) is shipped as phase 1 of [its section](#connect) below,
+verified by the official Connect conformance suite; phase 2 is open.
+The other non-goals below stay deferred. The in-process transport contract
 ([`runtime/pb/grpc.lua`](../../runtime/pb/grpc.lua): generated
 `M.<Service>_client(transport)` / `M.<Service>_server(impl)`, the
 four-method `transport:unary` / `:server_stream` / `:client_stream` /
@@ -60,8 +62,8 @@ not a requirement.
   `grpc-accept-encoding: identity`. gzip is a follow-up.
 - **h2c upgrade** (`Upgrade: h2c` from HTTP/1.1). No gRPC client uses
   it and browsers never do. Prior knowledge only.
-- **gRPC-Web, Connect.** Not in v1; they would ride the same listener
-  later.
+- **gRPC-Web.** Not in v1; it would ride the same listener later.
+  (Connect, listed here first, is now in scope: see [Connect](#connect).)
 - **An outbound gRPC client over the network.** Server first.
 
 ## Architecture
@@ -74,12 +76,13 @@ tarantool-http2 (rock `http2`)               tarantool-protobuf (rock `pb`)
 socket accept (one listener)                 pb.server      glue + options
   └─ sniff first 24 bytes                      ├─ gRPC registry  ← M.<Svc>_server(impl)
       ├─ HTTP/2 preface → nghttp2 session      ├─ pb.transcode   google.api.http router
+      │                                        ├─ pb.connect     the Connect protocol
       │    per stream, on end of headers:      ├─ reflection     embedded descriptors
       │    content-type application/grpc*      └─ health
       │      → gRPC dispatch (bytes)  ─────────►  status errors, ctx
-      │    otherwise → HTTP handler  ─────────►  transcoding (JSON)
+      │    otherwise → HTTP handler  ─────────►  Connect, transcoding (JSON)
       └─ anything else → HTTP/1.1 parser
-           → HTTP handler            ─────────►  transcoding (JSON)
+           → HTTP handler            ─────────►  Connect, transcoding (JSON)
 ```
 
 `http2` knows nothing about protobuf: gRPC handlers take and return
@@ -161,6 +164,7 @@ pb.server.new({
     reflection  = true,                 -- default true
     health      = true,                 -- default true
     transcoding = true,                 -- default true
+    connect     = true,                 -- default true
     http        = fn(req) -> resp,      -- optional fallback for unrouted HTTP
     limits      = {max_recv_message_size = 4 * 1024 * 1024, ...},
 })
@@ -240,6 +244,75 @@ the generated `M.<Service>_server(impl)` shape, so `pb.server` appends
 maps onto `health:set`, and `server:stop` calls `health:shutdown()`
 before draining. `test/reflection-go` checks the served descriptors with
 grpc-go's reflection types and `protodesc`.
+
+## Connect
+
+The [Connect protocol](https://connectrpc.com/docs/protocol/) is the
+third way onto the same handlers: unary calls are plain POSTs (or GETs
+for `NO_SIDE_EFFECTS` methods) of a bare protobuf or JSON message to
+`/<package.Service>/<Method>`, streams are 5-byte envelopes ending in a
+JSON EndStreamResponse, and nothing needs HTTP trailers. It is what
+`buf curl` speaks by default and what browsers can speak (connect-es).
+
+**Phase 1 (shipped): the buffered HTTP handler.** `pb.connect` lives in
+`pb`, like `pb.transcode`; tarantool-http2 stays protocol-agnostic and
+routes every non-gRPC request to the HTTP handler with the body fully
+buffered. `pb.server` builds it by default (`connect = false` turns it
+off) over every served service, reflection and health included, and
+dispatches:
+
+1. a request that can only be Connect (a Connect-Protocol-Version
+   header, `application/proto` or `application/connect+*`, a GET with
+   `connect=v1` or `encoding=proto`) to Connect;
+2. the transcoding router;
+3. a plain JSON POST/GET to a procedure path that no rule took to
+   Connect;
+4. the `http` fallback;
+5. `415`/`405` for a procedure path with the wrong content-type or
+   method;
+6. a 404, in the Connect error shape for a plainly Connect request.
+
+So an HTTP/JSON rule on a `/<package.Service>/<Method>` path (the
+transcoder's `unbound` routes, or an explicit rule) keeps its plain
+JSON callers, and Connect clients, which send
+Connect-Protocol-Version, still reach Connect.
+
+Handlers, `ctx` and status objects are the gRPC ones: the deadline
+comes from `Connect-Timeout-Ms` and is enforced (the handler runs in
+its own fiber and is not cancelled), metadata maps to headers,
+`trailer-` headers and the EndStreamResponse metadata, and status
+objects map to the Connect codes, their HTTP statuses and error
+details. Identity compression only. GET needs the method's idempotency
+level, which the plugin, `pb.parse` and `pb.from_pb` now put into the
+service descriptor (`methods.<M>.idempotency_level`).
+
+With a buffered request and a whole response, unary, client-streaming
+and half-duplex bidi calls work fully; a server stream is wire-correct
+but delivered in one response; a full-duplex bidi call cannot work (the
+request never ends, so the handler never runs). Reflection over Connect
+is full-duplex, so reflection-driven clients (`buf curl` without
+`--protocol grpc`) need gRPC for it.
+
+**Phase 2 (open): a streaming HTTP handler.** tarantool-http2 gains an
+HTTP handler API that gets the request headers at once and reads the
+body and writes the response incrementally. `pb.connect` keeps its
+envelope I/O behind one object (`buffered_io`: `read`, `write_headers`,
+`write`, `finish`); a streaming implementation of the same four methods
+turns on incremental server streams and full-duplex bidi (and with it
+Connect reflection) without touching the protocol logic.
+
+**Verification.** `just connect-conformance` runs the official
+connectrpc/conformance suite (v1.0.5, protos vendored in
+`third_party/connect-conformance`) in server mode against
+`test/connect-conformance/server.lua`: its connect-go and grpc-go
+clients over HTTP/1.1 and h2c, Connect and gRPC, proto and JSON, all
+stream kinds, GET and the message size limit. The expected failures
+are listed with their reasons in
+`test/connect-conformance/known-failing.txt`: the Connect full-duplex
+cases, and gRPC cases that trace to tarantool-http2 (padded base64 in
+`-bin` trailers, response headers folded into trailers-only responses,
+`INTERNAL` for unary cardinality violations). `test/server-go` adds
+`buf curl` and net/http.
 
 ## Status code mapping
 

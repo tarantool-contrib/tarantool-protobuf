@@ -557,12 +557,88 @@ Methods, as grpc-go's health server answers them:
 The module is generated from the upstream `grpc/health/v1/health.proto`
 into `pb.gen.grpc.health.v1.health_pb`.
 
+## The Connect protocol — `pb.connect`
+
+The [Connect protocol](https://connectrpc.com/docs/protocol/) for
+generated servers, as a function over buffered HTTP request/response
+tables (the contract of tarantool-http2's HTTP handler, the same as
+`pb.transcode`'s). `pb.server` builds one by default; the walkthrough,
+with what the buffered transport cannot do, is
+[howto/17-connect.md](../howto/17-connect.md).
+
+```lua
+local h    = pb.connect.new(servers [, opts])
+local resp = h:handle(req)           -- nil when req is not a Connect call
+local call = h:match(req)            -- {proc, mode, codec, query?, strong} | nil
+local resp = h:serve(call, req)
+h:reject(req)                        -- 415/405 for a procedure path, else nil
+h:not_found(req)                     -- Connect-shaped 404 for a plainly Connect request, else nil
+h:procedures()                       -- {{path, kind, get}, ...}
+```
+
+- `servers` — generated server tables; every `methods[path]` and
+  `streams[path]` becomes a procedure at its path.
+- `opts.json` — `pb.json.encode` options for JSON responses (default:
+  `pb.json`'s, defaults omitted, camelCase names).
+- `opts.max_recv_message_size` — largest request message in bytes
+  (default 4 MiB); larger is `resource_exhausted`. `pb.server` passes
+  `limits.max_recv_message_size`.
+
+What `handle` serves:
+
+| Request | Mode |
+|---|---|
+| `POST`, `content-type: application/proto` or `application/json` (parameters ignored), unary method | unary: bare message in, bare message or JSON error out |
+| `GET ?encoding=json\|proto&message=...[&base64=1][&compression=identity][&connect=v1]`, method with `idempotency_level = NO_SIDE_EFFECTS` | unary, the message from the query |
+| `POST`, `content-type: application/connect+proto` or `+json`, streaming method | enveloped messages in, enveloped messages and an EndStreamResponse out, HTTP 200 |
+
+`match` returns `strong = true` when the request can only be Connect
+(a Connect-Protocol-Version header, a protobuf or enveloped
+content-type, `connect=v1` or `encoding=proto` in a GET); `pb.server`
+lets its transcoding router try the others first.
+
+Handlers get the gRPC `ctx` shape (`method`, `metadata`, `deadline`,
+`peer`, `response_metadata`, `trailing_metadata`, `is_cancelled`) plus
+`protocol = 'connect'` and `connect = {get, codec, query}`. Request
+headers are the metadata except `content-type`, `content-length`,
+`content-encoding`, `accept-encoding`, `host`, hop-by-hop headers and
+`connect-*`; `-bin` values are decoded from base64 (padded or not; bad
+base64 is `invalid_argument`). Response metadata goes out as headers,
+trailing metadata as `trailer-<key>` headers (unary) or the
+EndStreamResponse `metadata` (streams); `-bin` values as unpadded
+base64. `Connect-Timeout-Ms` (at most 10 digits, else
+`invalid_argument`) is the deadline: when it passes the call answers
+`deadline_exceeded` and the handler, still running in its own fiber,
+sees `ctx:is_cancelled()`.
+
+Errors: a raised status object keeps its code and message; its details
+are sent as `{"type", "value"}` (unpadded base64); code `OK` and plain
+errors are `internal` / `internal error` with the real error in the
+log. The HTTP status of a unary error follows the protocol's table
+(`pb.connect.http_status`, by gRPC code number; the names are in
+`pb.connect.code_name`). Other answers: an unsupported
+`Content-Encoding` / `Connect-Content-Encoding` / `compression` is
+`unimplemented`; `Connect-Protocol-Version` other than `1` or
+`connect` other than `v1` is `invalid_argument`; an unknown GET
+`encoding` is `415`; in streams, an envelope with the compressed flag
+is `internal`, a torn envelope or an end-stream flag in a request
+`invalid_argument`, and a server stream with other than one request
+message `unimplemented`.
+
+Helpers, exported for tests and other transports:
+`pb.connect.envelope(flags, payload)`, `pb.connect.error_json(st)`,
+`pb.connect.end_stream_json(st, trailing_metadata)`,
+`pb.connect.parse_timeout(v)`, `pb.connect.parse_query(q)`,
+`pb.connect.request_metadata(headers)` and
+`pb.connect.buffered_io(body)`, the envelope I/O of a streaming call
+over an in-memory body (`read`, `write_headers`, `write`, `finish`).
+
 ## gRPC and HTTP/JSON server — `pb.server`
 
 A network server built from generated server tables: gRPC over HTTP/2
 (h2c, prior knowledge) with all four call kinds, server reflection,
-health and `google.api.http` transcoding over HTTP/1.1 and HTTP/2, on
-one listener. The walkthrough is
+health, `google.api.http` transcoding and the Connect protocol over
+HTTP/1.1 and HTTP/2, on one listener. The walkthrough is
 [howto/16-network-server.md](../howto/16-network-server.md).
 
 Sockets and HTTP/2 come from the **tarantool-http2** rock
@@ -577,6 +653,7 @@ local server = pb.server.new({
     reflection  = true,
     health      = true,
     transcoding = true,
+    connect     = true,
     http        = function(req) ... end,
     limits      = {max_recv_message_size = 4 * 1024 * 1024},
 }):start()
@@ -592,8 +669,9 @@ server:stop(5)
 | `reflection` | Serve `grpc.reflection.v1` and `v1alpha` (default `true`). They list every service the server has: yours, health and reflection. |
 | `health` | Serve `grpc.health.v1.Health` (default `true`); a table is passed to `pb.health.new`. `''` and every service in `services` start `SERVING`. |
 | `transcoding` | Route HTTP requests by the services' `google.api.http` rules (default `true`); a table is passed to `pb.transcode.new` as its options (`{unbound = true, json = {...}}`). |
-| `http` | `function(req)` returning a response table or `nil`, called for HTTP requests the router does not match. |
-| `limits` | tarantool-http2 limits. The registry's keys (`max_recv_message_size`, `max_send_message_size`, `recv_buffer_size`, `max_recv_buffer_size`, `send_buffer_size`) go to `http2.grpc.new`, the rest (`max_body_size`, `max_concurrent_streams`, timeouts, ...) to `http2.server.new`. |
+| `connect` | Serve the Connect protocol for every service (default `true`); a table is passed to `pb.connect.new` as its options (`{json = {...}}`). |
+| `http` | `function(req)` returning a response table or `nil`, called for HTTP requests the router and Connect do not take. |
+| `limits` | tarantool-http2 limits. The registry's keys (`max_recv_message_size`, `max_send_message_size`, `recv_buffer_size`, `max_recv_buffer_size`, `send_buffer_size`) go to `http2.grpc.new`, the rest (`max_body_size`, `max_concurrent_streams`, timeouts, ...) to `http2.server.new`. `max_recv_message_size` also bounds Connect request messages. |
 
 An unknown option, a malformed `listen` or a method path served by two
 server tables (including a user copy of health or reflection next to
@@ -605,14 +683,16 @@ the built-in one) is an error from `new()`.
 | `server:address()` | `{host, port}` of the listener, `nil` when not started. |
 | `server:stop(timeout?)` | `health:shutdown()` (every service `NOT_SERVING`, so `Watch` callers hear it), then no new connections, `GOAWAY`, and up to `timeout` seconds (default 5) for calls in flight before the rest is closed. An open `Watch` holds the stop for the whole timeout. `start()` after `stop()` serves again with health resumed. |
 | `server:set_serving_status(service, status)` | `health:set`; `false` while stopped. Raises when health is disabled. |
-| `server:health()` / `server:reflection()` / `server:router()` | The `pb.health`, `pb.reflection` and `pb.transcode` objects behind the server, `nil` when disabled. |
+| `server:health()` / `server:reflection()` / `server:router()` / `server:connect()` | The `pb.health`, `pb.reflection`, `pb.transcode` and `pb.connect` objects behind the server, `nil` when disabled. |
 
 **gRPC.** Each server table's `methods[path]` is a unary handler and
 `streams[path]` a streaming one, registered with http2 under the
 path's service name. Handlers receive http2's `ctx`: `method`,
 `metadata` (lowercase keys, `-bin` values decoded), `deadline` (a
 `fiber.clock()` value), `peer`, `response_metadata` and
-`trailing_metadata` for the handler to fill, and `ctx:is_cancelled()`.
+`trailing_metadata` for the handler to fill, and `ctx:is_cancelled()`;
+`pb.server` adds `protocol = 'grpc'` (`'connect'` over Connect,
+`'http'` when transcoded).
 
 - A raised `pb.grpc` status object ends the call with its code and
   message; its `details` are sent as `grpc-status-details-bin` (a
@@ -629,19 +709,26 @@ path's service name. Handlers receive http2's `ctx`: `method`,
   `false` once the client is gone and raises `RESOURCE_EXHAUSTED` for a
   message over `max_send_message_size`. Returning from the handler ends
   the call with `OK`. A server-streaming handler gets the request
-  message the client sent.
+  message the client sent, once the client has half-closed; zero or
+  several request messages are a cardinality violation answered
+  `UNIMPLEMENTED` without running the handler.
 - The server answers `UNIMPLEMENTED` for unknown methods and
   `DEADLINE_EXCEEDED` when a deadline passes; the handler fiber is not
   cancelled and should poll `ctx:is_cancelled()`.
 
 **HTTP.** Every HTTP/1.1 request and every HTTP/2 request without a
-gRPC content-type goes to the transcoding router, then to the `http`
-fallback, then gets a 404 with a `google.rpc.Status` JSON body
-(`{"code": 5, "message": "no route for GET /path", "details": []}`),
-rendered by the router with its JSON options, so it matches the
-router's own errors (no `details` under `emit_defaults = false`).
-Transcoded calls run with the `ctx` `pb.transcode` builds from the
-request (metadata from its headers, its peer, no deadline).
+gRPC content-type goes, in order, to: Connect when the request can
+only be Connect (`pb.connect`'s `strong` match); the transcoding
+router; Connect for a plain JSON call to a procedure path; the `http`
+fallback; Connect's `415`/`405` for a procedure path with the wrong
+content-type or method. What is left gets a 404: in the Connect error
+shape for a plainly Connect request, otherwise with a
+`google.rpc.Status` JSON body (`{"code": 5, "message": "no route for
+GET /path", "details": []}`), rendered by the router with its JSON
+options, so it matches the router's own errors (no `details` under
+`emit_defaults = false`). Transcoded calls run with the `ctx`
+`pb.transcode` builds from the request (metadata from its headers, its
+peer, no deadline).
 
 ## Tuple bridge — `pb.tuple`
 
