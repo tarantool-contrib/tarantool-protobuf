@@ -1,6 +1,6 @@
 -- Regression test for (tarantool.lua_package) file option.
 --
--- The option lives on FileOptions as extension field 60001 and overrides
+-- The option lives on FileOptions as extension field 53301 and overrides
 -- the default `<pkg>.<file>_pb` Lua require path. The plugin parses the
 -- extension via protoreflect/protoregistry, so this test guards against
 -- the option silently becoming a no-op when the extension is not

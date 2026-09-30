@@ -95,14 +95,16 @@ compares against the base branch for breaking changes.
 
 ## The extension number
 
-`(tarantool.lua_package)` is extension `60001` of
-`google.protobuf.FileOptions`, a number from the 50000–99999 range that
-protobuf reserves for use inside one organization. A module other
-projects depend on should use a number from the
-[global extension registry](https://github.com/protocolbuffers/protobuf/blob/main/docs/options.md),
-which is requested with a pull request to that file.
+`(tarantool.lua_package)` is extension `53301` of
+`google.protobuf.FileOptions` (50000 plus Tarantool's default port
+3301), a number from the 50000–99999 range that protobuf leaves to
+individual organizations. The number is deliberately not registered in
+the [global extension registry](https://github.com/protocolbuffers/protobuf/blob/main/docs/options.md)
+and deliberately not a round one: protoc rejects two extensions of
+`FileOptions` with the same number in one build, and round numbers
+such as 50000 or 60001 are the ones other private options pick first.
 
-Changing the number is a breaking change, and a silent one. Schemas
+The number is fixed. Changing it is a breaking change, and a silent one. Schemas
 spell the option by name, so they keep compiling against either copy
 of `tarantool/tarantool.proto`, but the plugin reads it by number
 (`cmd/protoc-gen-tarantool/internal/gen/options.go`): a plugin built

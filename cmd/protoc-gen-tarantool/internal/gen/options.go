@@ -14,9 +14,9 @@ import (
 var E_LuaPackage = &protoimpl.ExtensionInfo{
 	ExtendedType:  (*descriptorpb.FileOptions)(nil),
 	ExtensionType: (*string)(nil),
-	Field:         60001,
+	Field:         53301,
 	Name:          "tarantool.lua_package",
-	Tag:           "bytes,60001,opt,name=lua_package",
+	Tag:           "bytes,53301,opt,name=lua_package",
 	Filename:      "tarantool/tarantool.proto",
 }
 

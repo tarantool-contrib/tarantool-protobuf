@@ -17,5 +17,5 @@ extend google.protobuf.FileOptions {
   // Overrides the Lua require path for the generated module.
   // If unset, the path is derived from the proto package + filename:
   //   package foo.bar; file baz.proto -> "foo.bar.baz_pb"
-  string lua_package = 60001;
+  string lua_package = 53301;
 }
