@@ -182,7 +182,9 @@ Without the rock, the luatest cases that need a live server skip,
 `just examples all` skips `network-server` with a note, and
 `just test-server-go` skips its tests. `just test-server-go` builds
 grpcurl into a temporary directory (set `GRPCURL=<path>` to use an
-installed one).
+installed one) and runs its `buf curl` cases when `buf` is on `PATH`.
+`just test-buf` checks `buf generate` output against `protoc`'s; it
+skips without `buf`.
 
 ## Vendoring an upstream `.proto` schema
 

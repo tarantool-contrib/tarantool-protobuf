@@ -1,8 +1,9 @@
 // Package servergo checks pb.server against independent clients: grpc-go
 // with dynamicpb messages built from descriptors fetched only through
 // server reflection, grpc-go's health client, net/http over HTTP/1.1 and
-// HTTP/2 (h2c), and grpcurl. The server is test/server-go/server.lua,
-// started once per test binary on a free port.
+// HTTP/2 (h2c), grpcurl, and buf curl when buf is on PATH. The server
+// is test/server-go/server.lua, started once per test binary on a free
+// port.
 package servergo
 
 import (

@@ -247,8 +247,9 @@ test-reflection-go: gen
 
 # Check pb.server against independent clients (test/server-go): grpc-go
 # with dynamicpb messages built from server reflection alone, grpc-go's
-# health client, net/http over HTTP/1.1 and h2c, and grpcurl (built into a
-# temporary GOBIN). Needs the http2 rock: see TARANTOOL_HTTP2_RUNTIME above.
+# health client, net/http over HTTP/1.1 and h2c, grpcurl (built into a
+# temporary GOBIN) and `buf curl` (skipped without buf on PATH). Needs the
+# http2 rock: see TARANTOOL_HTTP2_RUNTIME above.
 test-server-go: gen
     cd test/server-go && TARANTOOL_HTTP2_RUNTIME="{{http2_runtime}}" go test -v -count=1 ./...
 

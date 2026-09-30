@@ -1,0 +1,172 @@
+package servergo
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os/exec"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// bufCurlResult is one `buf curl` run: stdout carries the responses,
+// stderr the errors; code is the exit status.
+type bufCurlResult struct {
+	stdout string
+	stderr string
+	code   int
+}
+
+func (r bufCurlResult) String() string {
+	return fmt.Sprintf("exit %d; stdout: %s; stderr: %s", r.code, r.stdout, r.stderr)
+}
+
+// runBufCurl runs `buf curl` from the repository root. The test skips
+// when buf is not on PATH; it is not built here, unlike grpcurl.
+func runBufCurl(t *testing.T, args ...string) bufCurlResult {
+	t.Helper()
+	bin, err := exec.LookPath("buf")
+	if err != nil {
+		t.Skip("buf is not on PATH (https://buf.build/docs/installation): " + err.Error())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, append([]string{"curl"}, args...)...)
+	cmd.Dir = repoRoot()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	res := bufCurlResult{stdout: stdout.String(), stderr: stderr.String()}
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+	case errors.As(err, &exit):
+		res.code = exit.ExitCode()
+	default:
+		require.NoError(t, err, "buf curl %s: %s", strings.Join(args, " "), stderr.String())
+	}
+	return res
+}
+
+// bufGRPC runs `buf curl` over gRPC with h2c prior knowledge, the flags
+// pb.server needs: the default protocol is Connect, and reflection over
+// plain http:// needs --http2-prior-knowledge.
+func bufGRPC(t *testing.T, args ...string) bufCurlResult {
+	t.Helper()
+	return runBufCurl(t, append([]string{"--protocol", "grpc", "--http2-prior-knowledge"}, args...)...)
+}
+
+// decodeJSONStream decodes the JSON objects buf curl prints one after
+// another (one per response message).
+func decodeJSONStream(t *testing.T, s string) []map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(s))
+	var out []map[string]any
+	for {
+		var m map[string]any
+		err := dec.Decode(&m)
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		require.NoError(t, err, s)
+		out = append(out, m)
+	}
+}
+
+// TestBufCurl drives the server with `buf curl` and server reflection
+// alone, as docs/howto/16-network-server.md shows.
+func TestBufCurl(t *testing.T) {
+	s := srv(t)
+	base := "http://" + s.addr
+
+	t.Run("list-services", func(t *testing.T) {
+		r := bufGRPC(t, "--list-services", base)
+		require.Equal(t, 0, r.code, r)
+		assert.ElementsMatch(t, []string{
+			"grpc.health.v1.Health",
+			"grpc.reflection.v1.ServerReflection",
+			"grpc.reflection.v1alpha.ServerReflection",
+			"hello.Greeter",
+			"library.Library",
+		}, strings.Fields(r.stdout), r)
+	})
+
+	t.Run("list-methods", func(t *testing.T) {
+		r := bufGRPC(t, "--list-methods", base)
+		require.Equal(t, 0, r.code, r)
+		methods := strings.Fields(r.stdout)
+		for _, m := range []string{
+			"grpc.health.v1.Health/Check",
+			"hello.Greeter/SayHello",
+			"hello.Greeter/StreamHellos",
+			"hello.Greeter/CollectHellos",
+			"hello.Greeter/Chat",
+			"library.Library/GetBook",
+		} {
+			assert.Contains(t, methods, m, r)
+		}
+	})
+
+	t.Run("unary", func(t *testing.T) {
+		r := bufGRPC(t, "-d", `{"name": "Dave"}`, base+"/hello.Greeter/SayHello")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{{"greeting": "Hello, Dave"}},
+			decodeJSONStream(t, r.stdout))
+	})
+
+	t.Run("server-streaming", func(t *testing.T) {
+		r := bufGRPC(t, "-d", `{"name": "Eve"}`, base+"/hello.Greeter/StreamHellos")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{
+			{"greeting": "Hello #1, Eve"},
+			{"greeting": "Hello #2, Eve"},
+			{"greeting": "Hello #3, Eve"},
+		}, decodeJSONStream(t, r.stdout))
+	})
+
+	t.Run("health", func(t *testing.T) {
+		r := bufGRPC(t, "-d", `{"service": "hello.Greeter"}`, base+"/grpc.health.v1.Health/Check")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{{"status": "SERVING"}}, decodeJSONStream(t, r.stdout))
+	})
+
+	t.Run("not-found", func(t *testing.T) {
+		r := bufGRPC(t, "-d", `{"name": "shelves/1/books/9"}`, base+"/library.Library/GetBook")
+		// buf curl exits with 8 times the numeric status code:
+		// NOT_FOUND is 5.
+		assert.Equal(t, 40, r.code, r)
+		assert.Empty(t, r.stdout)
+		var st map[string]any
+		require.NoError(t, json.Unmarshal([]byte(r.stderr), &st), r)
+		assert.Equal(t, "not_found", st["code"], r)
+		assert.Equal(t, "no book shelves/1/books/9", st["message"], r)
+	})
+}
+
+// TestBufCurlConnectUnsupported pins that pb.server does not speak the
+// Connect protocol, buf curl's default. The request carries a local
+// schema instead of reflection, so it fails at once: the Connect POST
+// matches no route and comes back as HTTP 404, which buf curl reports
+// as UNIMPLEMENTED (exit 8 x 12). When the server learns Connect, this
+// test is expected to fail; turn it into a positive one then.
+func TestBufCurlConnectUnsupported(t *testing.T) {
+	s := srv(t)
+	r := runBufCurl(t,
+		"--http2-prior-knowledge",
+		"--schema", "examples/proto/hello.proto",
+		"-d", `{"name": "Dave"}`,
+		"http://"+s.addr+"/hello.Greeter/SayHello")
+	assert.Equal(t, 96, r.code, r)
+	assert.Empty(t, r.stdout)
+	var st map[string]any
+	require.NoError(t, json.Unmarshal([]byte(r.stderr), &st), r)
+	assert.Equal(t, "unimplemented", st["code"], r)
+	assert.Equal(t, "404 Not Found", st["message"], r)
+}
