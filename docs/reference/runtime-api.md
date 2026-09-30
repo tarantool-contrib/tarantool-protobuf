@@ -400,9 +400,10 @@ an unknown path, so the caller decides between 404, 405 or a fallback.
 3. query parameters, unless the body is `*`: each key is a dotted field
    path (proto or JSON names per segment); repeated fields take repeated
    keys; enums take names or the numbers of defined values (unlike a
-   JSON body, where proto3 enums stay open); integers take an optional
-   leading `+` or `-`, and 64-bit ones become cdata; floats reject
-   finite literals that overflow (`1e999`) but take `Infinity`,
+   JSON body, where proto3 enums stay open); signed integers take an
+   optional leading `+` or `-`, unsigned ones no sign at all, and 64-bit
+   ones become cdata; floats take an optional sign on finite literals,
+   reject finite literals that overflow (`1e999`) and take `Infinity`,
    `-Infinity` and `NaN`; bools take `true/false/1/0/t/f` (and
    capitalised forms); bytes take standard or URL-safe base64, padding
    optional but exact; `Timestamp`, `Duration`, `FieldMask` and the

@@ -393,7 +393,9 @@ local function convert_scalar(pt, s)
         if s == 'NaN' then return 0 / 0 end
         if s == 'Infinity' then return math.huge end
         if s == '-Infinity' then return -math.huge end
-        if not (s:match('^%-?%d*%.?%d*$') or s:match('^%-?%d*%.?%d*[eE][-+]?%d+$')) then
+        -- A finite literal may carry '+' or '-' (Go's ParseFloat, as
+        -- grpc-gateway uses it); the infinities are spelled out above.
+        if not (s:match('^[-+]?%d*%.?%d*$') or s:match('^[-+]?%d*%.?%d*[eE][-+]?%d+$')) then
             return nil
         end
         local v = tonumber(s)

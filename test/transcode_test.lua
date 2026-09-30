@@ -474,6 +474,18 @@ gq.test_float_overflow = function()
     t.assert_not_equals(nan, nan)
 end
 
+-- A finite float literal may carry a leading '+' (Go's ParseFloat).
+gq.test_float_plus_sign = function()
+    local router, calls = query_router()
+    local req = call(router, calls, 'GET',
+        '/v1/items/x?ratio=%2B1&f=%2B1.5e2&wratio=%2B.5&wf=%2B2')
+    t.assert_equals({req.ratio, req.f, req.wratio, req.wf}, {1, 150, 0.5, 2})
+    bad_request(router, '/v1/items/x?ratio=%2B', '"ratio" (double)')
+    bad_request(router, '/v1/items/x?ratio=%2B-1', '"ratio" (double)')
+    bad_request(router, '/v1/items/x?ratio=%2B%2B1', '"ratio" (double)')
+    bad_request(router, '/v1/items/x?f=%2B1e39', '"f" (float)')
+end
+
 gq.test_enums_by_name_and_number = function()
     local router, calls = query_router()
     t.assert_equals(call(router, calls, 'GET', '/v1/items/x?color=RED').color, 1)
