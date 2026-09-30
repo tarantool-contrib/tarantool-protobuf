@@ -911,6 +911,7 @@ function M.buffered_io(body)
         return {status = 200, headers = self.headers or {}, body = table.concat(self.chunks)}
     end
     function io:is_cancelled() return false end
+    function io:abort() end
     return io
 end
 
@@ -918,6 +919,10 @@ end
 -- slice ending is not an error. The call's deadline and the client going
 -- away end the wait at once.
 M.RECV_SLICE = 3600
+
+-- Seconds the EndStreamResponse of a call whose deadline passed gets to
+-- go out before the exchange is aborted (see _serve_stream).
+M.DEADLINE_GRACE = 0.1
 
 -- Bounds of reading the rest of an HTTP/1.1 request body that a
 -- streaming call ends without reading (see _serve_stream's finish).
@@ -1032,11 +1037,13 @@ function M.stream_io(st)
     -- (and yielding) while the end of the stream was written is refused
     -- instead of landing after it.
     local closed = false
-    function io:write(flags, payload)
+    -- `timeout` (seconds) bounds the wait for a client that is not
+    -- taking the response; nil waits as long as it takes.
+    function io:write(flags, payload, timeout)
         return locked(function()
             if closed then return false end
             if bit.band(flags, ENVELOPE_END_STREAM) ~= 0 then closed = true end
-            return st:write(M.envelope(flags, payload)) == true
+            return st:write(M.envelope(flags, payload), timeout) == true
         end)
     end
     function io:finish()
@@ -1044,6 +1051,12 @@ function M.stream_io(st)
     end
     function io:is_cancelled()
         return st:is_cancelled()
+    end
+    -- abort(reason) ends the exchange abruptly from any fiber: a read or
+    -- write blocked in another fiber returns at once (HTTP/2: the stream
+    -- is reset; HTTP/1.1: the connection closes).
+    function io:abort(reason)
+        if st.abort ~= nil then st:abort(reason) end
     end
     return io
 end
@@ -1089,14 +1102,49 @@ function Handler:_serve_stream(call, req, io)
         if state ~= nil then state.done = true end
         send_headers()
         local trailing = state ~= nil and ctx.trailing_metadata or nil
-        io:write(ENVELOPE_END_STREAM, M.end_stream_json(st, trailing))
-        return io:finish()
+        local timeout
+        if state ~= nil and state.deadline ~= nil then
+            timeout = math.max(0, state.deadline + M.DEADLINE_GRACE - now())
+        end
+        if not io:write(ENVELOPE_END_STREAM, M.end_stream_json(st, trailing), timeout)
+                and timeout ~= nil and not io:is_cancelled() then
+            -- Not taken within the deadline's grace: abort (see below).
+            io:abort('deadline exceeded')
+        end
+        local resp = io:finish()
+        if state ~= nil then
+            state.finished = true
+            if state.watchdog ~= nil and state.watchdog:status() ~= 'dead' then
+                state.watchdog:cancel()
+            end
+        end
+        return resp
     end
     if state == nil then
         -- _begin failed: its second result is the status.
         return finish(ctx)
     end
     state.io = io
+    if state.deadline ~= nil then
+        -- The deadline bounds the writes too. The handler's sends wait
+        -- for the client at most until the deadline; after it the
+        -- EndStreamResponse (deadline_exceeded) gets DEADLINE_GRACE
+        -- seconds to go out, and a client that has not taken it by then
+        -- (a zero HTTP/2 window, an HTTP/1.1 client that does not read)
+        -- has the exchange aborted: a reset stream or a closed
+        -- connection is its answer, and every fiber blocked on it is
+        -- released.
+        state.watchdog = fiber.new(function()
+            -- finish() cancels this fiber when the call ends in time.
+            local slept = pcall(fiber.sleep,
+                                math.max(0, state.deadline - now()) + M.DEADLINE_GRACE)
+            if slept and not state.finished then
+                state.cancelled = true
+                io:abort('deadline exceeded')
+            end
+        end)
+        state.watchdog:name('pb.connect deadline', {truncate = true})
+    end
 
     local recv_err
     local limit = self._limit
@@ -1142,7 +1190,13 @@ function Handler:_serve_stream(call, req, io)
         send_headers()
         local payload = codec.encode(h, proc.output, bytes)
         if state.done then return false end
-        return io:write(0, payload)
+        local timeout
+        if state.deadline ~= nil then
+            -- Wait for the client at most until the deadline.
+            timeout = state.deadline - now()
+            if timeout <= 0 then return false end
+        end
+        return io:write(0, payload, timeout)
     end
     function view:is_cancelled()
         return ctx:is_cancelled()

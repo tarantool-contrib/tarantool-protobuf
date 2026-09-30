@@ -693,6 +693,76 @@ live.test_connect = function()
     if not ok then error(err, 0) end
 end
 
+-- Connect-Timeout-Ms bounds the writes of a stream too. An h2c client
+-- that keeps its stream window at 0 never takes a byte: the handler's
+-- send gives up at the deadline, the EndStreamResponse gets
+-- DEADLINE_GRACE to go out, then the stream is reset, and no fiber of
+-- the call is left behind.
+live.test_connect_deadline_bounds_writes = function()
+    t.skip_if(not HAVE_HTTP2, NO_HTTP2)
+    local socket = require('socket')
+    local active, sent = 0, 0
+    local s = server.new({
+        listen = '127.0.0.1:0', health = false, reflection = false, transcoding = false,
+        services = {hello.Greeter_server({
+            StreamHellos = function(_, stream)
+                active = active + 1
+                for _ = 1, 100 do
+                    if not stream:send({greeting = ('x'):rep(65536)}) then break end
+                    sent = sent + 1
+                end
+                active = active - 1
+            end,
+        })},
+    }):start()
+    local function frame(typ, flags, sid, data)
+        local n = #data
+        return string.char(bit.rshift(n, 16), bit.band(bit.rshift(n, 8), 0xff), bit.band(n, 0xff),
+                           typ, flags, 0, 0, 0, sid) .. data
+    end
+    local function str(x) return string.char(#x) .. x end
+    -- HPACK, literal fields without indexing: :method POST, :scheme http,
+    -- :path, :authority, content-type, connect-timeout-ms.
+    local block = string.char(0x83, 0x86, 0x04) .. str('/hello.Greeter/StreamHellos')
+        .. string.char(0x01) .. str('localhost')
+        .. string.char(0x0f, 0x10) .. str('application/connect+proto')
+        .. string.char(0x00) .. str('connect-timeout-ms') .. str('20')
+    local c = socket.tcp_connect('127.0.0.1', s:address().port)
+    local ok, err = pcall(function()
+        -- SETTINGS_INITIAL_WINDOW_SIZE = 0: no DATA may reach us.
+        c:write('PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n' .. frame(4, 0, 0, string.char(0, 4, 0, 0, 0, 0))
+            .. frame(1, 4, 1, block)
+            .. frame(0, 1, 1, pb.connect.envelope(0, hello.HelloRequest_encode({name = 'x'}))))
+        local limit = 0.02 + pb.connect.DEADLINE_GRACE + 0.1
+        t.helpers.retrying({timeout = limit, delay = 0.01}, function()
+            t.assert_equals(active, 0, 'the handler returned')
+            for _, f in pairs(fiber.info()) do
+                t.assert_not_equals(f.name, 'pb.connect deadline')
+                t.assert_not_equals(f.name, 'http2/stream', 'the stream fiber is gone')
+            end
+        end)
+        t.assert_equals(sent, 0, 'nothing could be sent into a zero window')
+        -- The outcome the client sees is the reset stream.
+        local got = ''
+        while c:readable(0.2) do
+            local chunk = c:sysread(65536)
+            if chunk == nil or chunk == '' then break end
+            got = got .. chunk
+        end
+        local types = {}
+        local pos = 1
+        while pos + 8 <= #got do
+            local len = got:byte(pos) * 65536 + got:byte(pos + 1) * 256 + got:byte(pos + 2)
+            types[#types + 1] = got:byte(pos + 3)
+            pos = pos + 9 + len
+        end
+        t.assert_items_include(types, {3}, 'RST_STREAM: ' .. table.concat(types, ','))
+    end)
+    c:close()
+    s:stop(1)
+    if not ok then error(err, 0) end
+end
+
 live.test_bind_failure = function()
     t.skip_if(not HAVE_HTTP2, NO_HTTP2)
     local a = server.new({listen = '127.0.0.1:0', services = {}}):start()

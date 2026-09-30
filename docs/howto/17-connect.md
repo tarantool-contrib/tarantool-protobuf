@@ -158,10 +158,16 @@ response is written as the handler produces it.
   closed connection), `ctx:is_cancelled()` turns true, `stream:send()`
   returns `false` and `stream:recv()` returns `nil, 'canceled'`. On
   HTTP/1.1 the server notices at the next read or write.
-- **Deadlines.** `Connect-Timeout-Ms` bounds the whole call: a handler
-  waiting in `recv()` wakes up at the deadline, and when the deadline
-  passes while the handler still runs, the stream ends with
-  `deadline_exceeded` and later sends return `false`.
+- **Deadlines.** `Connect-Timeout-Ms` bounds the whole call, writes
+  included: a handler waiting in `recv()` wakes up at the deadline, a
+  `send()` waits for a slow client at most until the deadline, and when
+  the deadline passes while the handler still runs, the stream ends with
+  `deadline_exceeded` and later sends return `false`. That
+  EndStreamResponse gets `pb.connect.DEADLINE_GRACE` (0.1 s) to go out;
+  a client that is not taking the response (an HTTP/2 window held at 0,
+  an HTTP/1.1 client that does not read) gets the exchange aborted
+  instead — a reset stream on HTTP/2, a closed connection on HTTP/1.1 —
+  and no fiber of the call is left waiting on it.
 - **HTTP/1.1.** A stream that ends before reading the whole request (a
   message over the limit, a handler that stopped reading) first reads
   and drops the rest of the body, up to 4 MiB or 2 s, so the client,

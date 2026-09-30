@@ -207,6 +207,48 @@ u.test_stream_recv_after_cancel = function()
     t.assert_equals(got, {'a', {nil, 'canceled'}, true})
 end
 
+-- The deadline bounds writes: over an exchange whose writes never
+-- complete (a client that takes nothing), a send waits at most until
+-- the deadline, the EndStreamResponse at most DEADLINE_GRACE after it,
+-- and then the exchange is aborted.
+u.test_stream_deadline_bounds_writes = function()
+    local clock = require('clock')
+    local hello = require('full.hello.hello_pb')
+    local st = fake_st({E(0, hello.HelloRequest_encode({name = 'x'}))})
+    local wake = fiber.channel()
+    st.write_timeouts = {}
+    function st:write(_, timeout)
+        self.write_timeouts[#self.write_timeouts + 1] = timeout or false
+        if wake:get(timeout) then return nil, 'cancelled' end
+        return nil, 'timeout'
+    end
+    function st:abort()
+        self.aborted = true
+        self.cancelled = true
+        wake:close()
+    end
+    local sent
+    local h = connect.new({hello.Greeter_server({
+        StreamHellos = function(_, stream)
+            sent = stream:send({greeting = 'x'})
+        end,
+    })})
+    local head = {method = 'POST', path = '/hello.Greeter/StreamHellos', version = 'HTTP/2',
+                  headers = {['content-type'] = 'application/connect+proto',
+                             ['connect-timeout-ms'] = '30'}}
+    local t0 = clock.monotonic()
+    h:stream_handler(head)(head, st)
+    local took = clock.monotonic() - t0
+    t.assert_equals(sent, false)
+    t.assert_equals(#st.write_timeouts, 2, 'a message, then the end of the stream')
+    -- (A timed wait may wake a hair early, hence the slack.)
+    t.assert(st.write_timeouts[1] and st.write_timeouts[1] <= 0.03, 'the send waits until the deadline')
+    t.assert(st.write_timeouts[2] and st.write_timeouts[2] <= connect.DEADLINE_GRACE + 0.01,
+             'the end of the stream waits the grace')
+    t.assert(st.aborted, 'then the exchange is aborted')
+    t.assert_lt(took, 0.03 + connect.DEADLINE_GRACE + 0.1)
+end
+
 u.test_stream_io_write = function()
     local st = fake_st({})
     local io = connect.stream_io(st)
