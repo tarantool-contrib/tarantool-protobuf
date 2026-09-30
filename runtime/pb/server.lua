@@ -25,7 +25,6 @@
 -- stream)`) and maps pb.grpc status objects raised by handlers to gRPC
 -- statuses. See docs/reference/runtime-api.md (pb.server).
 local fiber = require('fiber')
-local json  = require('json')
 local log   = require('log')
 local grpc  = require('pb.grpc')
 
@@ -269,25 +268,23 @@ end
 -- HTTP
 -- ---------------------------------------------------------------------------
 
-local function not_found(req)
-    local path = tostring(req.path or ''):match('^[^?#]*')
-    return {
-        status = 404,
-        headers = {['content-type'] = 'application/json'},
-        body = json.encode({
-            code = CODE.NOT_FOUND,
-            message = ('no route for %s %s'):format(tostring(req.method), path),
-            details = setmetatable({}, json.array_mt),
-        }),
-    }
-end
-
 -- http_handler(router, fallback) -> http2 HTTP handler: the transcoding
 -- router first, then the user's fallback, then a 404 in the
 -- google.rpc.Status JSON shape. Transcoded calls get the ctx
 -- pb.transcode builds from the request (metadata from its headers, its
 -- peer, no deadline).
+--
+-- The 404 is rendered by the router itself, so it follows the same JSON
+-- options as the router's own errors (`details: []` under the defaults,
+-- omitted with emit_defaults = false). Without transcoding, a router
+-- with no routes and default options renders it.
 function M._http_handler(router, fallback)
+    local renderer = router or require('pb.transcode').new({})
+    local function not_found(req)
+        local path = tostring(req.path or ''):match('^[^?#]*')
+        return renderer:status_response(grpc.status(CODE.NOT_FOUND,
+            ('no route for %s %s'):format(tostring(req.method), path)))
+    end
     return function(req)
         if router ~= nil then
             local resp = router:handle(req)

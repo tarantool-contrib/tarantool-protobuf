@@ -343,6 +343,7 @@ what comes out. A walkthrough is in
 local router = pb.transcode.new(servers [, opts])
 local resp   = router:handle(req [, ctx])   -- nil when no route matches
 router:routes()                              -- {{method, pattern, path, body?, response_body?}, ...}
+router:status_response(st [, ctx])           -- a status object as the router renders errors
 ```
 
 - `servers` — array of generated server tables (`M.<Svc>_server(impl)`
@@ -636,7 +637,9 @@ path's service name. Handlers receive http2's `ctx`: `method`,
 **HTTP.** Every HTTP/1.1 request and every HTTP/2 request without a
 gRPC content-type goes to the transcoding router, then to the `http`
 fallback, then gets a 404 with a `google.rpc.Status` JSON body
-(`{"code": 5, "message": "no route for GET /path", "details": []}`).
+(`{"code": 5, "message": "no route for GET /path", "details": []}`),
+rendered by the router with its JSON options, so it matches the
+router's own errors (no `details` under `emit_defaults = false`).
 Transcoded calls run with the `ctx` `pb.transcode` builds from the
 request (metadata from its headers, its peer, no deadline).
 

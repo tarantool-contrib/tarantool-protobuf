@@ -279,22 +279,63 @@ end
 
 local h = t.group('server.http')
 
+local function library_server()
+    local lib = require('full.library.library_pb')
+    return lib.Library_server({
+        GetBook = function(r)
+            if r.name == 'shelves/1/books/1' then return {name = r.name} end
+            grpc.error(grpc.code.NOT_FOUND, 'no book ' .. r.name)
+        end,
+    })
+end
+
+local function get(handler, path)
+    return handler({method = 'GET', path = path, headers = {}, body = ''})
+end
+
 h.test_router_fallback_404 = function()
-    local router = {handle = function(_, req)
-        if req.path == '/routed' then return {status = 200, body = 'r'} end
-    end}
     local fallback = function(req)
         if req.path == '/fallback' then return {status = 201, body = 'f'} end
     end
-    local handler = server._http_handler(router, fallback)
-    t.assert_equals(handler({method = 'GET', path = '/routed'}).body, 'r')
-    t.assert_equals(handler({method = 'GET', path = '/fallback'}).status, 201)
-    local resp = handler({method = 'GET', path = '/nope?x=1'})
+    local handler = server._http_handler(pb.transcode.new({library_server()}), fallback)
+    local resp = get(handler, '/v1/shelves/1/books/1')
+    t.assert_equals(resp.status, 200)
+    t.assert_equals(json.decode(resp.body).name, 'shelves/1/books/1')
+    t.assert_equals(get(handler, '/fallback').status, 201)
+    resp = get(handler, '/nope?x=1')
     t.assert_equals(resp.status, 404)
     t.assert_equals(resp.headers['content-type'], 'application/json')
     t.assert_equals(json.decode(resp.body),
                     {code = 5, message = 'no route for GET /nope', details = {}})
-    t.assert_equals(server._http_handler(nil, nil)({method = 'GET', path = '/'}).status, 404)
+    -- No transcoding: still the google.rpc.Status shape.
+    resp = get(server._http_handler(nil, nil), '/')
+    t.assert_equals(resp.status, 404)
+    t.assert_equals(json.decode(resp.body),
+                    {code = 5, message = 'no route for GET /', details = {}})
+end
+
+-- The unrouted 404 and a routed 404 (a status raised by the handler)
+-- render under the same JSON options, whatever they are.
+h.test_404_follows_router_json_options = function()
+    local function keys(body)
+        local out = {}
+        for k in pairs(json.decode(body)) do out[#out + 1] = k end
+        table.sort(out)
+        return out
+    end
+    local cases = {
+        {opts = nil, want = {'code', 'details', 'message'}},
+        {opts = {json = {emit_defaults = false, emit_null_messages = false}},
+         want = {'code', 'message'}},
+    }
+    for i, c in ipairs(cases) do
+        local handler = server._http_handler(pb.transcode.new({library_server()}, c.opts), nil)
+        local routed = get(handler, '/v1/shelves/1/books/9')
+        local unrouted = get(handler, '/nope')
+        t.assert_equals({routed.status, unrouted.status}, {404, 404}, 'case ' .. i)
+        t.assert_equals(keys(routed.body), c.want, 'routed, case ' .. i)
+        t.assert_equals(keys(unrouted.body), c.want, 'unrouted, case ' .. i)
+    end
 end
 
 -- ---------------------------------------------------------------------------

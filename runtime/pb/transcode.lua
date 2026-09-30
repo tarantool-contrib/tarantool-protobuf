@@ -1026,6 +1026,17 @@ function Router:handle(req, ctx)
     return nil
 end
 
+-- status_response(st[, ctx]) -> the response the router gives for the
+-- status object `st`: pb.grpc.http_status[code] and google.rpc.Status
+-- JSON under the router's JSON options. For errors produced next to the
+-- router (an HTTP server's own 404) that must look like its own.
+function Router:status_response(st, ctx)
+    if not grpc.is_status(st) then
+        error('pb.transcode: status_response expects a status object', 2)
+    end
+    return self:_status_response(st, ctx)
+end
+
 M._match = match
 M._capture = capture
 M._pct_decode = pct_decode
