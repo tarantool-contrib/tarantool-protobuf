@@ -186,6 +186,36 @@ g.test_watch_ends_when_send_fails = function()
     t.assert_equals(h:watchers('y'), 0)
 end
 
+-- A change made while send() is blocked goes out as soon as the send
+-- returns, not a poll interval later.
+g.test_change_during_blocked_send_is_not_lost = function()
+    local h = pb.health.new({poll_interval = 3600})
+    h:set('z', 'SERVING')
+    local srv = h:server()
+    local release = fiber.channel(1)
+    local sent = fiber.channel(4)
+    local n, done = 0, false
+    local view = {send = function(_, b)
+        n = n + 1
+        if n == 1 then release:get() end   -- the first send blocks
+        sent:put(HEALTH.HealthCheckResponse_decode(b).status)
+        return not done
+    end}
+    fiber.create(function()
+        srv.streams['/grpc.health.v1.Health/Watch'].handler(
+            HEALTH.HealthCheckRequest_encode({service = 'z'}), view, {})
+    end)
+    fiber.yield()
+    h:set('z', 'NOT_SERVING')   -- while the first send is blocked
+    release:put(true)
+    t.assert_equals(sent:get(1), S.SERVING)
+    t.assert_equals(sent:get(1), S.NOT_SERVING)
+    -- End the watch: the next send reports the caller gone.
+    done = true
+    h:set('z', 'SERVING')
+    t.assert(eventually(function() return h:watchers('z') == 0 end))
+end
+
 g.test_shutdown_and_resume = function()
     local h = pb.health.new()
     h:set('a', 'SERVING')

@@ -141,8 +141,13 @@ function Health:_watch_loop(service, cond, stream, ctx)
             last = st
         end
         if cancelled(stream, ctx) then return end
-        cond:wait(self._poll_interval)
-        fiber.testcancel()
+        -- A set() while send() yielded broadcast to nobody: fiber.cond
+        -- has no memory. Wait only when nothing changed since the last
+        -- send, so such a change goes out now, not a poll interval later.
+        if (self._status[service] or SERVICE_UNKNOWN) == last then
+            cond:wait(self._poll_interval)
+            fiber.testcancel()
+        end
     end
 end
 
