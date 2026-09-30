@@ -236,23 +236,62 @@ func TestBufCurlConnect(t *testing.T) {
 	})
 }
 
-// TestBufCurlConnectReflection pins what does not work over Connect
-// yet: server reflection. buf curl's reflection client (grpc.reflection
-// ServerReflectionInfo, a bidi stream) sends one request and waits for
-// its answer before sending the next or ending the request: a
-// full-duplex call. pb.server's Connect handler sees a request only
-// once its body has ended (tarantool-http2's HTTP handler contract), so
-// the call never reaches it and buf curl gives up at its timeout.
-// Reflection over gRPC (TestBufCurl) is unaffected. When the HTTP
-// handler can stream, this test is expected to fail; turn it into a
-// positive one then.
+// TestBufCurlConnectReflection drives buf curl with its defaults and
+// server reflection alone, no local schema: reflection
+// (grpc.reflection ServerReflectionInfo) is a bidi stream that buf curl
+// runs full duplex, one request and its answer at a time, so it works
+// over Connect on HTTP/2, where the Connect streaming handler reads
+// messages as they arrive. The timeout keeps a regression (the call
+// hanging until the request ends) from stalling the suite.
 func TestBufCurlConnectReflection(t *testing.T) {
 	s := srv(t)
-	start := time.Now()
-	r := runBufCurl(t, "--http2-prior-knowledge", "--timeout", "2s",
-		"--list-services", "http://"+s.addr)
-	assert.GreaterOrEqual(t, time.Since(start), 2*time.Second, r)
-	assert.NotEqual(t, 0, r.code, r)
-	assert.Empty(t, r.stdout, r)
-	assert.Contains(t, r.stderr, "deadline_exceeded", r)
+	base := "http://" + s.addr
+	reflect := func(t *testing.T, args ...string) bufCurlResult {
+		t.Helper()
+		return runBufCurl(t, append([]string{"--http2-prior-knowledge", "--timeout", "10s"}, args...)...)
+	}
+
+	t.Run("list-services", func(t *testing.T) {
+		r := reflect(t, "--list-services", base)
+		require.Equal(t, 0, r.code, r)
+		assert.ElementsMatch(t, []string{
+			"grpc.health.v1.Health",
+			"grpc.reflection.v1.ServerReflection",
+			"grpc.reflection.v1alpha.ServerReflection",
+			"hello.Greeter",
+			"library.Library",
+		}, strings.Fields(r.stdout), r)
+	})
+
+	t.Run("list-methods", func(t *testing.T) {
+		r := reflect(t, "--list-methods", base)
+		require.Equal(t, 0, r.code, r)
+		methods := strings.Fields(r.stdout)
+		for _, m := range []string{"hello.Greeter/SayHello", "hello.Greeter/Chat", "library.Library/GetBook"} {
+			assert.Contains(t, methods, m, r)
+		}
+	})
+
+	t.Run("unary", func(t *testing.T) {
+		r := reflect(t, "-d", `{"name": "Dave"}`, base+"/hello.Greeter/SayHello")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{{"greeting": "Hello, Dave"}}, decodeJSONStream(t, r.stdout))
+	})
+
+	t.Run("server-streaming", func(t *testing.T) {
+		r := reflect(t, "-d", `{"name": "Eve"}`, base+"/hello.Greeter/StreamHellos")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{
+			{"greeting": "Hello #1, Eve"},
+			{"greeting": "Hello #2, Eve"},
+			{"greeting": "Hello #3, Eve"},
+		}, decodeJSONStream(t, r.stdout))
+	})
+
+	t.Run("bidi", func(t *testing.T) {
+		r := reflect(t, "-d", `{"name": "x"} {"name": "y"}`, base+"/hello.Greeter/Chat")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{{"greeting": "Echo x"}, {"greeting": "Echo y"}},
+			decodeJSONStream(t, r.stdout))
+	})
 }

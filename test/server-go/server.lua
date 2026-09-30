@@ -16,9 +16,19 @@
 -- Every SayHello copies the x-request-id metadata into response
 -- (x-response-id) and trailing (x-trailer-id) metadata.
 --
+-- and in StreamHellos:
+--   'slow'         -> one message, a second's pause, another
+--   'until-cancel' -> a message every 50 ms until the call is cancelled
+--                     (client gone, deadline) or a send fails
+--
 -- HTTP fallback (not transcoded):
 --   POST /control/serving?service=<name>&status=<STATUS>  -> health:set
+--   GET  /control/stream-end -> how the last 'until-cancel' stream ended:
+--                               'running', 'cancelled' or 'send failed'
 local fiber = require('fiber')
+
+-- How the last StreamHellos('until-cancel') ended.
+local stream_end
 local log   = require('log')
 local pb    = require('pb')
 local hello = require('full.hello.hello_pb')
@@ -54,9 +64,31 @@ local greeter = hello.Greeter_server({
 
     Echo = function(req) return req end,
 
-    StreamHellos = function(req, stream)
+    StreamHellos = function(req, stream, ctx)
+        local name = req.name or ''
+        if name == 'slow' then
+            -- One message, a pause, another: shows whether the first
+            -- reaches the client before the stream ends.
+            stream:send({greeting = 'first'})
+            fiber.sleep(1)
+            stream:send({greeting = 'second'})
+            return
+        elseif name == 'until-cancel' then
+            -- Streams until the client goes away or the deadline passes,
+            -- then records how it ended (GET /control/stream-end).
+            stream_end = nil
+            local i = 0
+            while true do
+                i = i + 1
+                if not stream:send({greeting = 'tick ' .. i}) then break end
+                if ctx:is_cancelled() then break end
+                fiber.sleep(0.05)
+            end
+            stream_end = ctx:is_cancelled() and 'cancelled' or 'send failed'
+            return
+        end
         for i = 1, 3 do
-            stream:send({greeting = ('Hello #%d, %s'):format(i, req.name or '')})
+            stream:send({greeting = ('Hello #%d, %s'):format(i, name)})
         end
     end,
 
@@ -140,6 +172,10 @@ server = pb.server.new({
             for k, v in query:gmatch('([^&=]+)=([^&]*)') do args[k] = v end
             server:set_serving_status(args.service or '', args.status)
             return {status = 200, headers = {['content-type'] = 'text/plain'}, body = 'ok'}
+        end
+        if req.method == 'GET' and path == '/control/stream-end' then
+            return {status = 200, headers = {['content-type'] = 'text/plain'},
+                    body = stream_end or 'running'}
         end
     end,
 })
