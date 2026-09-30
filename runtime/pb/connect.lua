@@ -517,22 +517,27 @@ function M.parse_query(q)
     return out
 end
 
--- match(req) -> call | nil. A call is a request this handler serves:
---
---   call = {proc, mode = 'unary' | 'get' | 'stream', codec, query?,
---           strong = boolean}
---
--- `strong` means the request can only be Connect (a protobuf or
--- enveloped content-type, a Connect-Protocol-Version header, or a
--- `connect=v1` / `encoding=proto` query); a plain JSON POST or a JSON
--- GET without those markers could be meant for an HTTP/JSON route at
--- the same path, so pb.server lets the transcoding router try it first.
-function Handler:match(req)
-    if type(req) ~= 'table' or type(req.path) ~= 'string' then return nil end
-    local path, query = split_target(req.path)
-    local proc = self._procs[path]
-    if proc == nil then return nil end
-    local headers = req.headers or {}
+-- connect_intent(req, headers, query) -> true when the request is
+-- unambiguously meant as Connect, whatever it asks for: a
+-- Connect-Protocol-Version header (any value), a protobuf or enveloped
+-- content-type, or a `connect` query parameter. Such a request gets
+-- Connect's answer, a rejection included, and never another handler's.
+local function connect_intent(req, headers, query)
+    if headers['connect-protocol-version'] ~= nil then return true end
+    local mt = media_type(headers['content-type']) or ''
+    if mt == 'application/proto' or mt:match('^application/connect%+') ~= nil then
+        return true
+    end
+    if req.method == 'GET' and query ~= nil then
+        local params = M.parse_query(query)
+        if params ~= nil and params.connect ~= nil then return true end
+    end
+    return false
+end
+
+-- supported(req, proc, headers, query) -> the call for a request
+-- this handler can serve, nil otherwise (see match).
+local function supported(req, proc, headers, query)
     if req.method == 'POST' then
         local mt = media_type(headers['content-type'])
         if mt == nil then return nil end
@@ -561,6 +566,34 @@ function Handler:match(req)
         if codec.needs_desc and (proc.input == nil or proc.output == nil) then return nil end
         return {proc = proc, mode = 'get', codec = codec, query = params,
                 strong = params.connect ~= nil or codec.name ~= 'json'}
+    end
+    return nil
+end
+
+-- match(req) -> call | nil. A call is a request to a procedure path
+-- this handler answers:
+--
+--   call = {proc, mode = 'unary' | 'get' | 'stream', codec, query?,
+--           strong = boolean, reject = resp?}
+--
+-- `strong` means the request can only be Connect (see connect_intent;
+-- also `encoding=proto` in a GET); a plain JSON POST or a JSON GET
+-- without those markers could be meant for an HTTP/JSON route at the
+-- same path, so pb.server lets the transcoding router try it first.
+-- A strong request this handler cannot serve (an unsupported codec, a
+-- streaming content-type for a unary method or the reverse, a wrong
+-- method) is still matched, with `reject` the protocol's answer (415 or
+-- 405), so it never falls through to transcoding or the fallback.
+function Handler:match(req)
+    if type(req) ~= 'table' or type(req.path) ~= 'string' then return nil end
+    local path, query = split_target(req.path)
+    local proc = self._procs[path]
+    if proc == nil then return nil end
+    local headers = req.headers or {}
+    local call = supported(req, proc, headers, query)
+    if call ~= nil then return call end
+    if connect_intent(req, headers, query) then
+        return {proc = proc, strong = true, reject = self:reject(req)}
     end
     return nil
 end
@@ -595,16 +628,8 @@ end
 -- from 404, instead of failing to parse another error shape.
 function Handler:not_found(req)
     if type(req) ~= 'table' or type(req.path) ~= 'string' then return nil end
-    local headers = req.headers or {}
     local path, query = split_target(req.path)
-    local mt = media_type(headers['content-type']) or ''
-    local connect = headers['connect-protocol-version'] ~= nil
-        or mt == 'application/proto' or mt:match('^application/connect%+') ~= nil
-    if not connect and req.method == 'GET' and query ~= nil then
-        local params = M.parse_query(query)
-        connect = params ~= nil and params.connect ~= nil
-    end
-    if not connect then return nil end
+    if not connect_intent(req, req.headers or {}, query) then return nil end
     return {
         status = 404,
         headers = {['content-type'] = 'application/json'},
@@ -949,6 +974,7 @@ end
 
 -- serve(call, req) -> response for a call `match` returned.
 function Handler:serve(call, req)
+    if call.reject ~= nil then return call.reject end
     if call.mode == 'stream' then
         return self:_serve_stream(call, req, M.buffered_io(req.body))
     end

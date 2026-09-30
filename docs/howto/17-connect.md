@@ -168,9 +168,13 @@ transcoder's `unbound` option routes `POST /<package.Service>/<Method>`
 with a JSON body, and a `google.api.http` rule may use such a path).
 `pb.server` decides in this order:
 
-1. a request that can only be Connect: a Connect-Protocol-Version
-   header, a protobuf or enveloped content-type, or a GET with
-   `connect=v1` or `encoding=proto` — to Connect;
+1. a request to a procedure path that can only be Connect: a
+   Connect-Protocol-Version header (any value), a protobuf or enveloped
+   content-type, or a GET with a `connect` parameter or
+   `encoding=proto` — to Connect, which serves it or rejects it
+   (`415` for a codec or cardinality it does not serve, `405` for a
+   wrong method, `invalid_argument` for a protocol version other than
+   `1`); it never reaches transcoding or the fallback;
 2. the transcoding router;
 3. a plain JSON POST or JSON GET to a procedure path that no rule took
    — to Connect;

@@ -569,7 +569,7 @@ with what the buffered transport cannot do, is
 ```lua
 local h    = pb.connect.new(servers [, opts])
 local resp = h:handle(req)           -- nil when req is not a Connect call
-local call = h:match(req)            -- {proc, mode, codec, query?, strong} | nil
+local call = h:match(req)            -- {proc, mode, codec, query?, strong, reject?} | nil
 local resp = h:serve(call, req)
 h:reject(req)                        -- 415/405 for a procedure path, else nil
 h:not_found(req)                     -- Connect-shaped 404 for a plainly Connect request, else nil
@@ -593,9 +593,13 @@ What `handle` serves:
 | `POST`, `content-type: application/connect+proto` or `+json`, streaming method | enveloped messages in, enveloped messages and an EndStreamResponse out, HTTP 200 |
 
 `match` returns `strong = true` when the request can only be Connect
-(a Connect-Protocol-Version header, a protobuf or enveloped
-content-type, `connect=v1` or `encoding=proto` in a GET); `pb.server`
-lets its transcoding router try the others first.
+(a Connect-Protocol-Version header of any value, a protobuf or
+enveloped content-type, a `connect` parameter or `encoding=proto` in a
+GET); `pb.server` lets its transcoding router try the others first. A
+strong request to a procedure path that the handler cannot serve (an
+unsupported codec, a streaming content-type on a unary method or the
+reverse, a wrong method) is matched too, with `reject` set to the 415
+or 405 that `serve` returns.
 
 Handlers get the gRPC `ctx` shape (`method`, `metadata`, `deadline`,
 `peer`, `response_metadata`, `trailing_metadata`, `is_cancelled`) plus

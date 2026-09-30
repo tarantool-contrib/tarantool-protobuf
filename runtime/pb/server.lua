@@ -284,9 +284,11 @@ end
 -- http_handler(router, fallback, connect) -> http2 HTTP handler. In
 -- order:
 --
---   1. a Connect call that can only be Connect (pb.connect's `strong`
+--   1. a request that can only be Connect (pb.connect's `strong`
 --      match: a protobuf or enveloped content-type, a
---      Connect-Protocol-Version header, a `connect=v1` query);
+--      Connect-Protocol-Version header, a `connect` query), served or
+--      rejected by Connect (415/405 when it cannot serve it), never
+--      passed on;
 --   2. the transcoding router;
 --   3. any other Connect call (a plain JSON POST or GET to a procedure
 --      path, which an HTTP/JSON rule for the same path takes first);

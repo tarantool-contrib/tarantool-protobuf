@@ -417,13 +417,30 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(c.strong, true)
         c = m('POST', '/hello.Greeter/Chat', 'application/connect+json')
         t.assert_equals({c.mode, c.codec.name, c.strong}, {'stream', 'json', true})
+        -- Neither servable nor unambiguously Connect: not matched.
         t.assert_equals(m('POST', '/hello.Greeter/SayHello', 'application/foo'), nil)
-        t.assert_equals(m('POST', '/hello.Greeter/SayHello', 'application/connect+proto'), nil)
-        t.assert_equals(m('POST', '/hello.Greeter/Chat', 'application/proto'), nil)
-        t.assert_equals(m('POST', '/hello.Greeter/Chat', 'application/connect+yaml'), nil)
-        t.assert_equals(m('POST', '/hello.Greeter/Nope', 'application/proto'), nil)
         t.assert_equals(m('POST', '/hello.Greeter/SayHello', nil), nil)
-        t.assert_equals(m('PUT', '/hello.Greeter/SayHello', 'application/proto'), nil)
+        t.assert_equals(m('DELETE', '/hello.Greeter/SayHello', 'application/json'), nil)
+        t.assert_equals(m('POST', '/hello.Greeter/Nope', 'application/proto'), nil)
+        -- Unambiguously Connect but not servable: matched, with the
+        -- protocol's rejection.
+        local function rejected(want, ...)
+            local call = m(...)
+            t.assert_not_equals(call, nil, want)
+            t.assert_equals({call.strong, call.reject.status}, {true, want})
+        end
+        rejected(415, 'POST', '/hello.Greeter/SayHello', 'application/connect+proto')
+        rejected(415, 'POST', '/hello.Greeter/Chat', 'application/proto')
+        rejected(415, 'POST', '/hello.Greeter/Chat', 'application/connect+yaml')
+        rejected(415, 'POST', '/hello.Greeter/SayHello', 'application/yaml',
+                 {['connect-protocol-version'] = '1'})
+        rejected(415, 'POST', '/hello.Greeter/SayHello', nil, {['connect-protocol-version'] = '1'})
+        rejected(405, 'PUT', '/hello.Greeter/SayHello', 'application/proto')
+        c = h:match({method = 'GET', path = '/hello.Greeter/SayHello?connect=v1&encoding=json',
+                     headers = {}})
+        t.assert_equals({c.strong, c.reject.status}, {true, 405})
+        c = h:match({method = 'GET', path = '/library.Library/GetBook?connect=v1', headers = {}})
+        t.assert_equals({c.strong, c.reject.status}, {true, 415})
         c = h:match({method = 'GET', path = '/library.Library/GetBook?encoding=json', headers = {}})
         t.assert_equals({c.mode, c.strong}, {'get', false})
         c = h:match({method = 'GET', path = '/library.Library/GetBook?encoding=json&connect=v1',

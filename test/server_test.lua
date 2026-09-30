@@ -380,6 +380,25 @@ h.test_connect_dispatch = function()
     r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/proto',
              require('full.hello.hello_pb').HelloRequest_encode({name = 'P'}))
     t.assert_equals({r.status, r.headers['content-type']}, {200, 'application/proto'})
+    -- Unambiguously Connect, but not servable or not version 1: Connect
+    -- answers, the transcoding route (which would take any body) never
+    -- sees it.
+    local V1 = {['connect-protocol-version'] = '1'}
+    r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/yaml', 'name: x', V1)
+    t.assert_equals(r.status, 415)
+    r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/connect+json',
+             pb.connect.envelope(0, '{"name": "x"}'), V1)
+    t.assert_equals(r.status, 415)
+    r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/connect+json',
+             pb.connect.envelope(0, '{"name": "x"}'))
+    t.assert_equals(r.status, 415)
+    for _, v in ipairs({'2', '', '1.0'}) do
+        r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/json', '{"name": "x"}',
+                 {['connect-protocol-version'] = v})
+        t.assert_equals({r.status, json.decode(r.body).code}, {400, 'invalid_argument'}, v)
+    end
+    r = call(both, 'PUT', '/hello.Greeter/SayHello', 'application/json', '{}', V1)
+    t.assert_equals(r.status, 405)
     -- Transcoding routes keep working.
     r = call(both, 'GET', '/v1/shelves/1/books/1')
     t.assert_equals({r.status, json.decode(r.body).name}, {200, 'shelves/1/books/1'})

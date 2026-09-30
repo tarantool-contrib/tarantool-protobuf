@@ -263,7 +263,8 @@ dispatches:
 
 1. a request that can only be Connect (a Connect-Protocol-Version
    header, `application/proto` or `application/connect+*`, a GET with
-   `connect=v1` or `encoding=proto`) to Connect;
+   `connect` or `encoding=proto`) to Connect, which serves or rejects
+   it (415, 405, `invalid_argument`) but never lets it fall through;
 2. the transcoding router;
 3. a plain JSON POST/GET to a procedure path that no rule took to
    Connect;
