@@ -355,6 +355,11 @@ local function decode_base64(s)
     return digest.base64_decode(body)
 end
 
+-- Smallest magnitude that rounds to infinity as a float32: FLT_MAX plus
+-- half an ULP, (2^24 - 0.5) * 2^104. Anything below rounds to a finite
+-- float (3.4028235e38, FLT_MAX as printed, is accepted, as in Go).
+local FLT_OVERFLOW = (2 ^ 24 - 0.5) * 2 ^ 104
+
 -- Scalar Lua value for proto type `pt` from the text `s`, or nil.
 local function convert_scalar(pt, s)
     if pt == 'string' then
@@ -385,7 +390,12 @@ local function convert_scalar(pt, s)
         if not (s:match('^%-?%d*%.?%d*$') or s:match('^%-?%d*%.?%d*[eE][-+]?%d+$')) then
             return nil
         end
-        return tonumber(s)
+        local v = tonumber(s)
+        -- A finite literal that overflows the type is an error, not
+        -- Infinity; only the explicit spellings above give infinities.
+        if v == nil or v == math.huge or v == -math.huge then return nil end
+        if pt == 'float' and (v >= FLT_OVERFLOW or v <= -FLT_OVERFLOW) then return nil end
+        return v
     end
     if pt == 'bytes' then return decode_base64(s) end
     return nil

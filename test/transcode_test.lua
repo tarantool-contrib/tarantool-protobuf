@@ -446,6 +446,24 @@ gq.test_bytes_strict_base64 = function()
     t.assert_equals(#calls, 0)
 end
 
+-- A finite literal that overflows the type is rejected; the explicit
+-- infinities and NaN are accepted.
+gq.test_float_overflow = function()
+    local router, calls = query_router()
+    bad_request(router, '/v1/items/x?ratio=1e999', '"ratio" (double)')
+    bad_request(router, '/v1/items/x?ratio=-1e309', '"ratio" (double)')
+    bad_request(router, '/v1/items/x?f=1e39', '"f" (float)')
+    bad_request(router, '/v1/items/x?f=-3.5e38', '"f" (float)')
+    t.assert_equals(#calls, 0)
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?ratio=1e308').ratio, 1e308)
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?f=3.4028235e38').f,
+                    3.4028234663852886e38)
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?ratio=Infinity').ratio, math.huge)
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?f=-Infinity').f, -math.huge)
+    local nan = call(router, calls, 'GET', '/v1/items/x?ratio=NaN').ratio
+    t.assert_not_equals(nan, nan)
+end
+
 gq.test_enums_by_name_and_number = function()
     local router, calls = query_router()
     t.assert_equals(call(router, calls, 'GET', '/v1/items/x?color=RED').color, 1)
