@@ -223,6 +223,13 @@ test-c: build-c gen
 # or codec changes.
 test-all: test test-c
 
+# Check pb.reflection against an independent consumer: grpc-go's reflection
+# types decode the responses and protodesc links every returned file
+# (test/reflection-go). `protolegacy` lets protodesc accept the MessageSet
+# in the conformance fixtures.
+test-reflection-go: gen
+    cd test/reflection-go && go test -tags protolegacy -v -count=1 ./...
+
 # ---------------------------------------------------------------------------
 # Bench
 # ---------------------------------------------------------------------------
