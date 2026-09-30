@@ -283,17 +283,23 @@ local function warn_once(key, why)
     log.warn('pb.connect: metadata %q dropped: %s', key, why)
 end
 
--- each_metadata(md, fn): fn(key, values) for every key of a response or
--- trailing metadata table the protocol can carry, values an array of
--- wire strings (`-bin` values base64-encoded).
-local function each_metadata(md, fn)
+-- each_metadata(md, fn, leading): fn(key, values) for every key of a
+-- response (`leading`) or trailing metadata table the protocol can
+-- carry, values an array of wire strings (`-bin` values
+-- base64-encoded). Keys starting with `connect-` are the protocol's in
+-- both. Leading metadata are plain response headers, so the headers the
+-- transport owns and `trailer-` (which a Connect client reads as
+-- trailing metadata of a unary call) are reserved there too. Trailing
+-- keys have no such limits: they go out prefixed with `trailer-`
+-- (`trailer-foo` as `trailer-trailer-foo`) or in the EndStreamResponse.
+local function each_metadata(md, fn, leading)
     if type(md) ~= 'table' then return end
     for k, v in pairs(md) do
         local key = type(k) == 'string' and k:lower() or nil
         if key == nil or not key:match('^[0-9a-z_.-]+$') then
             warn_once(tostring(k), 'invalid key')
-        elseif RESPONSE_RESERVED[key] or key:sub(1, 8) == 'connect-'
-                or key:sub(1, 8) == 'trailer-' then
+        elseif key:sub(1, 8) == 'connect-' or (leading and (RESPONSE_RESERVED[key]
+                or key:sub(1, 8) == 'trailer-')) then
             warn_once(key, 'reserved key')
         else
             local list = type(v) == 'table' and v or {v}
@@ -315,7 +321,8 @@ local function each_metadata(md, fn)
 end
 
 -- add_headers(headers, md[, prefix]) copies metadata into response
--- headers, a repeated key as an array.
+-- headers, a repeated key as an array: response metadata without a
+-- prefix, trailing metadata with 'trailer-'.
 local function add_headers(headers, md, prefix)
     each_metadata(md, function(key, values)
         key = (prefix or '') .. key
@@ -324,7 +331,7 @@ local function add_headers(headers, md, prefix)
         else
             headers[key] = values
         end
-    end)
+    end, prefix == nil)
 end
 M._add_headers = add_headers
 
@@ -339,7 +346,7 @@ function M.end_stream_json(st, trailing)
     each_metadata(trailing, function(key, values)
         md[key] = values
         any = true
-    end)
+    end, false)
     if any then parts[#parts + 1] = '"metadata":' .. json.encode(md) end
     return '{' .. table.concat(parts, ',') .. '}'
 end

@@ -121,11 +121,11 @@ u.test_end_stream_json = function()
     t.assert_equals(connect.end_stream_json(nil, {}), '{}')
     local got = json.decode(connect.end_stream_json(grpc.status('ABORTED', 'stop'), {
         ['x-a'] = {'1', '2'}, ['x-b-bin'] = '\255\0', ['connect-x'] = 'reserved',
-        ['Bad Key'] = 'v', ['x-ctl'] = 'a\nb',
+        ['Bad Key'] = 'v', ['x-ctl'] = 'a\nb', ['trailer-t'] = 'kept',
     }))
     t.assert_equals(got, {
         error = {code = 'aborted', message = 'stop'},
-        metadata = {['x-a'] = {'1', '2'}, ['x-b-bin'] = {'/wA'}},
+        metadata = {['x-a'] = {'1', '2'}, ['x-b-bin'] = {'/wA'}, ['trailer-t'] = {'kept'}},
     })
 end
 
@@ -190,6 +190,9 @@ for _, mode in ipairs({'full', 'runtime'}) do
             r.name = r.name or ''
             ctx.response_metadata['x-head'] = 'h'
             ctx.trailing_metadata['x-tail'] = {'t1', 't2'}
+            -- `trailer-` is reserved in response headers only.
+            ctx.response_metadata['trailer-sneaky'] = 'no'
+            ctx.trailing_metadata['trailer-foo'] = 'tf'
             if r.name == 'missing' then
                 grpc.error(grpc.code.NOT_FOUND, 'no ' .. r.name, {detail})
             elseif r.name == 'boom' then
@@ -208,6 +211,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
         StreamHellos = function(r, stream, ctx)
             ctx.response_metadata['x-head'] = 'h'
             ctx.trailing_metadata['x-tail'] = 't'
+            ctx.trailing_metadata['trailer-foo'] = 'tf'
+            ctx.trailing_metadata['connect-x'] = 'reserved'
             for i = 1, 2 do stream:send({greeting = ('%d %s'):format(i, r.name)}) end
             if r.name == 'fail' then grpc.error('ABORTED', 'after two') end
         end,
@@ -262,6 +267,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(json.decode(r.body), {greeting = 'Hi Dave'})
         t.assert_equals(r.headers['x-head'], 'h')
         t.assert_equals(r.headers['trailer-x-tail'], {'t1', 't2'})
+        t.assert_equals(r.headers['trailer-trailer-foo'], 'tf')
+        t.assert_equals(r.headers['trailer-sneaky'], nil)
         -- Defaults are omitted, as protojson does by default.
         r = post('/hello.Greeter/SayHello', 'application/json', '')
         t.assert_equals({r.status, r.body}, {200, '{}'})
@@ -292,6 +299,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(r.headers['content-type'], 'application/json')
         t.assert_equals(r.headers['x-head'], 'h')
         t.assert_equals(r.headers['trailer-x-tail'], {'t1', 't2'})
+        t.assert_equals(r.headers['trailer-trailer-foo'], 'tf')
+        t.assert_equals(r.headers['trailer-sneaky'], nil)
         local body = json.decode(r.body)
         t.assert_equals(body.code, 'not_found')
         t.assert_equals(body.message, 'no missing')
@@ -498,7 +507,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(r.headers['x-head'], 'h')
         local msgs, tail = end_stream(r.body)
         t.assert_equals(msgs, {'{"greeting":"1 Eve"}', '{"greeting":"2 Eve"}'})
-        t.assert_equals(tail, {metadata = {['x-tail'] = {'t'}}})
+        -- In the EndStreamResponse only `connect-` keys are reserved.
+        t.assert_equals(tail, {metadata = {['x-tail'] = {'t'}, ['trailer-foo'] = {'tf'}}})
         -- An error after the messages.
         r = post('/hello.Greeter/StreamHellos', 'application/connect+proto', E(0, req('fail')))
         t.assert_equals(r.status, 200)
@@ -506,7 +516,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(#msgs, 2)
         t.assert_equals(hello.HelloReply_decode(msgs[2]).greeting, '2 fail')
         t.assert_equals(tail, {error = {code = 'aborted', message = 'after two'},
-                               metadata = {['x-tail'] = {'t'}}})
+                               metadata = {['x-tail'] = {'t'}, ['trailer-foo'] = {'tf'}}})
     end
 
     g.test_server_stream_request_count = function()

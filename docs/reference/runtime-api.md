@@ -610,7 +610,10 @@ headers are the metadata except `content-type`, `content-length`,
 base64 is `invalid_argument`). Response metadata goes out as headers,
 trailing metadata as `trailer-<key>` headers (unary) or the
 EndStreamResponse `metadata` (streams); `-bin` values as unpadded
-base64. `Connect-Timeout-Ms` (at most 10 digits, else
+base64. `connect-*` keys are dropped from both; response metadata also
+drops `trailer-*` keys and transport-owned headers, while a trailing
+`trailer-foo` goes out as `trailer-trailer-foo` (unary) or as is
+(streams). `Connect-Timeout-Ms` (at most 10 digits, else
 `invalid_argument`) is the deadline: when it passes the call answers
 `deadline_exceeded` and the handler, still running in its own fiber,
 sees `ctx:is_cancelled()`. `ctx.deadline` and every deadline decision

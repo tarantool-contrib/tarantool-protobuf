@@ -66,7 +66,11 @@ buf curl --schema examples/proto/hello.proto \
   out; `-bin` values decoded from base64, padded or not).
   `ctx.response_metadata` goes out as response headers,
   `ctx.trailing_metadata` as `trailer-<key>` headers; `-bin` values are
-  sent as unpadded base64, others must be printable ASCII.
+  sent as unpadded base64, others must be printable ASCII. Keys starting
+  with `connect-` are the protocol's and dropped; so are, in response
+  metadata only, `trailer-*` keys and the headers the transport owns. A
+  trailing key may itself start with `trailer-` (it goes out as
+  `trailer-trailer-...`).
 - **Timeouts.** `Connect-Timeout-Ms` becomes `ctx.deadline`. When it
   passes, the call answers `deadline_exceeded` at once and
   `ctx:is_cancelled()` turns true; the handler fiber runs on (it may be
