@@ -112,6 +112,10 @@ func link(t *testing.T, raw [][]byte) (*protoregistry.Files, []*descriptorpb.Fil
 // Services the example modules, health and reflection expose, with
 // their methods and streaming shape (client, server).
 var wantServices = map[string]map[string][2]bool{
+	"connectrpc.conformance.v1.ConformanceService": {
+		"Unary": {false, false}, "ServerStream": {false, true}, "ClientStream": {true, false},
+		"BidiStream": {true, true}, "Unimplemented": {false, false}, "IdempotentUnary": {false, false},
+	},
 	"grpc.health.v1.Health": {
 		"Check": {false, false}, "List": {false, false}, "Watch": {false, true},
 	},
