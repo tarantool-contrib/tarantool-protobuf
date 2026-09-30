@@ -109,11 +109,85 @@ u.test_buffered_io_read = function()
     t.assert_equals({io:read()}, {0, ''})
     t.assert_equals({io:read()}, {})
     local flags, err = connect.buffered_io('\0\0\0'):read()
-    t.assert_equals(flags, nil)
-    t.assert_str_contains(err, 'incomplete envelope')
+    t.assert_equals(flags, false)
+    t.assert_str_contains(err.message, 'incomplete envelope')
     flags, err = connect.buffered_io('\0\0\0\0\9abc'):read()
-    t.assert_equals(flags, nil)
-    t.assert_str_contains(err, 'promised 9 bytes')
+    t.assert_equals(flags, false)
+    t.assert_str_contains(err.message, 'promised 9 bytes')
+    flags, err = connect.buffered_io(E(0, 'abcd')):read(3)
+    t.assert_equals({flags, err.code}, {false, grpc.code.RESOURCE_EXHAUSTED})
+end
+
+-- fake_st(items) -> an object with tarantool-http2's streaming exchange
+-- surface. `items` are what successive reads return: a string is a
+-- chunk, {err = ...} a failure, and past the end the body has ended.
+local function fake_st(items)
+    local st = {items = items, pos = 1, out = {}, reads = 0, timeouts = {}}
+    function st:read(timeout)
+        self.reads = self.reads + 1
+        self.timeouts[#self.timeouts + 1] = timeout
+        local item = self.items[self.pos]
+        self.pos = self.pos + 1
+        if item == nil then return nil end
+        if type(item) == 'table' then
+            if item.err == 'timeout' then fiber.sleep(math.min(timeout, 0.01)) end
+            return nil, item.err
+        end
+        return item
+    end
+    function st:write_head(status, headers) self.head = {status, headers} return true end
+    function st:write(data) self.out[#self.out + 1] = data return true end
+    function st:finish() self.finished = true return true end
+    function st:is_cancelled() return self.cancelled == true end
+    return st
+end
+
+u.test_stream_io_read = function()
+    -- Envelopes split across chunks at every place, and two in one chunk.
+    local body = E(0, 'hello') .. E(1, '') .. E(0, 'world')
+    local st = fake_st({body:sub(1, 2), body:sub(3, 7), body:sub(8, 9), body:sub(10)})
+    local io = connect.stream_io(st)
+    t.assert_equals({io:read()}, {0, 'hello'})
+    t.assert_equals({io:read()}, {1, ''})
+    t.assert_equals({io:read()}, {0, 'world'})
+    t.assert_equals({io:read()}, {})
+    -- A body that ends inside an envelope.
+    local flags, err = connect.stream_io(fake_st({E(0, 'abc'):sub(1, 6)})):read()
+    t.assert_equals(flags, false)
+    t.assert_str_contains(err.message, 'incomplete envelope')
+    -- Too large: refused from the length prefix, the payload never read.
+    st = fake_st({E(0, 'abcdef'):sub(1, 5), 'abcdef'})
+    flags, err = connect.stream_io(st):read(3)
+    t.assert_equals({flags, err.code}, {false, grpc.code.RESOURCE_EXHAUSTED})
+    t.assert_equals(st.reads, 1)
+    -- A slice running out is not the end; the client going away is.
+    st = fake_st({{err = 'timeout'}, E(0, 'x')})
+    t.assert_equals({connect.stream_io(st):read()}, {0, 'x'})
+    flags, err = connect.stream_io(fake_st({{err = 'cancelled'}})):read()
+    t.assert_equals({flags, err}, {false, 'canceled'})
+    -- The deadline bounds the wait.
+    local clock = require('clock')
+    st = fake_st({{err = 'timeout'}, {err = 'timeout'}, {err = 'timeout'}})
+    flags, err = connect.stream_io(st):read(nil, clock.monotonic() + 0.001)
+    t.assert_equals({flags, err.code}, {false, grpc.code.DEADLINE_EXCEEDED})
+    t.assert_le(st.timeouts[1], 0.001)
+end
+
+u.test_stream_io_write = function()
+    local st = fake_st({})
+    local io = connect.stream_io(st)
+    io:write_headers({['content-type'] = 'application/connect+proto'})
+    t.assert_equals(io:write(0, 'a'), true)
+    t.assert_equals(st.out, {E(0, 'a')}, 'written at once, not at the end')
+    t.assert_equals(io:write(2, '{}'), true)
+    t.assert_equals(io:finish(), nil)
+    t.assert_equals(st.head, {200, {['content-type'] = 'application/connect+proto'}})
+    t.assert_equals(st.out, {E(0, 'a'), E(2, '{}')})
+    t.assert(st.finished)
+    st.write = function() return nil, 'cancelled' end
+    t.assert_equals(io:write(0, 'b'), false)
+    st.cancelled = true
+    t.assert_equals(io:is_cancelled(), true)
 end
 
 u.test_end_stream_json = function()

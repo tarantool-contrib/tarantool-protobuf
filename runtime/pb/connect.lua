@@ -690,7 +690,9 @@ local function new_ctx(req, proc, state, metadata, deadline, extra)
         trailing_metadata = {},
         protocol = 'connect',
         connect = extra,
-        is_cancelled = function() return expired(state) end,
+        is_cancelled = function()
+            return expired(state) or (state.io ~= nil and state.io:is_cancelled())
+        end,
     }
 end
 
@@ -841,30 +843,55 @@ end
 -- Streaming
 -- ---------------------------------------------------------------------------
 
--- buffered_io(body) -> the envelope I/O of a streaming call over a
--- request body that is already in memory, collecting the response:
+-- The envelope I/O of a streaming call. Two implementations share one
+-- contract, so the protocol logic below does not care which it runs on:
 --
---   io:read() -> flags, payload | nil (end of input) | nil, err_text
---   io:write_headers(headers)    -- before the first message; once
---   io:write(flags, payload)
---   io:finish() -> response table {status, headers, body}
+--   io:read(limit, deadline) -> flags, payload   the next envelope
+--                             | nil               the request ended cleanly
+--                             | false, err        the stream cannot go on:
+--       a status object (a torn envelope, a message over `limit` bytes,
+--       the `deadline` — a clock.monotonic() value — passing) or
+--       'canceled' (the client went away)
+--   io:write_headers(headers)    the response head; before the first write
+--   io:write(flags, payload) -> true | false (the client is gone)
+--   io:finish() -> the response table (buffered) | nil (streamed)
+--   io:is_cancelled() -> true once the client went away
 --
--- A streaming transport would implement the same four methods over the
--- live request and response.
+-- stream_io works a live tarantool-http2 streaming exchange: envelopes
+-- are parsed as the request body arrives and every write goes out at
+-- once. buffered_io works a request body already in memory and collects
+-- the response, for the buffered HTTP handler contract.
+
+local function torn(have)
+    return grpc.status(CODE.INVALID_ARGUMENT,
+        ('protocol error: incomplete envelope: %d bytes'):format(have))
+end
+
+local function too_large(len, limit)
+    return grpc.status(CODE.RESOURCE_EXHAUSTED,
+        ('message larger than max (%d vs. %d)'):format(len, limit))
+end
+
+-- Envelope header: flags and payload length.
+local function envelope_head(s, pos)
+    local flags, b1, b2, b3, b4 = s:byte(pos, pos + 4)
+    return flags, ((b1 * 256 + b2) * 256 + b3) * 256 + b4
+end
+
 function M.buffered_io(body)
     body = body or ''
     local pos = 1
     local io = {chunks = {}, headers = nil}
-    function io:read()
-        if pos > #body then return nil end
-        if #body - pos + 1 < 5 then
-            return nil, ('incomplete envelope: %d bytes'):format(#body - pos + 1)
-        end
-        local flags, b1, b2, b3, b4 = body:byte(pos, pos + 4)
-        local len = ((b1 * 256 + b2) * 256 + b3) * 256 + b4
-        if #body - pos + 1 - 5 < len then
-            return nil, ('promised %d bytes in enveloped message, got %d bytes')
-                :format(len, #body - pos + 1 - 5)
+    function io:read(limit)
+        local left = #body - pos + 1
+        if left <= 0 then return nil end
+        if left < 5 then return false, torn(left) end
+        local flags, len = envelope_head(body, pos)
+        if limit ~= nil and len > limit then return false, too_large(len, limit) end
+        if left - 5 < len then
+            return false, grpc.status(CODE.INVALID_ARGUMENT,
+                ('protocol error: promised %d bytes in enveloped message, got %d bytes')
+                    :format(len, left - 5))
         end
         local payload = body:sub(pos + 5, pos + 4 + len)
         pos = pos + 5 + len
@@ -875,9 +902,131 @@ function M.buffered_io(body)
     end
     function io:write(flags, payload)
         self.chunks[#self.chunks + 1] = M.envelope(flags, payload)
+        return true
     end
     function io:finish()
         return {status = 200, headers = self.headers or {}, body = table.concat(self.chunks)}
+    end
+    function io:is_cancelled() return false end
+    return io
+end
+
+-- A read waits for request bytes in slices of this many seconds; a
+-- slice ending is not an error. The call's deadline and the client going
+-- away end the wait at once.
+M.RECV_SLICE = 3600
+
+-- Bounds of reading the rest of an HTTP/1.1 request body that a
+-- streaming call ends without reading (see _serve_stream's finish).
+local DRAIN_BYTES = 4 * 1024 * 1024
+local DRAIN_SECONDS = 2
+
+-- stream_io(st) -> the envelope I/O over a tarantool-http2 streaming
+-- exchange `st` (st:read, st:write_head, st:write, st:finish,
+-- st:is_cancelled). Writes are serialized: after a deadline the
+-- protocol code writes the end of the stream while the handler, running
+-- on, may be inside a write of its own.
+function M.stream_io(st)
+    local parts, have = {}, 0     -- request bytes received, not yet parsed
+    local eof = false
+    local lock = fiber.channel(1)
+    local io = {}
+
+    -- fill(n, deadline) -> true once `have >= n` | nil at the end of the
+    -- body | false, err.
+    local function fill(n, deadline)
+        while have < n do
+            if eof then return nil end
+            local timeout = M.RECV_SLICE
+            if deadline ~= nil then
+                timeout = math.min(timeout, deadline - now())
+                if timeout <= 0 then return false, deadline_status() end
+            end
+            local chunk, err = st:read(timeout)
+            if chunk ~= nil then
+                parts[#parts + 1] = chunk
+                have = have + #chunk
+            elseif err == nil then
+                eof = true
+            elseif err ~= 'timeout' then
+                return false, 'canceled'
+            end
+        end
+        return true
+    end
+
+    -- take(n) -> the first n buffered bytes (fill made them available).
+    local function take(n)
+        local all = #parts == 1 and parts[1] or table.concat(parts)
+        local out = all:sub(1, n)
+        local rest = all:sub(n + 1)
+        parts = rest ~= '' and {rest} or {}
+        have = #rest
+        return out
+    end
+
+    function io:read(limit, deadline)
+        local ok, err = fill(5, deadline)
+        if ok == nil then
+            if have == 0 then return nil end
+            return false, torn(have)
+        end
+        if not ok then return false, err end
+        if #parts > 1 then parts = {table.concat(parts)} end
+        local flags, len = envelope_head(parts[1], 1)
+        -- Refused before its payload is read: an oversized message never
+        -- sits in memory.
+        if limit ~= nil and len > limit then return false, too_large(len, limit) end
+        ok, err = fill(5 + len, deadline)
+        if ok == nil then return false, torn(have) end
+        if not ok then return false, err end
+        take(5)
+        return flags, take(len)
+    end
+
+    -- drain(max_bytes, seconds) reads and drops what is left of the
+    -- request body, up to `max_bytes` bytes or `seconds`, whichever comes
+    -- first. Returns true when the body ended.
+    function io:drain(max_bytes, seconds)
+        local deadline = now() + seconds
+        local dropped = have
+        parts, have = {}, 0
+        while not eof and dropped <= max_bytes do
+            local left = deadline - now()
+            if left <= 0 then return false end
+            local chunk, err = st:read(left)
+            if chunk ~= nil then
+                dropped = dropped + #chunk
+            elseif err == nil then
+                eof = true
+            else
+                return false
+            end
+        end
+        return eof
+    end
+
+    local function locked(fn, ...)
+        lock:put(true)
+        local ok, res = pcall(fn, ...)
+        lock:get()
+        if not ok then error(res, 0) end
+        return res
+    end
+
+    function io:write_headers(headers)
+        locked(function() st:write_head(200, headers) end)
+    end
+    function io:write(flags, payload)
+        return locked(function()
+            return st:write(M.envelope(flags, payload)) == true
+        end)
+    end
+    function io:finish()
+        locked(function() st:finish() end)
+    end
+    function io:is_cancelled()
+        return st:is_cancelled()
     end
     return io
 end
@@ -901,6 +1050,22 @@ function Handler:_serve_stream(call, req, io)
         io:write_headers(out)
     end
     local function finish(st)
+        if st ~= nil and not grpc.is_status(st) then
+            -- 'canceled': the client went away; nobody reads this.
+            st = grpc.status(CODE.CANCELLED, 'canceled')
+        end
+        if io.drain ~= nil and req.version ~= 'HTTP/2'
+                and not (state ~= nil and state.cancelled) then
+            -- HTTP/1.1 is half duplex: a client sends its whole request
+            -- before it reads. Ending the response over an unread body
+            -- (a message over the limit, a handler that stopped reading)
+            -- makes the transport close the connection under a client
+            -- still writing, which then sees a broken response or a
+            -- dead pooled connection. Read the rest first, within
+            -- bounds. (Not after a deadline: the handler may still be
+            -- reading.)
+            io:drain(math.max(DRAIN_BYTES, h._limit), DRAIN_SECONDS)
+        end
         send_headers()
         local trailing = state ~= nil and ctx.trailing_metadata or nil
         io:write(ENVELOPE_END_STREAM, M.end_stream_json(st, trailing))
@@ -911,30 +1076,31 @@ function Handler:_serve_stream(call, req, io)
         -- _begin failed: its second result is the status.
         return finish(ctx)
     end
+    state.io = io
 
     local recv_err
     local limit = self._limit
     local view = {}
     -- view:recv() -> bytes | nil, nil (end of the request stream) |
-    -- nil, status. A framing error also fails the call: it is recorded
-    -- and ends the stream whatever the handler does next.
+    -- nil, err (a status object, or 'canceled' once the client went
+    -- away, as pb.server's gRPC streams say it). A protocol error also
+    -- fails the call: it is recorded and ends the stream whatever the
+    -- handler does next.
     function view:recv()
         if recv_err ~= nil then return nil, recv_err end
-        if ctx:is_cancelled() then return nil, deadline_status() end
-        local flags, payload = io:read()
+        if expired(state) then return nil, deadline_status() end
+        local flags, payload = io:read(limit, state.deadline)
         local st
         if flags == nil then
-            if payload == nil then return nil, nil end
-            st = grpc.status(CODE.INVALID_ARGUMENT, 'protocol error: ' .. payload)
+            return nil, nil
+        elseif flags == false then
+            st = payload
         elseif bit.band(flags, ENVELOPE_COMPRESSED) ~= 0 then
             st = grpc.status(CODE.INTERNAL,
                 'protocol error: received a compressed message without a message encoding')
         elseif bit.band(flags, ENVELOPE_END_STREAM) ~= 0 then
             st = grpc.status(CODE.INVALID_ARGUMENT,
                 'protocol error: end-stream flag set on a request message')
-        elseif #payload > limit then
-            st = grpc.status(CODE.RESOURCE_EXHAUSTED,
-                ('message larger than max (%d vs. %d)'):format(#payload, limit))
         else
             local bytes, err = codec.decode(h, proc.input, payload)
             if bytes ~= nil then return bytes end
@@ -943,12 +1109,14 @@ function Handler:_serve_stream(call, req, io)
         recv_err = st
         return nil, st
     end
-    -- view:send(bytes) -> true | false (the call is over).
+    -- view:send(bytes) -> true | false (the call is over). Each message
+    -- goes out at once on a streaming exchange.
     function view:send(bytes)
         if state.done or ctx:is_cancelled() then return false end
         send_headers()
-        io:write(0, codec.encode(h, proc.output, bytes))
-        return true
+        local payload = codec.encode(h, proc.output, bytes)
+        if state.done then return false end
+        return io:write(0, payload)
     end
     function view:is_cancelled()
         return ctx:is_cancelled()
@@ -982,6 +1150,19 @@ function Handler:_serve_stream(call, req, io)
         st = deadline_status()
     end
     return finish(st)
+end
+
+-- stream_handler(head) -> a tarantool-http2 streaming handler
+-- `function(head, st)` for a Connect streaming call, nil for anything
+-- else (unary calls, GETs and rejections stay on the buffered path: a
+-- unary message is read whole anyway). pb.server hands it to http2 as
+-- its `http_stream` router. `head` is the request without a body.
+function Handler:stream_handler(head)
+    local call = self:match(head)
+    if call == nil or call.mode ~= 'stream' or call.reject ~= nil then return nil end
+    return function(hd, st)
+        self:_serve_stream(call, hd, M.stream_io(st))
+    end
 end
 
 -- serve(call, req) -> response for a call `match` returned.

@@ -499,6 +499,13 @@ function M.new(opts)
     self._http2 = http2.server.new({
         grpc = registry,
         http = M._http_handler(router, opts.http, connect),
+        -- Connect streaming calls take the streaming handler contract:
+        -- messages are read as they arrive and each reply goes out as
+        -- it is sent, full duplex on HTTP/2. Everything else (unary
+        -- Connect, transcoding, the fallback) stays on `http`, buffered.
+        http_stream = connect ~= nil and function(head)
+            return connect:stream_handler(head)
+        end or nil,
         limits = srv_limits,
     })
     return self
