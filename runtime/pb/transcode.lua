@@ -900,7 +900,6 @@ function Router:_call(r, req, segs, n, last, query, ctx)
     local headers = {}
     copy_metadata(headers, ctx.response_metadata)
     headers['content-type'] = 'application/json'
-    if req.method == 'HEAD' then body = '' end
     return {status = 200, headers = headers, body = body}
 end
 
@@ -934,7 +933,12 @@ function Router:handle(req, ctx)
             end
         end
         if ok and match(r.tmpl, segs, n, last) then
-            return self:_call(r, req, segs, n, last, query, ctx)
+            local resp = self:_call(r, req, segs, n, last, query, ctx)
+            -- A response to HEAD carries no body (RFC 9110 9.3.2),
+            -- whatever produced it: success, a bind error, a status
+            -- raised by the handler or an internal error.
+            if req.method == 'HEAD' then resp.body = '' end
+            return resp
         end
     end
     return nil

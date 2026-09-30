@@ -926,6 +926,28 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(seen[1].req, {name = 'shelves/1/books/2'})
     end
 
+    -- Error responses to HEAD have no body either; status and headers stay.
+    g.test_check_book_head_errors_have_no_body = function()
+        local router, seen = new_router({
+            CheckBook = function(req)
+                if req.name == 'shelves/1/books/crash' then error('boom') end
+                pb.grpc.error(pb.grpc.code.NOT_FOUND, 'no ' .. req.name)
+            end,
+        })
+        local cases = {
+            {'/v1/shelves/1/books/%zz', 400},       -- bind error, handler not called
+            {'/v1/shelves/1/books/2', 404},         -- status raised by the handler
+            {'/v1/shelves/1/books/crash', 500},     -- plain Lua error
+        }
+        for _, c in ipairs(cases) do
+            local resp = handle(router, 'HEAD', c[1])
+            t.assert_equals(resp.status, c[2], c[1])
+            t.assert_equals(resp.body, '', c[1])
+            t.assert_equals(resp.headers['content-type'], 'application/json', c[1])
+        end
+        t.assert_equals(#seen, 2)
+    end
+
     g.test_delete_book_empty_response = function()
         local router = new_router({DeleteBook = function() return {} end})
         local resp = handle(router, 'DELETE', '/v1/shelves/1/books/2')
