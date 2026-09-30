@@ -206,6 +206,39 @@ g.test_builtins = function()
     t.assert_equals(names, {'Http', 'HttpRule', 'CustomHttpPattern'})
 end
 
+-- The shipped built-ins are what the host protoc serializes for the same
+-- files (`just gen` regenerates them from it), descriptor.proto included
+-- with its current FeatureSet / Edition data.
+g.test_builtins_match_protoc = function()
+    local out = fio.pathjoin(fio.tempdir(), 'builtin.pb')
+    local names = {}
+    for _, row in ipairs(BUILTIN) do names[#names + 1] = ('%q'):format(row[1]) end
+    sh(string.format('protoc --include_imports --descriptor_set_out=%q -I %q %s',
+        out, OPTIONS_DIR, table.concat(names, ' ')))
+    local SET = {
+        name = 'google.protobuf.FileDescriptorSet',
+        fields = {{name = 'file', id = 1, kind = 'scalar', proto_type = 'bytes',
+                   repeated = true, packed = false}},
+    }
+    SET.field_by_id = {[1] = SET.fields[1]}
+    SET.field_by_name = {file = SET.fields[1]}
+    codec.compile_writers(SET)
+    codec.compile_readers(SET)
+    local n = 0
+    for _, b in ipairs(codec.decode(SET, slurp(out)).file) do
+        local name = decode_file(b).name
+        t.assert_equals(pb.descriptors.file(name), b, name)
+        n = n + 1
+    end
+    t.assert_equals(n, #BUILTIN)
+    local desc = decode_file(pb.descriptors.file('google/protobuf/descriptor.proto'))
+    local has_edition = false
+    for _, e in ipairs(desc.enum_type) do
+        if e.name == 'Edition' then has_edition = true end
+    end
+    t.assert(has_edition, 'descriptor.proto carries the Edition enum')
+end
+
 g.test_files_is_sorted = function()
     local files = pb.descriptors.files()
     t.assert(#files >= #BUILTIN)

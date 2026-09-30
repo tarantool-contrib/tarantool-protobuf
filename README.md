@@ -386,7 +386,12 @@ just conformance
 ```
 
 (Mounts the repo into the container — generated Lua from `just gen` on the
-host is what gets tested.) Known failures live in
+host is what gets tested.) Keep the host `protoc` at the same release as
+`PROTOBUF_TAG` in the Dockerfile: `just gen` runs it, and so does
+`just gen-builtin-descriptors`, which writes the descriptors the runtime
+ships for the well-known types and `google/api` into
+`runtime/pb/descriptors_builtin.lua` (the protoc version is recorded in
+its header). Nothing checks the alignment automatically. Known failures live in
 `test/conformance/known_failures.txt` (binary + JSON suite) and
 `test/conformance/known_failures_text.txt` (text-format suite); both are
 empty.

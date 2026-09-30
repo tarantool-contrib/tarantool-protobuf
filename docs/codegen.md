@@ -383,8 +383,8 @@ cmd/protoc-gen-tarantool/
                        # emission (---@class, ---@field, ---@param)
 
 cmd/gen-builtin-descriptors/
-  main.go              # writes runtime/pb/descriptors_builtin.lua from
-                       # protobuf-go's registry (`just gen-builtin-descriptors`)
+  main.go              # writes runtime/pb/descriptors_builtin.lua from the
+                       # host protoc's descriptor set (`just gen-builtin-descriptors`)
 
 internal/
   builtindesc/         # the files whose descriptors the runtime ships

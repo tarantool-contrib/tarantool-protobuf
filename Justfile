@@ -89,10 +89,13 @@ clean-c:
 gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number gen-builtin-descriptors
 
 # Regenerate runtime/pb/descriptors_builtin.lua: the FileDescriptorProto
-# bytes of the well-known types and google/api/{annotations,http}.proto,
-# taken from protobuf-go's registry, which pb.descriptors ships.
+# bytes of the well-known types and google/api/{annotations,http}.proto
+# that pb.descriptors ships, as the host protoc serializes them (its
+# version goes into the file header). Keep the host protoc at the same
+# release as PROTOBUF_TAG in docker/conformance.Dockerfile — the same
+# rule as for `just gen`; nothing checks it automatically.
 gen-builtin-descriptors:
-    go run ./cmd/gen-builtin-descriptors > runtime/pb/descriptors_builtin.lua.tmp
+    go run ./cmd/gen-builtin-descriptors -I options > runtime/pb/descriptors_builtin.lua.tmp
     mv runtime/pb/descriptors_builtin.lua.tmp runtime/pb/descriptors_builtin.lua
 
 # Generate full-mode Lua (inline encode/decode bodies).
