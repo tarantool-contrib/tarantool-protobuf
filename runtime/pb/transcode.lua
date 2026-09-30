@@ -737,6 +737,16 @@ end
 
 -- Build the request message table from path, body and query.
 local function bind(r, segs, n, last, query, body_text)
+    -- A malformed percent-escape anywhere in the path is a bad request,
+    -- whether a variable captures that segment or a bare `*` / `**`
+    -- only matches it.
+    for i = 1, n do
+        local s = segs[i]
+        if i == n then s = last end
+        if pct_decode(s, false) == nil then
+            invalid('malformed percent-encoding in path segment %q', s)
+        end
+    end
     local t = {}
     -- Body first; path variables are written after it so a field bound
     -- by the path wins over the same field in a `*` or field body
@@ -760,10 +770,8 @@ local function bind(r, segs, n, last, query, body_text)
     local tmpl = r.tmpl
     for _, var in ipairs(tmpl.vars) do
         local raw = capture(tmpl, var, segs, n, last)
+        -- Cannot fail: every segment was checked above.
         local text = pct_decode(raw, var.multi)
-        if text == nil then
-            invalid('malformed percent-encoding in path for "%s"', var.name)
-        end
         local leaf = var.chain[#var.chain]
         set_leaf(t, var.chain, convert(leaf, text, 'path variable'), false)
     end

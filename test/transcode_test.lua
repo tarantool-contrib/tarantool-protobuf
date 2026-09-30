@@ -580,6 +580,24 @@ gq.test_rejected_path_values = function()
     bad_request(router, '/v1/items/1%zz/RED', 'malformed percent-encoding in path')
 end
 
+-- Segments matched by a bare `*` or `**` (not captured) are checked for
+-- malformed escapes too.
+gq.test_uncaptured_wildcards_reject_bad_escapes = function()
+    local m = pb.parse(QUERY_SCHEMA)
+    local srv, calls = fake_server(m.Q_service, {
+        Get = {{method = 'GET', pattern = '/x/*'}, {method = 'GET', pattern = '/y/**'},
+               {method = 'GET', pattern = '/z/*/{id}'}},
+    })
+    local router = tc.new({srv})
+    for _, p in ipairs({'/x/%zz', '/x/a%2', '/y/%zz', '/y/a/b/%g0', '/y/ok/%', '/z/%zz/1'}) do
+        bad_request(router, p, 'malformed percent-encoding in path segment')
+    end
+    t.assert_equals(#calls, 0)
+    t.assert_equals(call(router, calls, 'GET', '/x/a%20b'), {})
+    t.assert_equals(call(router, calls, 'GET', '/y/a/%2F/b'), {})
+    t.assert_equals(call(router, calls, 'GET', '/z/%41/1'), {id = '1'})
+end
+
 -- ---------------------------------------------------------------------------
 -- Route priority
 -- ---------------------------------------------------------------------------
