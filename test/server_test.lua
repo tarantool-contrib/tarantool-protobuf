@@ -432,6 +432,42 @@ h.test_connect_dispatch = function()
     t.assert_equals({r.status, json.decode(r.body).code}, {404, 5})
 end
 
+-- A servable JSON GET is weak (a GET rule at the same path takes it
+-- first) unless it carries a Connect marker, which makes it Connect's.
+h.test_connect_get_marker_beats_transcoding = function()
+    local lib = require('full.library.library_pb')
+    local seen = {}
+    local srv = lib.Library_server({
+        GetBook = function(r, ctx)
+            seen[#seen + 1] = ctx.protocol
+            return {name = r.name}
+        end,
+    })
+    -- The same service with a GET rule on the procedure path itself.
+    local methods = {}
+    for name, m in pairs(srv.service.methods) do
+        local copy = table.copy(m)
+        if name == 'GetBook' then
+            copy.http = {{method = 'GET', pattern = '/library.Library/GetBook'}}
+        else
+            copy.http = nil
+        end
+        methods[name] = copy
+    end
+    local routed = {service = table.copy(srv.service), methods = srv.methods}
+    routed.service.methods = methods
+    local handler = server._http_handler(pb.transcode.new({routed}), nil,
+                                         pb.connect.new({srv}))
+    local path = '/library.Library/GetBook?encoding=json&message=%7B%7D'
+    local function get(headers)
+        return handler({method = 'GET', path = path, headers = headers, body = ''})
+    end
+    t.assert_equals(get({}).status, 200)
+    t.assert_equals(get({['connect-protocol-version'] = '1'}).status, 200)
+    t.assert_equals(get({['content-type'] = 'application/proto'}).status, 200)
+    t.assert_equals(seen, {'http', 'connect', 'connect'})
+end
+
 -- ---------------------------------------------------------------------------
 -- new(): options and services
 -- ---------------------------------------------------------------------------

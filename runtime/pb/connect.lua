@@ -598,7 +598,12 @@ function Handler:match(req)
     if proc == nil then return nil end
     local headers = req.headers or {}
     local call = supported(req, proc, headers, query)
-    if call ~= nil then return call end
+    if call ~= nil then
+        -- A servable call that also carries a Connect marker (say a JSON
+        -- GET with a Connect-Protocol-Version header) is strong too.
+        if not call.strong then call.strong = connect_intent(req, headers, query) end
+        return call
+    end
     if connect_intent(req, headers, query) then
         return {proc = proc, strong = true, reject = self:reject(req)}
     end
