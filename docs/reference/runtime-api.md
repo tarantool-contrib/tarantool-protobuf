@@ -398,14 +398,23 @@ an unknown path, so the caller decides between 404, 405 or a fallback.
    only "every field not bound by the path template");
 3. query parameters, unless the body is `*`: each key is a dotted field
    path (proto or JSON names per segment); repeated fields take repeated
-   keys; enums take names or numbers; 64-bit integers become cdata; bools
-   take `true/false/1/0/t/f` (and capitalised forms); bytes take standard
-   or URL-safe base64, padded or not; `Timestamp`, `Duration`,
-   `FieldMask` and the wrapper types take their JSON string forms. Keys
-   for fields bound by the path or under the body field are skipped;
-   unknown keys are ignored (grpc-gateway's behaviour). A map field, a
-   message field named directly, a repeated message on the way, or a
-   second value for a non-repeated field is a 400.
+   keys; enums take names or the numbers of defined values (unlike a
+   JSON body, where proto3 enums stay open); integers take an optional
+   leading `+` or `-`, and 64-bit ones become cdata; floats reject
+   finite literals that overflow (`1e999`) but take `Infinity`,
+   `-Infinity` and `NaN`; bools take `true/false/1/0/t/f` (and
+   capitalised forms); bytes take standard or URL-safe base64, padding
+   optional but exact; `Timestamp`, `Duration`, `FieldMask` and the
+   wrapper types take their ProtoJSON string forms. Keys for fields
+   bound by the path or under the body field are skipped; unknown keys
+   are ignored (grpc-gateway's behaviour). A map field, a message field
+   named directly, a repeated message on the way, a key that continues
+   past a non-message field (`count.x`), a second value for a
+   non-repeated field, or a second member of a oneof is a 400.
+
+The same value rules apply to path variables. Path, query and body
+together may set at most one member of each oneof (the same member
+twice is fine: the path overrides the body).
 
 **Calling.** The bound message is encoded, handed to
 `server.methods[path](bytes, ctx)` and the result decoded — the same

@@ -329,10 +329,14 @@ local function digits_le(a, b)
     return a <= b
 end
 
+-- Decimal integer within [-lo_neg, hi] (lo_neg nil: no negatives), as
+-- a normalised string, or nil. A leading '+' is accepted, as Go's
+-- strconv (grpc-gateway) accepts it.
 local function parse_int(s, lo_neg, hi)
-    local neg, digits = s:match('^(%-?)(%d+)$')
+    local neg, digits = s:match('^([-+]?)(%d+)$')
     if digits == nil then return nil end
     digits = digits:gsub('^0+(%d)', '%1')
+    if neg == '+' then neg = '' end
     if neg == '-' then
         if lo_neg == nil or not digits_le(digits, lo_neg) then return nil end
     elseif not digits_le(digits, hi) then
@@ -443,8 +447,11 @@ local function convert(f, s, where)
     elseif f.kind == 'enum' then
         v = f.enum.by_name[s]
         if v == nil then
+            -- A number must name a defined value here (grpc-gateway
+            -- checks it); JSON bodies keep ProtoJSON's open enums.
             local num = parse_int(s, '2147483648', '2147483647')
             v = num and tonumber(num)
+            if v ~= nil and f.enum.by_value[v] == nil then v = nil end
         end
     else
         local name = f.message.name
@@ -788,10 +795,17 @@ local function bind(r, segs, n, last, query, body_text)
             if key == nil or val == nil then
                 invalid('malformed percent-encoding in query parameter %q', rk)
             end
-            -- Resolve the dotted key; unknown names are ignored.
+            -- Resolve the dotted key; unknown names are ignored, but a
+            -- key that continues past a known non-message field
+            -- (`big.x` for an int64 `big`) is an error, as in
+            -- grpc-gateway.
             local chain, desc, canon = {}, r.input, {}
             for i, id in ipairs((split(key, '.'))) do
-                local f = desc and field_index(desc)[id]
+                if desc == nil then
+                    invalid('query parameter %q: field "%s" is not a message',
+                            key, table.concat(canon, '.'))
+                end
+                local f = field_index(desc)[id]
                 if f == nil then chain = nil; break end
                 chain[i] = f
                 canon[i] = f.name

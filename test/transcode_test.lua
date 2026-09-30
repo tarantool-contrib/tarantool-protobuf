@@ -472,6 +472,34 @@ gq.test_enums_by_name_and_number = function()
                     {1, 2, 2})
 end
 
+-- grpc-gateway parity: a leading '+' on integers is accepted; a number
+-- for an enum must name a defined value (JSON bodies stay open).
+gq.test_integer_plus_sign_and_closed_numeric_enums = function()
+    local router, calls = query_router()
+    local req = call(router, calls, 'GET',
+        '/v1/items/x?small=%2B7&big=%2B5&usmall=%2B1&color=%2B1&colors=%2B2')
+    t.assert_equals(req.small, 7)
+    t.assert_equals(req.big, i64('5'))
+    t.assert_equals(req.usmall, 1)
+    t.assert_equals(req.color, 1)
+    t.assert_equals(req.colors, {2})
+    bad_request(router, '/v1/items/x?small=%2B-1', '"small"')
+    bad_request(router, '/v1/items/x?small=%2B%2B1', '"small"')
+    bad_request(router, '/v1/items/x?color=7', 'invalid value "7" for query parameter "color"')
+    bad_request(router, '/v1/items/x?colors=RED&colors=9', 'invalid value "9"')
+    bad_request(router, '/v1/items/x?color=-1', 'invalid value "-1"')
+end
+
+-- A dotted key that continues past a scalar is an error, not an
+-- unknown parameter.
+gq.test_dotted_key_through_scalar = function()
+    local router, calls = query_router()
+    bad_request(router, '/v1/items/x?big.x=1', 'field "big" is not a message')
+    bad_request(router, '/v1/items/x?inner.s.x=1', 'field "inner.s" is not a message')
+    bad_request(router, '/v1/items/x?at.seconds=1', 'field "at" is not a message')
+    t.assert_equals(#calls, 0)
+end
+
 gq.test_repeated_via_repeated_keys = function()
     local router, calls = query_router()
     local req = call(router, calls, 'GET', '/v1/items/x?tags=a&nums=1&tags=b&nums=-2&tags=')
