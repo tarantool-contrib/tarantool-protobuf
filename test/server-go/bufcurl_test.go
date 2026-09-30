@@ -3,6 +3,7 @@ package servergo
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,23 +151,108 @@ func TestBufCurl(t *testing.T) {
 	})
 }
 
-// TestBufCurlConnectUnsupported pins that pb.server does not speak the
-// Connect protocol, buf curl's default. The request carries a local
-// schema instead of reflection, so it fails at once: the Connect POST
-// matches no route and comes back as HTTP 404, which buf curl reports
-// as UNIMPLEMENTED (exit 8 x 12). When the server learns Connect, this
-// test is expected to fail; turn it into a positive one then.
-func TestBufCurlConnectUnsupported(t *testing.T) {
+// bufConnect runs `buf curl` with its default protocol, Connect (with
+// the proto codec), and the schema from a local file instead of server
+// reflection. h2 adds --http2-prior-knowledge; without it buf curl
+// speaks HTTP/1.1.
+func bufConnect(t *testing.T, h2 bool, args ...string) bufCurlResult {
+	t.Helper()
+	pre := []string{"--schema", "examples/proto/hello.proto"}
+	if h2 {
+		pre = append(pre, "--http2-prior-knowledge")
+	}
+	return runBufCurl(t, append(pre, args...)...)
+}
+
+// TestBufCurlConnect drives the Connect protocol with buf curl's
+// defaults and a local schema, over HTTP/1.1 and h2c.
+func TestBufCurlConnect(t *testing.T) {
 	s := srv(t)
-	r := runBufCurl(t,
-		"--http2-prior-knowledge",
-		"--schema", "examples/proto/hello.proto",
-		"-d", `{"name": "Dave"}`,
-		"http://"+s.addr+"/hello.Greeter/SayHello")
-	assert.Equal(t, 96, r.code, r)
-	assert.Empty(t, r.stdout)
-	var st map[string]any
-	require.NoError(t, json.Unmarshal([]byte(r.stderr), &st), r)
-	assert.Equal(t, "unimplemented", st["code"], r)
-	assert.Equal(t, "404 Not Found", st["message"], r)
+	base := "http://" + s.addr
+	for _, h2 := range []bool{false, true} {
+		name := "http1"
+		if h2 {
+			name = "h2c"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Run("unary", func(t *testing.T) {
+				r := bufConnect(t, h2, "-d", `{"name": "Dave"}`, base+"/hello.Greeter/SayHello")
+				require.Equal(t, 0, r.code, r)
+				assert.Equal(t, []map[string]any{{"greeting": "Hello, Dave"}},
+					decodeJSONStream(t, r.stdout))
+			})
+
+			t.Run("server-streaming", func(t *testing.T) {
+				r := bufConnect(t, h2, "-d", `{"name": "Eve"}`, base+"/hello.Greeter/StreamHellos")
+				require.Equal(t, 0, r.code, r)
+				assert.Equal(t, []map[string]any{
+					{"greeting": "Hello #1, Eve"},
+					{"greeting": "Hello #2, Eve"},
+					{"greeting": "Hello #3, Eve"},
+				}, decodeJSONStream(t, r.stdout))
+			})
+
+			t.Run("client-streaming", func(t *testing.T) {
+				r := bufConnect(t, h2, "-d", `{"name": "a"} {"name": "b"}`,
+					base+"/hello.Greeter/CollectHellos")
+				require.Equal(t, 0, r.code, r)
+				assert.Equal(t, []map[string]any{{"greeting": "Hello, a, b"}},
+					decodeJSONStream(t, r.stdout))
+			})
+
+			t.Run("error-with-details", func(t *testing.T) {
+				r := bufConnect(t, h2, "-d", `{"name": "missing"}`, base+"/hello.Greeter/SayHello")
+				// buf curl exits with 8 times the numeric code: NOT_FOUND is 5.
+				assert.Equal(t, 40, r.code, r)
+				assert.Empty(t, r.stdout)
+				var st struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+					Details []struct {
+						Type  string `json:"type"`
+						Value string `json:"value"`
+					} `json:"details"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(r.stderr), &st), r)
+				assert.Equal(t, "not_found", st.Code, r)
+				assert.Equal(t, "no such person: missing", st.Message, r)
+				require.Len(t, st.Details, 1, r)
+				assert.Equal(t, "hello.HelloReply", st.Details[0].Type, r)
+				// HelloReply{greeting: "try someone else"} in unpadded
+				// base64, as the protocol asks servers to emit it.
+				want := base64.RawStdEncoding.EncodeToString([]byte("\x0a\x10try someone else"))
+				assert.Equal(t, want, st.Details[0].Value, r)
+			})
+		})
+	}
+
+	// A half-duplex bidi call: buf curl sends every message, then ends
+	// its request, so the buffered request reaches the handler whole.
+	t.Run("bidi-half-duplex", func(t *testing.T) {
+		r := bufConnect(t, true, "-d", `{"name": "x"} {"name": "y"}`, base+"/hello.Greeter/Chat")
+		require.Equal(t, 0, r.code, r)
+		assert.Equal(t, []map[string]any{{"greeting": "Echo x"}, {"greeting": "Echo y"}},
+			decodeJSONStream(t, r.stdout))
+	})
+}
+
+// TestBufCurlConnectReflection pins what does not work over Connect
+// yet: server reflection. buf curl's reflection client (grpc.reflection
+// ServerReflectionInfo, a bidi stream) sends one request and waits for
+// its answer before sending the next or ending the request: a
+// full-duplex call. pb.server's Connect handler sees a request only
+// once its body has ended (tarantool-http2's HTTP handler contract), so
+// the call never reaches it and buf curl gives up at its timeout.
+// Reflection over gRPC (TestBufCurl) is unaffected. When the HTTP
+// handler can stream, this test is expected to fail; turn it into a
+// positive one then.
+func TestBufCurlConnectReflection(t *testing.T) {
+	s := srv(t)
+	start := time.Now()
+	r := runBufCurl(t, "--http2-prior-knowledge", "--timeout", "2s",
+		"--list-services", "http://"+s.addr)
+	assert.GreaterOrEqual(t, time.Since(start), 2*time.Second, r)
+	assert.NotEqual(t, 0, r.code, r)
+	assert.Empty(t, r.stdout, r)
+	assert.Contains(t, r.stderr, "deadline_exceeded", r)
 }
