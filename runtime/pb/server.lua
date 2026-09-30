@@ -13,6 +13,8 @@
 --     unless disabled;
 --   * HTTP/JSON transcoding of the services' google.api.http rules
 --     (pb.transcode) over HTTP/1.1 and HTTP/2, unless disabled;
+--   * the Connect protocol (pb.connect) for every service, over
+--     HTTP/1.1 and HTTP/2, unless disabled;
 --   * an optional fallback HTTP handler for requests nothing routed.
 --
 -- The socket, HTTP/2 and gRPC framing live in the `http2` rock
@@ -116,6 +118,7 @@ M._failure = failure
 -- `nil, code[, message]` instead of raising.
 function M._unary_handler(fn)
     return function(ctx, req_bytes)
+        if type(ctx) == 'table' then ctx.protocol = 'grpc' end
         local ok, resp, code, message = xpcall(fn, capture, req_bytes, ctx)
         if not ok then return failure(ctx, resp) end
         if resp == nil and code ~= nil then
@@ -183,12 +186,15 @@ end
 
 -- stream_handler(entry) -> http2 streaming handler over a generated
 -- `streams[path]` entry {kind, handler(req_bytes, view, ctx)}. A
--- server-streaming call reads its one request message first. The
--- handler returning ends the call with OK (http2 closes the stream); a
--- raised status object ends it with that status.
+-- server-streaming call reads its one request message and the client's
+-- half-close first: another number of messages is a cardinality
+-- violation, UNIMPLEMENTED by the gRPC status code table. The handler
+-- returning ends the call with OK (http2 closes the stream); a raised
+-- status object ends it with that status.
 function M._stream_handler(entry)
     local kind, handler = entry.kind, entry.handler
     return function(ctx, stream)
+        if type(ctx) == 'table' then ctx.protocol = 'grpc' end
         local view = M._stream_view(stream)
         local req_bytes
         if kind == 'server_stream' then
@@ -196,11 +202,18 @@ function M._stream_handler(entry)
             req_bytes, err = view:recv()
             if req_bytes == nil then
                 if err == nil then
-                    return nil, CODE.INTERNAL,
+                    return nil, CODE.UNIMPLEMENTED,
                         'server-streaming call received no request message'
                 end
                 return -- the call already ended (reset, deadline)
             end
+            local more
+            more, err = view:recv()
+            if more ~= nil then
+                return nil, CODE.UNIMPLEMENTED,
+                    'server-streaming call received more than one request message'
+            end
+            if err ~= nil then return end -- the call already ended
         end
         local ok, err = xpcall(handler, capture, req_bytes, view, ctx)
         if ok then return end
@@ -268,17 +281,30 @@ end
 -- HTTP
 -- ---------------------------------------------------------------------------
 
--- http_handler(router, fallback) -> http2 HTTP handler: the transcoding
--- router first, then the user's fallback, then a 404 in the
--- google.rpc.Status JSON shape. Transcoded calls get the ctx
--- pb.transcode builds from the request (metadata from its headers, its
--- peer, no deadline).
+-- http_handler(router, fallback, connect) -> http2 HTTP handler. In
+-- order:
+--
+--   1. a Connect call that can only be Connect (pb.connect's `strong`
+--      match: a protobuf or enveloped content-type, a
+--      Connect-Protocol-Version header, a `connect=v1` query);
+--   2. the transcoding router;
+--   3. any other Connect call (a plain JSON POST or GET to a procedure
+--      path, which an HTTP/JSON rule for the same path takes first);
+--   4. the user's fallback;
+--   5. for a procedure path, the Connect rejection (415 for a wrong
+--      content-type, 405 for a wrong method);
+--   6. a 404: in the Connect error shape for a request that is plainly
+--      Connect, in the google.rpc.Status JSON shape otherwise.
+--
+-- Transcoded calls get the ctx pb.transcode builds from the request
+-- (metadata from its headers, its peer, no deadline); Connect calls the
+-- one pb.connect builds (with Connect-Timeout-Ms as the deadline).
 --
 -- The 404 is rendered by the router itself, so it follows the same JSON
 -- options as the router's own errors (`details: []` under the defaults,
 -- omitted with emit_defaults = false). Without transcoding, a router
 -- with no routes and default options renders it.
-function M._http_handler(router, fallback)
+function M._http_handler(router, fallback, connect)
     local renderer = router or require('pb.transcode').new({})
     local function not_found(req)
         local path = tostring(req.path or ''):match('^[^?#]*')
@@ -286,12 +312,19 @@ function M._http_handler(router, fallback)
             ('no route for %s %s'):format(tostring(req.method), path)))
     end
     return function(req)
+        local call = connect ~= nil and connect:match(req) or nil
+        if call ~= nil and call.strong then return connect:serve(call, req) end
         if router ~= nil then
             local resp = router:handle(req)
             if resp ~= nil then return resp end
         end
+        if call ~= nil then return connect:serve(call, req) end
         if fallback ~= nil then
             local resp = fallback(req)
+            if resp ~= nil then return resp end
+        end
+        if connect ~= nil then
+            local resp = connect:reject(req) or connect:not_found(req)
             if resp ~= nil then return resp end
         end
         return not_found(req)
@@ -304,8 +337,8 @@ end
 
 local OPTIONS = {
     listen = true, host = true, port = true, services = true,
-    reflection = true, health = true, transcoding = true, http = true,
-    limits = true,
+    reflection = true, health = true, transcoding = true, connect = true,
+    http = true, limits = true,
 }
 
 local function parse_listen(opts)
@@ -359,6 +392,7 @@ Server.__index = Server
 ---@field reflection?  boolean         serve grpc.reflection v1 + v1alpha (default true)
 ---@field health?      boolean|table   serve grpc.health.v1 (default true); a table is pb.health.new's opts
 ---@field transcoding? boolean|table   google.api.http routes (default true); a table is pb.transcode.new's opts
+---@field connect?     boolean|table   the Connect protocol (default true); a table is pb.connect.new's opts
 ---@field http?        fun(req: table): table?  fallback for HTTP requests nothing routed
 ---@field limits?      table           http2 limits: registry keys to http2.grpc.new, the rest to http2.server.new
 
@@ -382,7 +416,7 @@ function M.new(opts)
             error(('pb.server.new: %s must be a boolean'):format(k), 2)
         end
     end
-    for _, k in ipairs({'health', 'transcoding'}) do
+    for _, k in ipairs({'health', 'transcoding', 'connect'}) do
         local v = opts[k]
         if v ~= nil and type(v) ~= 'boolean' and type(v) ~= 'table' then
             error(('pb.server.new: %s must be a boolean or an options table'):format(k), 2)
@@ -432,6 +466,21 @@ function M.new(opts)
     end
     self._router = router
 
+    -- Connect serves every service the gRPC registry does, reflection
+    -- and health included, with the registry's receive limit.
+    local connect
+    if opts.connect ~= false then
+        local copts = {}
+        if type(opts.connect) == 'table' then
+            for k, v in pairs(opts.connect) do copts[k] = v end
+        end
+        if copts.max_recv_message_size == nil and opts.limits ~= nil then
+            copts.max_recv_message_size = opts.limits.max_recv_message_size
+        end
+        connect = require('pb.connect').new(all, copts)
+    end
+    self._connect = connect
+
     local http2 = load_http2()
     local reg_limits, srv_limits = {}, {}
     for k, v in pairs(opts.limits or {}) do
@@ -447,7 +496,7 @@ function M.new(opts)
     self._registry = registry
     self._http2 = http2.server.new({
         grpc = registry,
-        http = M._http_handler(router, opts.http),
+        http = M._http_handler(router, opts.http, connect),
         limits = srv_limits,
     })
     return self
@@ -485,6 +534,11 @@ end
 -- router() -> the pb.transcode router, nil when transcoding is disabled.
 function Server:router()
     return self._router
+end
+
+-- connect() -> the pb.connect handler, nil when Connect is disabled.
+function Server:connect()
+    return self._connect
 end
 
 -- set_serving_status(service, status) sets the health status of a

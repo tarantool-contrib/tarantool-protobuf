@@ -927,6 +927,7 @@ local function new_ctx(r, req)
         peer = req.peer,
         response_metadata = {},
         trailing_metadata = {},
+        protocol = 'http',
         is_cancelled = function() return false end,
     }
 end

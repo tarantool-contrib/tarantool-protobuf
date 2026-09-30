@@ -160,9 +160,18 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(reply(s.sent[3]), 'n3')
     end
 
-    g.test_server_stream_without_request = function()
+    -- A cardinality violation: UNIMPLEMENTED, and the handler never runs.
+    g.test_server_stream_request_count = function()
         local _, code = streaming('StreamHellos', fake_stream({}))
-        t.assert_equals(code, grpc.code.INTERNAL)
+        t.assert_equals(code, grpc.code.UNIMPLEMENTED)
+        local s = fake_stream({req('a'), req('b')})
+        _, code = streaming('StreamHellos', s)
+        t.assert_equals(code, grpc.code.UNIMPLEMENTED)
+        t.assert_equals(s.sent, {})
+        -- The call ending while the server waits for the half-close.
+        s = fake_stream({req('a'), {err = 'cancelled'}})
+        t.assert_equals({streaming('StreamHellos', s)}, {})
+        t.assert_equals(s.sent, {})
     end
 
     g.test_client_stream_half_close = function()
@@ -338,6 +347,72 @@ h.test_404_follows_router_json_options = function()
     end
 end
 
+-- Connect and transcoding on one handler. A request that can only be
+-- Connect goes to Connect even when an HTTP/JSON rule matches the same
+-- path; a plain JSON POST (no Connect-Protocol-Version) goes to the
+-- rule first and to Connect only when no rule takes it.
+h.test_connect_dispatch = function()
+    local greeter = require('full.hello.hello_pb').Greeter_server({
+        SayHello = function(r)
+            if r.name == 'missing' then grpc.error(grpc.code.NOT_FOUND, 'nobody') end
+            return {greeting = 'Hi ' .. (r.name or '')}
+        end,
+    })
+    local services = {greeter, library_server()}
+    local conn = pb.connect.new(services)
+    local fallback = function(req)
+        if req.headers['x-fallback'] then return {status = 299, body = 'fallback'} end
+    end
+    local function call(handler, method, path, ct, body, headers)
+        local hdrs = {['content-type'] = ct}
+        for k, v in pairs(headers or {}) do hdrs[k] = v end
+        return handler({method = method, path = path, headers = hdrs, body = body or ''})
+    end
+    local missing = '{"name": "missing"}'
+
+    -- `unbound` exposes SayHello as POST /hello.Greeter/SayHello.
+    local both = server._http_handler(pb.transcode.new(services, {unbound = true}), fallback, conn)
+    local r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/json', missing)
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 5}, 'transcoding answered')
+    r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/json', missing,
+             {['connect-protocol-version'] = '1'})
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 'not_found'}, 'Connect answered')
+    r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/proto',
+             require('full.hello.hello_pb').HelloRequest_encode({name = 'P'}))
+    t.assert_equals({r.status, r.headers['content-type']}, {200, 'application/proto'})
+    -- Transcoding routes keep working.
+    r = call(both, 'GET', '/v1/shelves/1/books/1')
+    t.assert_equals({r.status, json.decode(r.body).name}, {200, 'shelves/1/books/1'})
+    -- Connect GET for a NO_SIDE_EFFECTS method.
+    r = call(both, 'GET', '/library.Library/GetBook?encoding=json&message=%7B%22name%22%3A%22x%22%7D')
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 'not_found'})
+
+    -- No transcoding rule at the path: a plain JSON POST is Connect.
+    local only = server._http_handler(pb.transcode.new(services), fallback, conn)
+    r = call(only, 'POST', '/hello.Greeter/SayHello', 'application/json', missing)
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 'not_found'})
+
+    -- Not a Connect call at a procedure path: the fallback first, then
+    -- the Connect rejection instead of the 404.
+    r = call(only, 'POST', '/hello.Greeter/SayHello', 'image/jpeg', 'x', {['x-fallback'] = '1'})
+    t.assert_equals({r.status, r.body}, {299, 'fallback'})
+    r = call(only, 'POST', '/hello.Greeter/SayHello', 'image/jpeg', 'x')
+    t.assert_equals(r.status, 415)
+    r = call(only, 'DELETE', '/hello.Greeter/SayHello')
+    t.assert_equals({r.status, r.headers.allow}, {405, 'POST'})
+    -- An unknown procedure: a Connect call gets the Connect error shape,
+    -- a plain JSON POST the google.rpc.Status one.
+    r = call(only, 'POST', '/hello.Greeter/Nope', 'application/proto')
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 'unimplemented'})
+    r = call(only, 'POST', '/hello.Greeter/Nope', 'application/json', '{}')
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 5})
+
+    -- Connect disabled: the transcoding 404.
+    local off = server._http_handler(pb.transcode.new(services), nil, nil)
+    r = call(off, 'POST', '/hello.Greeter/SayHello', 'application/proto', '')
+    t.assert_equals({r.status, json.decode(r.body).code}, {404, 5})
+end
+
 -- ---------------------------------------------------------------------------
 -- new(): options and services
 -- ---------------------------------------------------------------------------
@@ -365,6 +440,7 @@ n.test_bad_options = function()
         {{port = 0, services = {{}}}, 'services[1] is not a generated server table'},
         {{port = 0, services = {}, reflection = 'yes'}, 'reflection must be a boolean'},
         {{port = 0, services = {}, health = 1}, 'health must be a boolean or an options table'},
+        {{port = 0, services = {}, connect = 'yes'}, 'connect must be a boolean or an options table'},
         {{port = 0, services = {}, http = {}}, 'http must be a function'},
         {{port = 0, services = {}, bogus = true}, 'unknown option "bogus"'},
     }
@@ -489,6 +565,74 @@ live.test_grpc_over_http_client = function()
         r = call('/hello.Greeter/Nope', '')
         t.assert_equals(r.status, 200)
         t.assert_equals(r.headers['grpc-status'], tostring(grpc.code.UNIMPLEMENTED))
+    end)
+    s:stop(1)
+    if not ok then error(err, 0) end
+end
+
+-- Connect over HTTP/1.1 from Tarantool's own http.client: unary JSON,
+-- a GET, a server stream, the receive limit shared with gRPC, and the
+-- option that turns it off.
+live.test_connect = function()
+    t.skip_if(not HAVE_HTTP2, NO_HTTP2)
+    local http_client = require('http.client')
+    local lib = require('full.library.library_pb')
+    local services = {
+        hello.Greeter_server({
+            SayHello = function(r, ctx)
+                ctx.trailing_metadata['x-cost'] = '7'
+                return {greeting = 'Hi ' .. r.name .. ' via ' .. ctx.protocol}
+            end,
+            StreamHellos = function(r, stream)
+                for i = 1, 3 do stream:send({greeting = i .. ' ' .. r.name}) end
+            end,
+        }),
+        lib.Library_server({GetBook = function(r) return {name = r.name, title = 'T'} end}),
+    }
+    local s = server.new({listen = '127.0.0.1:0', services = services,
+                          limits = {max_recv_message_size = 64}}):start()
+    local ok, err = pcall(function()
+        t.assert(s:connect() ~= nil)
+        local base = ('http://127.0.0.1:%d'):format(s:address().port)
+        local JSON = {timeout = 5, headers = {['content-type'] = 'application/json',
+                                              ['connect-protocol-version'] = '1'}}
+        local r = http_client.post(base .. '/hello.Greeter/SayHello', '{"name":"Ann"}', JSON)
+        t.assert_equals(r.status, 200, r.body)
+        t.assert_equals(json.decode(r.body), {greeting = 'Hi Ann via connect'})
+        t.assert_equals(r.headers['trailer-x-cost'], '7')
+
+        r = http_client.get(base .. '/library.Library/GetBook?encoding=json&connect=v1'
+                            .. '&message=%7B%22name%22%3A%22b%22%7D', {timeout = 5})
+        t.assert_equals({r.status, r.body}, {200, '{"name":"b","title":"T"}'})
+
+        r = http_client.post(base .. '/hello.Greeter/StreamHellos',
+            pb.connect.envelope(0, hello.HelloRequest_encode({name = 'Bo'})),
+            {timeout = 5, headers = {['content-type'] = 'application/connect+proto'}})
+        t.assert_equals(r.status, 200)
+        t.assert_equals(r.headers['content-type'], 'application/connect+proto')
+        local body, n, flags = r.body, 0, {}
+        while #body > 0 do
+            local len = body:byte(2) * 2^24 + body:byte(3) * 2^16 + body:byte(4) * 2^8 + body:byte(5)
+            n = n + 1
+            flags[n] = body:byte(1)
+            body = body:sub(6 + len)
+        end
+        t.assert_equals(flags, {0, 0, 0, 2})
+
+        r = http_client.post(base .. '/hello.Greeter/SayHello',
+                             json.encode({name = ('x'):rep(100)}), JSON)
+        t.assert_equals(r.status, 429)
+        t.assert_equals(json.decode(r.body).code, 'resource_exhausted')
+    end)
+    s:stop(1)
+    if not ok then error(err, 0) end
+
+    s = server.new({listen = '127.0.0.1:0', services = services, connect = false}):start()
+    ok, err = pcall(function()
+        t.assert_equals(s:connect(), nil)
+        local r = http_client.post(('http://127.0.0.1:%d/hello.Greeter/SayHello'):format(
+            s:address().port), '', {timeout = 5, headers = {['content-type'] = 'application/proto'}})
+        t.assert_equals(r.status, 404)
     end)
     s:stop(1)
     if not ok then error(err, 0) end

@@ -13,6 +13,7 @@ local wire    = require('pb.wire')
 local wkt     = require('pb.wkt')
 local grpc    = require('pb.grpc')
 local transcode = require('pb.transcode')
+local connect = require('pb.connect')
 local parser  = require('pb.parser')
 local dynamic = require('pb.dynamic')
 local fileset = require('pb.fileset')
@@ -108,6 +109,11 @@ local M = {
     -- runtime/pb/transcode.lua. pb.transcode.new(servers, opts) -> router;
     -- router:handle(req[, ctx]) -> resp | nil.
     transcode = transcode,
+
+    -- The Connect protocol over buffered HTTP requests — see
+    -- runtime/pb/connect.lua. pb.connect.new(servers, opts) -> handler;
+    -- handler:handle(req) -> resp | nil.
+    connect = connect,
 
     -- C-acceleration runtime, or nil when disabled. Non-nil only when
     -- PB_ENABLE_C=1 is set at module load AND require('pb.c_runtime')
