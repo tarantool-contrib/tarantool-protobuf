@@ -42,6 +42,7 @@ build = {
         ["pb.lazy"]          = "runtime/pb/lazy.lua",
         ["pb.parser"]        = "runtime/pb/parser.lua",
         ["pb.text"]          = "runtime/pb/text.lua",
+        ["pb.transcode"]     = "runtime/pb/transcode.lua",
         ["pb.tuple"]         = "runtime/pb/tuple.lua",
         ["pb.wire"]          = "runtime/pb/wire.lua",
         ["pb.wkt"]           = "runtime/pb/wkt.lua",

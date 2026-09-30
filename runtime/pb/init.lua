@@ -12,6 +12,7 @@ local codec   = require('pb.codec')
 local wire    = require('pb.wire')
 local wkt     = require('pb.wkt')
 local grpc    = require('pb.grpc')
+local transcode = require('pb.transcode')
 local parser  = require('pb.parser')
 local dynamic = require('pb.dynamic')
 local fileset = require('pb.fileset')
@@ -102,6 +103,11 @@ return {
 
     -- gRPC transport interface + loopback — see runtime/pb/grpc.lua.
     grpc   = grpc,
+
+    -- HTTP/JSON transcoding from google.api.http rules — see
+    -- runtime/pb/transcode.lua. pb.transcode.new(servers, opts) -> router;
+    -- router:handle(req[, ctx]) -> resp | nil.
+    transcode = transcode,
 
     -- C-acceleration runtime, or nil when disabled. Non-nil only when
     -- PB_ENABLE_C=1 is set at module load AND require('pb.c_runtime')

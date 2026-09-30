@@ -86,6 +86,7 @@
 ---@field lookup      fun(name_or_url: string): pb.Descriptor?
 ---@field any         pb.Any
 ---@field grpc        pb.Grpc
+---@field transcode   pb.Transcode
 ---@field c_runtime?  table                                  # set when PB_ENABLE_C=1 and load succeeds
 ---@field parse       fun(source: string): table             # AST -> runtime module
 ---@field from_pb     fun(bytes: string): pb.FileSet
@@ -133,6 +134,36 @@
 ---@class pb.Json
 ---@field encode fun(desc: pb.Descriptor, t: table, opts?: pb.JsonEncodeOpts): string
 ---@field decode fun(desc: pb.Descriptor, s: string, opts?: pb.JsonDecodeOpts): table
+---@field encode_field fun(desc: pb.Descriptor, t: table, field_name: string, opts?: pb.JsonEncodeOpts): string
+---@field decode_field fun(desc: pb.Descriptor, field_name: string, s: string, opts?: pb.JsonDecodeOpts): any
+---@field json_name fun(name: string): string
+
+---@class pb.HttpRequest
+---@field method  string
+---@field path    string                 path with the query string, as received
+---@field headers? table<string, string>  lowercased names
+---@field body?    string
+---@field version? string
+---@field peer?    string
+
+---@class pb.HttpResponse
+---@field status  integer
+---@field headers table<string, string>
+---@field body    string
+
+---@class pb.TranscodeRoute
+---@field method  string
+---@field pattern string
+---@field path    string                 '/pkg.Service/Method'
+---@field body?   string
+---@field response_body? string
+
+---@class pb.TranscodeRouter
+---@field handle fun(self: pb.TranscodeRouter, req: pb.HttpRequest, ctx?: table): pb.HttpResponse?
+---@field routes fun(self: pb.TranscodeRouter): pb.TranscodeRoute[]
+
+---@class pb.Transcode
+---@field new fun(servers: table[], opts?: pb.TranscodeOpts): pb.TranscodeRouter
 
 ---@class pb.Text
 ---@field encode fun(desc: pb.Descriptor, t: table, opts?: pb.TextOpts): string
