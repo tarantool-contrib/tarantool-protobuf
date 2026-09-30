@@ -86,7 +86,20 @@ clean-c:
 # ---------------------------------------------------------------------------
 
 # Regenerate examples/expected/{full,runtime}/* + conformance protos.
-gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number gen-builtin-descriptors
+gen: gen-full gen-runtime gen-conformance gen-proto2-tests gen-int64-as-number gen-builtin-descriptors gen-grpc-services
+
+# Regenerate runtime/pb/gen/: the gRPC reflection (v1, v1alpha) and health
+# services from the vendored upstream protos (third_party/grpc-proto),
+# compiled by this plugin. pb.reflection and pb.health build on them.
+gen-grpc-services: build
+    protoc \
+        --plugin=./{{plugin}} \
+        --tarantool_out=runtime \
+        --tarantool_opt=mode=runtime,prefix=pb.gen \
+        -I third_party/grpc-proto \
+        third_party/grpc-proto/grpc/reflection/v1/reflection.proto \
+        third_party/grpc-proto/grpc/reflection/v1alpha/reflection.proto \
+        third_party/grpc-proto/grpc/health/v1/health.proto
 
 # Regenerate runtime/pb/descriptors_builtin.lua: the FileDescriptorProto
 # bytes of the well-known types and google/api/{annotations,http}.proto
