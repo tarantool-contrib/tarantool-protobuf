@@ -1019,9 +1019,9 @@ end
 
 -- JSON value of one top-level field of `desc` taken from `t`, the way
 -- it would appear under its key in M.encode's output. An unset field
--- renders as its default: `{}` for a message or map, `[]` for a
--- repeated field, the zero value for a scalar or enum. Used by HTTP
--- transcoding for `response_body`.
+-- renders as `null` for a singular message (well-known types
+-- included), `{}` for a map, `[]` for a repeated field, the zero value
+-- for a scalar or enum. Used by HTTP transcoding for `response_body`.
 local function encode_one_field(desc, f, t)
     local v = t[f.name]
     local empty_map = setmetatable({}, {__serialize='map'})
@@ -1041,11 +1041,11 @@ local function encode_one_field(desc, f, t)
         return arr
     end
     if rawequal(v, nil) then
-        if f.kind == 'message' then
-            local out = encode_message(f.message, {})
-            if rawequal(out, nil) then return empty_map end
-            return out
-        end
+        -- An unset message is JSON null, as protojson prints it. Feeding
+        -- the encoder a synthesised `{}` instead is wrong for the
+        -- well-known types, whose Lua value is not a field table (an
+        -- unset Int64Value would print "table: 0x...").
+        if f.kind == 'message' then return box.NULL end
         v = zero_value_for_field(f)
     end
     return encode_field_value(f, v)

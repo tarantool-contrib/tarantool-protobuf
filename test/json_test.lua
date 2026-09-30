@@ -566,7 +566,30 @@ gfield.test_encode_field_repeated_and_defaults = function()
     t.assert_equals(reparse(s), {{name = 'a'}, {name = 'b'}})
     t.assert_equals(pb.json.encode_field(d, {}, 'books'), '[]')
     t.assert_equals(pb.json.encode_field(d, {}, 'next_page_token'), '""')
-    t.assert_equals(pb.json.encode_field(library.LookupBookResponse_descriptor, {}, 'book'), '{}')
+    t.assert_equals(pb.json.encode_field(library.LookupBookResponse_descriptor, {}, 'book'), 'null')
+end
+
+-- An unset message field is null, including well-known types whose Lua
+-- value is not a field table; set ones use their JSON form.
+gfield.test_encode_field_unset_well_known_types = function()
+    local m = pb.parse([[
+        syntax = "proto3"; package jf;
+        import "google/protobuf/wrappers.proto";
+        import "google/protobuf/timestamp.proto";
+        message R {
+          google.protobuf.Int64Value count = 1;
+          google.protobuf.StringValue label = 2;
+          google.protobuf.Timestamp at = 3;
+        }
+    ]])
+    local d = m.R_descriptor
+    for _, name in ipairs({'count', 'label', 'at'}) do
+        t.assert_equals(pb.json.encode_field(d, {}, name), 'null', name)
+        t.assert_equals(pb.json.encode_field(d, {}, name, {emit_defaults = true}), 'null', name)
+    end
+    t.assert_equals(pb.json.encode_field(d, {count = 5LL}, 'count'), '"5"')
+    t.assert_equals(pb.json.encode_field(d, {label = 'x'}, 'label'), '"x"')
+    t.assert_equals(pb.json.encode_field(d, {label = ''}, 'label'), '""')
 end
 
 gfield.test_encode_field_honours_opts = function()

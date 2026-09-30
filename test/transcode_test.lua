@@ -782,6 +782,38 @@ gn.test_unbound_methods = function()
 end
 
 -- ---------------------------------------------------------------------------
+-- response_body over well-known types
+-- ---------------------------------------------------------------------------
+
+local gb = t.group('transcode.response_body')
+
+gb.test_unset_wrapper_is_null = function()
+    local m = pb.parse([[
+        syntax = "proto3"; package rb;
+        import "google/protobuf/wrappers.proto";
+        message Req { string id = 1; }
+        message Resp { google.protobuf.Int64Value count = 1; google.protobuf.StringValue label = 2; }
+        service R { rpc Get(Req) returns (Resp); }
+    ]])
+    local answer = {}
+    local srv = fake_server(m.R_service, {Get = {
+        {method = 'GET', pattern = '/v1/count/{id}', response_body = 'count'},
+        {method = 'GET', pattern = '/v1/label/{id}', response_body = 'label'},
+    }}, function() return answer end)
+    local router = tc.new({srv})
+    local function body(path)
+        local resp = router:handle(request('GET', path))
+        t.assert_equals(resp.status, 200, resp.body)
+        return resp.body
+    end
+    t.assert_equals(body('/v1/count/x'), 'null')
+    t.assert_equals(body('/v1/label/x'), 'null')
+    answer = {count = 7LL, label = 'seven'}
+    t.assert_equals(body('/v1/count/x'), '"7"')
+    t.assert_equals(body('/v1/label/x'), '"seven"')
+end
+
+-- ---------------------------------------------------------------------------
 -- End to end against the generated library example, both codegen modes
 -- ---------------------------------------------------------------------------
 
