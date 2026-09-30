@@ -31,6 +31,7 @@ pb.any.pack(desc, t [, prefix])           -- build google.protobuf.Any
 pb.any.unpack(any_t [, desc])             -- unpack to {desc, t}
 pb.register(desc) / pb.lookup(name)       -- type registry for Any
 
+pb.grpc.error(pb.grpc.code.NOT_FOUND, m)  -- fail a gRPC call with a status
 pb.grpc.loopback(server)                  -- in-process gRPC transport
 pb.grpc.multiplex({srv1, srv2, ...})      -- fan multiple servers
 
@@ -224,15 +225,25 @@ trip through `Any` by `type_url` alone.
 
 | Symbol | Notes |
 |---|---|
+| `pb.grpc.code` / `pb.grpc.code_name` | The 17 canonical status codes by name (`NOT_FOUND = 5`), and the reverse lookup. |
+| `pb.grpc.http_status[code]` | HTTP status for a code (Google API / grpc-gateway mapping). |
+| `pb.grpc.error(code, message?, details?)` | Raise a status object; a handler uses it to fail a call. |
+| `pb.grpc.status(code, message?, details?)` | Build a status object `{code, message, details}` without raising. `tostring` gives `NOT_FOUND: book 42`. |
+| `pb.grpc.is_status(v)` | True for a status object. |
+| `pb.grpc.encode_status(st)` / `pb.grpc.decode_status(bytes)` | Status object ↔ `google.rpc.Status` wire bytes. |
 | `pb.grpc.loopback(server)` | In-process transport. `server` is the table returned by `M.<Service>_server(impl)`. Suitable for tests and same-process apps; uses `fiber.channel`. |
 | `pb.grpc.multiplex({srv1, srv2, ...})` | Fan multiple `_server` results onto one transport. Errors on duplicate paths. |
 | `pb.grpc.new_stream_pair(buf_size)` | Build a paired (client_stream, server_stream) over a `fiber.channel`. Used internally by `loopback`; exposed for custom transports. |
 | `pb.grpc.wrap_*` | Helpers that wrap a raw stream/call with input/output codecs. Used by generated client/server code. |
 
+`details` is an array of `google.protobuf.Any` tables (what
+`pb.any.pack` returns). The in-process transports pass a raised status
+object to the client unchanged; see
+[grpc-contract.md → Status errors](grpc-contract.md#status-errors).
+
 The transport *contract* (`:unary`, `:server_stream`, `:client_stream`,
-`:bidi`) is documented in
-[../specs/grpc_transports.md](../specs/grpc_transports.md). Any table
-implementing those four methods plugs into a generated client.
+`:bidi`) is documented in [grpc-contract.md](grpc-contract.md). Any
+table implementing those four methods plugs into a generated client.
 
 ## Tuple bridge — `pb.tuple`
 

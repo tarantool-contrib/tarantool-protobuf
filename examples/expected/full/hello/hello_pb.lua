@@ -2699,14 +2699,14 @@ function M.Greeter_server(impl)
         methods = {
             ["/hello.Greeter/SayHello"] = function(req_bytes, ctx)
                 local handler = impl.SayHello
-                if handler == nil then error("Greeter.SayHello: handler missing", 0) end
+                if handler == nil then pb.grpc.error(pb.grpc.code.UNIMPLEMENTED, "Greeter.SayHello: handler missing") end
                 local req = M.HelloRequest_decode(req_bytes)
                 local resp = handler(req, ctx)
                 return M.HelloReply_encode(resp)
             end,
             ["/hello.Greeter/Echo"] = function(req_bytes, ctx)
                 local handler = impl.Echo
-                if handler == nil then error("Greeter.Echo: handler missing", 0) end
+                if handler == nil then pb.grpc.error(pb.grpc.code.UNIMPLEMENTED, "Greeter.Echo: handler missing") end
                 local req = M.HelloRequest_decode(req_bytes)
                 local resp = handler(req, ctx)
                 return M.HelloRequest_encode(resp)
@@ -2718,7 +2718,7 @@ function M.Greeter_server(impl)
                 kind = 'server_stream',
                 handler = function(req_bytes, server_view, ctx)
                     local handler = impl.StreamHellos
-                    if handler == nil then error("Greeter.StreamHellos: handler missing", 0) end
+                    if handler == nil then pb.grpc.error(pb.grpc.code.UNIMPLEMENTED, "Greeter.StreamHellos: handler missing") end
                     local req = M.HelloRequest_decode(req_bytes)
                     local wrapped = pb.grpc.wrap_server_view(server_view, nil, M.HelloReply_encode)
                     handler(req, wrapped, ctx)
@@ -2729,7 +2729,7 @@ function M.Greeter_server(impl)
                 kind = 'client_stream',
                 handler = function(_, server_view, ctx)
                     local handler = impl.CollectHellos
-                    if handler == nil then error("Greeter.CollectHellos: handler missing", 0) end
+                    if handler == nil then pb.grpc.error(pb.grpc.code.UNIMPLEMENTED, "Greeter.CollectHellos: handler missing") end
                     local wrapped = pb.grpc.wrap_server_view(server_view, M.HelloRequest_decode, nil)
                     local resp = handler(wrapped, ctx)
                     if resp == nil then error("Greeter.CollectHellos: handler returned nil response", 0) end
@@ -2741,7 +2741,7 @@ function M.Greeter_server(impl)
                 kind = 'bidi',
                 handler = function(_, server_view, ctx)
                     local handler = impl.Chat
-                    if handler == nil then error("Greeter.Chat: handler missing", 0) end
+                    if handler == nil then pb.grpc.error(pb.grpc.code.UNIMPLEMENTED, "Greeter.Chat: handler missing") end
                     local wrapped = pb.grpc.wrap_server_view(server_view, M.HelloRequest_decode, M.HelloReply_encode)
                     handler(wrapped, ctx)
                 end,

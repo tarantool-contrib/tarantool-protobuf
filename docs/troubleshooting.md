@@ -188,9 +188,12 @@ the call is over.
 You called `:send` after `:close_send` on the same stream. Once
 close_send fires, no more outgoing messages.
 
-### `unknown unary method "/pkg.Service/Method"`
+### `UNIMPLEMENTED: pb.grpc: unknown unary method "/pkg.Service/Method"`
 
-The path isn't in the server's `methods` map. Check that:
+The path isn't in the server's `methods` map; the transport raises an
+`UNIMPLEMENTED` status object (`err.code == pb.grpc.code.UNIMPLEMENTED`).
+A server whose impl table lacks the method answers
+`UNIMPLEMENTED: <Service>.<Method>: handler missing` instead. Check that:
 
 - The service / method name matches between client and server
   generated code.

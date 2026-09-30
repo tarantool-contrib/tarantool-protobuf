@@ -164,7 +164,9 @@ empty. Default size is 16 messages — override per call via
 - **Error propagation.** Errors flow as `error(...)` calls. Don't
   swallow them; transports may wrap with their own message prefix
   (`'grpc: ' .. err`) but the generated client expects to see the
-  error.
+  error. A status object (`pb.grpc.is_status(err)`) must reach the
+  client as a status object with the same `code`, `message` and
+  `details`: raise it again rather than wrapping it in a string.
 - **`ctx` keys.** Honor `ctx.deadline` (cancel on overrun),
   `ctx.headers` (transport-specific encoding), `ctx.trace_id` /
   `ctx.span_id` (inject as the wire's tracing primitive). See

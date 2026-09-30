@@ -212,6 +212,25 @@ local r2, err = s:recv()             -- nil, "boom!"
 The first message goes through; the error surfaces when the channel
 drains.
 
+To fail a call with a specific gRPC status, raise a status object. It
+reaches the client unchanged — from a unary call as the raised error,
+from a stream as the `err` of `:recv()`:
+
+```lua
+SayHello = function(req, _ctx)
+    pb.grpc.error(pb.grpc.code.NOT_FOUND, 'no user ' .. req.name)
+end
+
+-- Client side:
+local ok, err = pcall(client.SayHello, {name = 'bob'})
+-- ok == false, pb.grpc.is_status(err) == true
+-- err.code == pb.grpc.code.NOT_FOUND, tostring(err) == 'NOT_FOUND: no user bob'
+```
+
+A plain `error('boom!')` stays a plain error on the loopback (a string
+from a stream, the raised value from a unary call); see
+[grpc-contract.md → Status errors](../reference/grpc-contract.md#status-errors).
+
 ## The `ctx` argument
 
 The second-or-third argument to every RPC is `ctx`, an opaque table.
