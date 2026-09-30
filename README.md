@@ -128,6 +128,19 @@ prefix is prepended to the option's value. See
 For a full walk-through that takes a fresh `.proto` to a Tarantool process
 encoding and decoding it, see **[docs/howto/01-first-message.md](docs/howto/01-first-message.md)**.
 
+### Using buf
+
+`buf generate` runs the plugin as a local plugin (`local:` in a v2
+`buf.gen.yaml`, with `opt: [mode=full]` and so on); take
+`google/api/annotations.proto` from the `buf.build/googleapis/googleapis`
+dependency and copy `options/tarantool/tarantool.proto` into one of your
+modules if you use `(tarantool.lua_package)`. The output matches
+`protoc`'s (`just test-buf` checks it). A server built with `pb.server`
+answers `buf curl --protocol grpc --http2-prior-knowledge`; the default
+Connect protocol is not supported yet. See
+[docs/howto/12-build-integration.md](docs/howto/12-build-integration.md#buf)
+and [docs/howto/16-network-server.md](docs/howto/16-network-server.md#3-talk-to-it).
+
 ## Serving gRPC and HTTP/JSON
 
 `pb.server` serves the generated services over the network: gRPC over
