@@ -88,6 +88,7 @@
 ---@field grpc        pb.Grpc
 ---@field transcode   pb.Transcode
 ---@field reflection  table                                  # gRPC server reflection (loaded on first access)
+---@field health      table                                  # gRPC health service (loaded on first access)
 ---@field c_runtime?  table                                  # set when PB_ENABLE_C=1 and load succeeds
 ---@field parse       fun(source: string): table             # AST -> runtime module
 ---@field from_pb     fun(bytes: string): pb.FileSet

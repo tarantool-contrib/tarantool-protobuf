@@ -41,6 +41,7 @@ build = {
         ["pb.gen.grpc.reflection.v1.reflection_pb"] = "runtime/pb/gen/grpc/reflection/v1/reflection_pb.lua",
         ["pb.gen.grpc.reflection.v1alpha.reflection_pb"] = "runtime/pb/gen/grpc/reflection/v1alpha/reflection_pb.lua",
         ["pb.grpc"]          = "runtime/pb/grpc.lua",
+        ["pb.health"]        = "runtime/pb/health.lua",
         ["pb.json"]          = "runtime/pb/json.lua",
         ["pb.lazy"]          = "runtime/pb/lazy.lua",
         ["pb.parser"]        = "runtime/pb/parser.lua",

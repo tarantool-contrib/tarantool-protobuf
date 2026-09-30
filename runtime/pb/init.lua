@@ -307,9 +307,10 @@ local M = {
     end,
 }
 
--- gRPC server reflection (runtime/pb/reflection.lua) loads on first
--- access: it is built on generated modules that require('pb') themselves.
-local LAZY = {reflection = 'pb.reflection'}
+-- gRPC server reflection and health (runtime/pb/{reflection,health}.lua)
+-- load on first access: they are built on generated modules that
+-- require('pb') themselves.
+local LAZY = {reflection = 'pb.reflection', health = 'pb.health'}
 
 return setmetatable(M, {
     __index = function(t, k)
