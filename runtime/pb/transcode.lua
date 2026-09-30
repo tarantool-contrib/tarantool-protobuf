@@ -329,12 +329,14 @@ local function digits_le(a, b)
     return a <= b
 end
 
--- Decimal integer within [-lo_neg, hi] (lo_neg nil: no negatives), as
--- a normalised string, or nil. A leading '+' is accepted, as Go's
--- strconv (grpc-gateway) accepts it.
+-- Decimal integer within [-lo_neg, hi] as a normalised string, or nil.
+-- lo_neg nil means an unsigned type, which takes no sign at all (Go's
+-- strconv.ParseUint); a signed type takes '+' or '-' (ParseInt), as in
+-- grpc-gateway.
 local function parse_int(s, lo_neg, hi)
     local neg, digits = s:match('^([-+]?)(%d+)$')
     if digits == nil then return nil end
+    if lo_neg == nil and neg ~= '' then return nil end
     digits = digits:gsub('^0+(%d)', '%1')
     if neg == '+' then neg = '' end
     if neg == '-' then

@@ -379,6 +379,13 @@ local QUERY_SCHEMA = [[
       google.protobuf.BoolValue wbool = 23;
       string page_token = 24;
       google.protobuf.FieldMask mask = 25;
+      google.protobuf.UInt64Value wubig = 26;
+      google.protobuf.UInt32Value wusmall = 27;
+      google.protobuf.Int32Value wsmall = 28;
+      google.protobuf.DoubleValue wratio = 29;
+      google.protobuf.FloatValue wf = 30;
+      fixed32 fx32 = 31;
+      fixed64 fx64 = 32;
     }
     message Resp { string id = 1; }
     service Q { rpc Get(Req) returns (Resp); }
@@ -475,15 +482,16 @@ gq.test_enums_by_name_and_number = function()
                     {1, 2, 2})
 end
 
--- grpc-gateway parity: a leading '+' on integers is accepted; a number
--- for an enum must name a defined value (JSON bodies stay open).
+-- grpc-gateway parity: a leading '+' on signed integers is accepted; a
+-- number for an enum must name a defined value (JSON bodies stay open).
 gq.test_integer_plus_sign_and_closed_numeric_enums = function()
     local router, calls = query_router()
     local req = call(router, calls, 'GET',
-        '/v1/items/x?small=%2B7&big=%2B5&usmall=%2B1&color=%2B1&colors=%2B2')
+        '/v1/items/x?small=%2B7&big=%2B5&sbig=%2B6&wsmall=%2B8&color=%2B1&colors=%2B2')
     t.assert_equals(req.small, 7)
     t.assert_equals(req.big, i64('5'))
-    t.assert_equals(req.usmall, 1)
+    t.assert_equals(req.sbig, i64('6'))
+    t.assert_equals(req.wsmall, 8)
     t.assert_equals(req.color, 1)
     t.assert_equals(req.colors, {2})
     bad_request(router, '/v1/items/x?small=%2B-1', '"small"')
@@ -491,6 +499,20 @@ gq.test_integer_plus_sign_and_closed_numeric_enums = function()
     bad_request(router, '/v1/items/x?color=7', 'invalid value "7" for query parameter "color"')
     bad_request(router, '/v1/items/x?colors=RED&colors=9', 'invalid value "9"')
     bad_request(router, '/v1/items/x?color=-1', 'invalid value "-1"')
+end
+
+-- Unsigned types take no sign at all, '+' included (Go's ParseUint).
+gq.test_unsigned_integers_reject_any_sign = function()
+    local router, calls = query_router()
+    for _, f in ipairs({'usmall', 'ubig', 'fx32', 'fx64', 'wubig', 'wusmall'}) do
+        bad_request(router, '/v1/items/x?' .. f .. '=%2B1', '"' .. f .. '"')
+        bad_request(router, '/v1/items/x?' .. f .. '=-0', '"' .. f .. '"')
+    end
+    t.assert_equals(#calls, 0)
+    local req = call(router, calls, 'GET',
+        '/v1/items/x?usmall=1&ubig=2&fx32=3&fx64=4&wubig=5&wusmall=6')
+    t.assert_equals({req.usmall, req.ubig, req.fx32, req.fx64, req.wubig, req.wusmall},
+                    {1, u64('2'), 3, u64('4'), u64('5'), 6})
 end
 
 -- A dotted key that continues past a scalar is an error, not an
