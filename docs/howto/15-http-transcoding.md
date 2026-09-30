@@ -158,6 +158,12 @@ them in hash order.)
   64-bit integers as decimal strings, bytes as base64. Unknown
   parameters are ignored; a value that does not fit its field is a 400.
 
+Path and query values follow grpc-gateway, with two intentional
+differences: a `google.protobuf.FieldMask` takes its ProtoJSON form
+(`?mask=fooBar,baz.quxQuux`, camelCase paths, converted to `foo_bar`)
+and a `google.protobuf.Duration` its ProtoJSON form (`?ttl=3600s`, not
+Go's `1h`). Both are the forms the same fields have in a JSON body.
+
 ## Errors
 
 Handlers fail a call the gRPC way, and the router turns it into HTTP:

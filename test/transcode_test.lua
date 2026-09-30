@@ -350,6 +350,7 @@ local QUERY_SCHEMA = [[
     import "google/protobuf/timestamp.proto";
     import "google/protobuf/duration.proto";
     import "google/protobuf/wrappers.proto";
+    import "google/protobuf/field_mask.proto";
     enum Color { COLOR_UNSPECIFIED = 0; RED = 1; GREEN = 2; }
     message Inner { string s = 1; int32 n = 2; Deep deep = 3; }
     message Deep { bool flag = 1; }
@@ -377,6 +378,7 @@ local QUERY_SCHEMA = [[
       google.protobuf.Int64Value wbig = 22;
       google.protobuf.BoolValue wbool = 23;
       string page_token = 24;
+      google.protobuf.FieldMask mask = 25;
     }
     message Resp { string id = 1; }
     service Q { rpc Get(Req) returns (Resp); }
@@ -546,6 +548,17 @@ gq.test_well_known_types = function()
     t.assert_equals(req.wbig, i64('-5'))
     t.assert_equals(req.wbool, true)
     t.assert_equals(req.at.epoch, 1704164645)
+end
+
+-- FieldMask and Duration take their ProtoJSON forms (camelCase paths,
+-- seconds with an "s" suffix), not grpc-gateway's Go forms.
+gq.test_field_mask_and_duration_use_protojson_forms = function()
+    local router, calls = query_router()
+    local req = call(router, calls, 'GET', '/v1/items/x?mask=fooBar,baz.quxQuux&ttl=3600s')
+    t.assert_equals(req.mask, {'foo_bar', 'baz.qux_quux'})
+    t.assert_equals(req.ttl, {seconds = i64('3600'), nanos = 0})
+    bad_request(router, '/v1/items/x?ttl=1h', '"ttl" (google.protobuf.Duration)')
+    bad_request(router, '/v1/items/x?mask=foo_bar', '"mask" (google.protobuf.FieldMask)')
 end
 
 -- Two members of one oneof from path/query/body: 400, the RPC is not
