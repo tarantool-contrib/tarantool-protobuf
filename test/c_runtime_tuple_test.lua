@@ -232,13 +232,6 @@ local function any_format(desc)
     return format
 end
 
-local function column_of(format, name)
-    for i, e in ipairs(format) do
-        if e.name == name then return i end
-    end
-    error('no column ' .. name)
-end
-
 -- A row for `format` from {[column name] = value}; missing ones NULL.
 local function row_of(format, values)
     local row = {1}
@@ -1346,9 +1339,9 @@ end
 -- omitting the fields that have no tuple representation.
 local function bind_what_binds(desc, name)
     local function column(f)
-        local raw = f.kind == 'message' and f.message.decode ~= nil
+        local binary = f.kind == 'message' and f.message.decode ~= nil
             and f.message.name ~= TIMESTAMP and not f.repeated
-        return {name = f.name, type = raw and 'varbinary' or 'any',
+        return {name = f.name, type = binary and 'varbinary' or 'any',
                 is_nullable = true}
     end
     -- Probe each field on its own: a message field can fail deep down.
@@ -1751,7 +1744,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
             return box.space[s.id][op](box.space[s.id],
                                        lua.decode(conv, bytes))
         end
-        local function outcome(ok, res)
+        local function op_outcome(ok, res)
             if not ok then
                 local e = {ok = false, err = tostring(res)}
                 if type(res) == 'cdata' then
@@ -1772,13 +1765,13 @@ for _, mode in ipairs({'full', 'runtime'}) do
                     -- a duplicate key: the same box error both ways
                     s:insert(lua.decode(conv, bytes))
                 end
-                local want = outcome(pcall(lua_op, op, bytes))
+                local want = op_outcome(pcall(lua_op, op, bytes))
                 local rows_lua = s:select()
                 s:truncate()
                 if op == 'insert' and k % 2 == 0 then
                     s:insert(lua.decode(conv, bytes))
                 end
-                local got = outcome(pcall(conv[op], conv, bytes))
+                local got = op_outcome(pcall(conv[op], conv, bytes))
                 t.assert_equals(got, want, op .. ' #' .. k)
                 t.assert_equals(s:select(), rows_lua, op .. ' #' .. k)
             end
@@ -1908,7 +1901,7 @@ ga.test_decode_allocates_the_tuple = function()
     local tplan = conv._tplan
     local decode = c.tuple_decode
     -- keep the tuples, so the GC frees nothing mid-measure
-    local keep = {}
+    local keep = {} -- luacheck: ignore 241
     for k = 1, #wires do keep[k] = false end
     for k = 1, #wires do select(2, decode(tplan, wires[k], 'new', 0)) end
     for k = 1, #wires do lua.decode(conv, wires[k]) end

@@ -112,11 +112,11 @@ for _, mode in ipairs({'full', 'runtime'}) do
         compare('sparse read (name + age)',
             function()
                 local t = hello.Person_decode(bytes)
-                local _ = t.name; local _2 = t.age
+                local _ = t.name; _ = t.age
             end,
             function()
                 local v = hello.Person_decode_lazy(bytes)
-                local _ = v:get('name'); local _2 = v:get('age')
+                local _ = v:get('name'); _ = v:get('age')
             end,
             n)
 

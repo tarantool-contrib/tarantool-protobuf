@@ -1114,13 +1114,15 @@ function Handler:_serve_stream(call, req, io)
 
     local recv_err
     local limit = self._limit
+    -- The view's methods are called as view:m() but never read their
+    -- receiver: everything they need is an upvalue (the handler is `h`).
     local view = {}
     -- view:recv() -> bytes | nil, nil (end of the request stream) |
     -- nil, err (a status object, or 'canceled' once the client went
     -- away, as pb.server's gRPC streams say it). A protocol error also
     -- fails the call: it is recorded and ends the stream whatever the
     -- handler does next.
-    function view:recv()
+    function view.recv(_)
         if recv_err ~= nil then return nil, recv_err end
         if expired(state) then return nil, deadline_status() end
         if io:is_cancelled() then
@@ -1151,7 +1153,7 @@ function Handler:_serve_stream(call, req, io)
     end
     -- view:send(bytes) -> true | false (the call is over). Each message
     -- goes out at once on a streaming exchange.
-    function view:send(bytes)
+    function view.send(_, bytes)
         if state.done or ctx:is_cancelled() then return false end
         send_headers()
         local payload = codec.encode(h, proc.output, bytes)
@@ -1164,7 +1166,7 @@ function Handler:_serve_stream(call, req, io)
         end
         return io:write(0, payload, timeout)
     end
-    function view:is_cancelled()
+    function view.is_cancelled(_)
         return ctx:is_cancelled()
     end
 

@@ -258,7 +258,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
     check(mode .. '/Person_decode_lazy + :get x2',
         function()
             local v = hello.Person_decode_lazy(person_bytes)
-            local _ = v:get('name'); local _2 = v:get('age')
+            local _ = v:get('name'); _ = v:get('age')
         end)
     check(mode .. '/Person_decode_lazy + :encode (passthrough)',
         function()

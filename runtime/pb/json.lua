@@ -1419,7 +1419,7 @@ decode_message = function(desc, v)
                 end
                 oneof_seen[f.oneof] = true
             end
-            if is_null_default then
+            if is_null_default then -- luacheck: ignore 542
                 -- proto3 JSON: null on non-Value fields = "use default"
             elseif f.kind == 'map' then
                 if jv ~= box.NULL then

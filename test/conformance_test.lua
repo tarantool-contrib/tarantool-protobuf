@@ -501,7 +501,6 @@ end
 -- =========================================================================
 
 core_g.test_pb_lookup_returns_wkt_descriptors = function()
-    local pb = require('pb')
     for _, name in ipairs({
         'google.protobuf.Timestamp',
         'google.protobuf.Duration',
@@ -1497,7 +1496,6 @@ local sub_g = t.group('conformance.subprocess')
 
 local REPO_ROOT = fio.abspath(fio.pathjoin(
     fio.dirname(debug.getinfo(1, 'S').source:sub(2)), '..'))
-local RUNNER = fio.pathjoin(REPO_ROOT, 'cmd', 'conformance-runner.lua')
 
 local function le32(n)
     return string.char(

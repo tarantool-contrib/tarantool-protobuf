@@ -152,8 +152,8 @@ end
 local warned = {}
 
 -- Internal: where conflict warnings go. A field so tests can observe it.
-function M._warn(msg)
-    require('log').warn(msg)
+function M._warn(message)
+    require('log').warn(message)
 end
 
 -- Files are indexed in registration order. A file declaring a name an

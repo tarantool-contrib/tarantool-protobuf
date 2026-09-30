@@ -14,8 +14,6 @@
 --                -> route to the right M.<Service>_server method
 --                -> return {true, resp_bytes} | {false, err_msg}
 
-local fiber  = require('fiber')
-
 local M = {}
 
 -- Server-side: register a stored function that dispatches into a

@@ -194,14 +194,13 @@ local function build_array_view_impl(field, bytes, segs, idx_list)
     -- Detect packed vs unpacked from the wire type of the entries.
     -- For repeated scalars/enums with a single LEN-typed wire entry
     -- when the element type is non-LEN, that's a packed payload.
-    local mode, starts, n
+    local starts, n
     local first_idx = idx_list[1]
     local tag_byte = bytes:byte(segs.tag_start[first_idx])
     local first_wt = tag_byte % 8  -- low 3 bits
 
     if field.kind == 'message' then
         -- Repeated messages never pack.
-        mode = 'unpacked'
         n = #idx_list
         starts = {}
         for i = 1, n do starts[i] = segs.val_start[idx_list[i]] end
@@ -209,10 +208,10 @@ local function build_array_view_impl(field, bytes, segs, idx_list)
         and #idx_list == 1 and first_wt == wire.WIRE_LEN
         and not (field.kind == 'scalar'
                  and wire.TYPE_INFO[field.proto_type].wire == wire.WIRE_LEN) then
-        mode = 'packed'
+        -- Packed: one LEN entry holds every element.
         starts, n = expand_packed(field, bytes, segs.val_start[first_idx])
     else
-        mode = 'unpacked'
+        -- Unpacked: one entry per element.
         n = #idx_list
         starts = {}
         for i = 1, n do starts[i] = segs.val_start[idx_list[i]] end
@@ -683,7 +682,7 @@ function MessageView:encode()
             end
         end
 
-        if f.oneof and active and active[f.oneof] ~= fname then
+        if f.oneof and active and active[f.oneof] ~= fname then -- luacheck: ignore 542
             -- Inactive oneof branch: skip.
         elseif is_dirty or is_sub_dirty then
             codec.encode_field(f, materialize(cache[fname]), out,

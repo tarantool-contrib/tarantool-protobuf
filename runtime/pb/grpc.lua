@@ -506,10 +506,10 @@ end
 -- Wrap a server-side stream view for the generated server handler:
 -- the user-supplied impl is called with a stream that speaks decoded
 -- messages, hiding the per-message encode/decode boundary.
----@param raw table                                              server-side stream view (bytes)
----@param input_decode?  fun(bytes: string): table               decoder for inbound messages (nil ⇒ server_stream: no inbound)
----@param output_encode? fun(msg: table): string                 encoder for outbound messages (nil ⇒ client_stream: no outbound)
----@return table                                                 {recv?, send?, is_cancelled?}
+---@param raw table                                server-side stream view (bytes)
+---@param input_decode?  fun(bytes: string): table decoder for inbound messages (nil ⇒ server_stream: no inbound)
+---@param output_encode? fun(msg: table): string   encoder for outbound messages (nil ⇒ client_stream: no outbound)
+---@return table                                   {recv?, send?, is_cancelled?}
 function M.wrap_server_view(raw, input_decode, output_encode)
     local wrapped = {}
     if input_decode ~= nil then

@@ -11,7 +11,6 @@
 
 local t = require('luatest')
 local ffi = require('ffi')
-local pb = require('pb')
 
 local MODES = {'full', 'runtime'}
 

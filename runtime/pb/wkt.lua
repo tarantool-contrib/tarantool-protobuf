@@ -176,12 +176,15 @@ M.Empty_descriptor = {
 -- value, decode returns the raw value (default if missing).
 -- ---------------------------------------------------------------------------
 
+local function int64_is_default(v) return v == 0 or v == INT64_ZERO end
+local function uint64_is_default(v) return v == 0 or v == ffi.cast('uint64_t', 0) end
+
 -- For each wrapper type: {wire_type, encode_fn, decode_fn, default, default_check_fn}
 local WRAPPERS = {
     {'DoubleValue', wire.WIRE_I64,    'encode_double',  'decode_double',  0,    function(v) return v == 0 end},
     {'FloatValue',  wire.WIRE_I32,    'encode_float',   'decode_float',   0,    function(v) return v == 0 end},
-    {'Int64Value',  wire.WIRE_VARINT, 'encode_int64',   'decode_int64',   0,    function(v) return v == 0 or v == INT64_ZERO end},
-    {'UInt64Value', wire.WIRE_VARINT, 'encode_uint64',  'decode_uint64',  0,    function(v) return v == 0 or v == ffi.cast('uint64_t', 0) end},
+    {'Int64Value',  wire.WIRE_VARINT, 'encode_int64',   'decode_int64',   0,    int64_is_default},
+    {'UInt64Value', wire.WIRE_VARINT, 'encode_uint64',  'decode_uint64',  0,    uint64_is_default},
     {'Int32Value',  wire.WIRE_VARINT, 'encode_int32',   'decode_int32',   0,    function(v) return v == 0 end},
     {'UInt32Value', wire.WIRE_VARINT, 'encode_uint32',  'decode_uint32',  0,    function(v) return v == 0 end},
     {'BoolValue',   wire.WIRE_VARINT, 'encode_bool',    'decode_bool',    false,function(v) return v == false end},
@@ -373,8 +376,8 @@ value_decode = function(buf, depth)
         local id, wt
         id, wt, pos = wire.decode_tag(buf, pos)
         if id == 1 then
-            local _u
-            _u, pos = wire.decode_varint(buf, pos)
+            local _, np = wire.decode_varint(buf, pos)
+            pos = np
             result = NULL
         elseif id == 2 then
             local nv
@@ -566,7 +569,7 @@ M.register = function(desc)
     return desc
 end
 
----@param name_or_url string                     bare full name (`pkg.Foo`) or a type URL (`type.googleapis.com/pkg.Foo`)
+---@param name_or_url string bare full name (`pkg.Foo`) or a type URL (`type.googleapis.com/pkg.Foo`)
 ---@return pb.Descriptor?
 M.lookup = function(name_or_url)
     return REGISTRY[name_or_url] or REGISTRY[type_url_full_name(name_or_url)]

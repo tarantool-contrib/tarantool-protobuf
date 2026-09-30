@@ -107,7 +107,7 @@ local wire = require('pb.wire')
 local emails_buf = string.char(0x1a, 32) .. string.rep('e', 32)  -- one email
 alloc_for('decode_string x26 (just the field)', function()
     local list = {}
-    for i = 1, 26 do
+    for _ = 1, 26 do
         local v, _ = wire.decode_string(emails_buf, 2)
         list[#list + 1] = v
     end

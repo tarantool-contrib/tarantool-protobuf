@@ -452,7 +452,8 @@ for _, mode in ipairs({'full', 'runtime'}) do
     g.test_no_deprecated_schema_version = function()
         local s = helper.make_space('tuple_kv', KV_FORMAT)
         local internal = box.internal.schema_version
-        box.internal.schema_version = function()
+        -- Stubbed on purpose, restored below.
+        box.internal.schema_version = function() -- luacheck: ignore 122
             error('box.internal.schema_version called', 0)
         end
         local ok, err = pcall(function()
@@ -465,7 +466,7 @@ for _, mode in ipairs({'full', 'runtime'}) do
             conv:_check_schema()
             t.assert_equals(conv.schema_version, box.info.schema_version)
         end)
-        box.internal.schema_version = internal
+        box.internal.schema_version = internal -- luacheck: ignore 122
         t.assert(ok, tostring(err))
     end
 

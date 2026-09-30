@@ -947,8 +947,6 @@ local function parse_float_lexeme(lex)
     -- exponent parser's range (typically ~1e308 for doubles). Saturate
     -- to ±inf if the exponent is positive, 0 if negative — matches
     -- mainline's Float/DoubleField{Overflow,LargeNegativeExp} cases.
-    local _, expsign = lex:find('[eE]([+-]?)')
-    -- Lua's :find returns positions; use :match to capture.
     local sign_chr = lex:match('[eE]([+-]?)')
     if sign_chr == nil then return nil, 'invalid' end
     if sign_chr == '-' then return 0.0 end
@@ -956,13 +954,6 @@ local function parse_float_lexeme(lex)
 end
 
 -- ---- value parsers --------------------------------------------------------
-
-local SCALAR_NUMERIC = {
-    int32=true, int64=true, uint32=true, uint64=true,
-    sint32=true, sint64=true, fixed32=true, fixed64=true,
-    sfixed32=true, sfixed64=true,
-    float=true, double=true,
-}
 
 local INT_TYPES = {
     int32=true, int64=true, uint32=true, uint64=true,

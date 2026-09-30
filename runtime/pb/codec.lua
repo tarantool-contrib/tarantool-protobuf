@@ -792,7 +792,6 @@ end
 local function build_repeated_reader(f, scalar_tbl, decode_msg_fn, decode_group_fn)
     local fname = f.name
     local kind  = f.kind
-    local siblings = f.oneof_siblings  -- nil if not in a oneof
 
     if kind == 'scalar' then
         local handler = scalar_tbl[f.proto_type]
@@ -1109,12 +1108,12 @@ encode_message = function(desc, data)
             for i = 1, #elist do
                 local ext = elist[i]
                 local v = exts[ext.full_name]
-                if v == nil then
-                    -- absent
-                elseif message_set and ext.kind == 'message' and not ext.repeated then
-                    out[#out + 1] = encode_message_set_item(ext, v)
-                else
-                    encode_field(ext, v, out, true)
+                if v ~= nil then
+                    if message_set and ext.kind == 'message' and not ext.repeated then
+                        out[#out + 1] = encode_message_set_item(ext, v)
+                    else
+                        encode_field(ext, v, out, true)
+                    end
                 end
             end
         end

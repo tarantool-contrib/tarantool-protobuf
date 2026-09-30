@@ -365,7 +365,7 @@ h.test_connect_dispatch = function()
     end
     local function call(handler, method, path, ct, body, headers)
         local hdrs = {['content-type'] = ct}
-        for k, v in pairs(headers or {}) do hdrs[k] = v end
+        for k, val in pairs(headers or {}) do hdrs[k] = val end
         return handler({method = method, path = path, headers = hdrs, body = body or ''})
     end
     local missing = '{"name": "missing"}'
@@ -392,10 +392,10 @@ h.test_connect_dispatch = function()
     r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/connect+json',
              pb.connect.envelope(0, '{"name": "x"}'))
     t.assert_equals(r.status, 415)
-    for _, v in ipairs({'2', '', '1.0'}) do
+    for _, version in ipairs({'2', '', '1.0'}) do
         r = call(both, 'POST', '/hello.Greeter/SayHello', 'application/json', '{"name": "x"}',
-                 {['connect-protocol-version'] = v})
-        t.assert_equals({r.status, json.decode(r.body).code}, {400, 'invalid_argument'}, v)
+                 {['connect-protocol-version'] = version})
+        t.assert_equals({r.status, json.decode(r.body).code}, {400, 'invalid_argument'}, version)
     end
     r = call(both, 'PUT', '/hello.Greeter/SayHello', 'application/json', '{}', V1)
     t.assert_equals(r.status, 405)
@@ -459,12 +459,12 @@ h.test_connect_get_marker_beats_transcoding = function()
     local handler = server._http_handler(pb.transcode.new({routed}), nil,
                                          pb.connect.new({srv}))
     local path = '/library.Library/GetBook?encoding=json&message=%7B%7D'
-    local function get(headers)
+    local function get_with(headers)
         return handler({method = 'GET', path = path, headers = headers, body = ''})
     end
-    t.assert_equals(get({}).status, 200)
-    t.assert_equals(get({['connect-protocol-version'] = '1'}).status, 200)
-    t.assert_equals(get({['content-type'] = 'application/proto'}).status, 200)
+    t.assert_equals(get_with({}).status, 200)
+    t.assert_equals(get_with({['connect-protocol-version'] = '1'}).status, 200)
+    t.assert_equals(get_with({['content-type'] = 'application/proto'}).status, 200)
     t.assert_equals(seen, {'http', 'connect', 'connect'})
 end
 
@@ -665,11 +665,11 @@ live.test_connect = function()
             {timeout = 5, headers = {['content-type'] = 'application/connect+proto'}})
         t.assert_equals(r.status, 200)
         t.assert_equals(r.headers['content-type'], 'application/connect+proto')
-        local body, n, flags = r.body, 0, {}
+        local body, count, flags = r.body, 0, {}
         while #body > 0 do
             local len = body:byte(2) * 2^24 + body:byte(3) * 2^16 + body:byte(4) * 2^8 + body:byte(5)
-            n = n + 1
-            flags[n] = body:byte(1)
+            count = count + 1
+            flags[count] = body:byte(1)
             body = body:sub(6 + len)
         end
         t.assert_equals(flags, {0, 0, 0, 2})
@@ -716,8 +716,8 @@ live.test_connect_deadline_bounds_writes = function()
         })},
     }):start()
     local function frame(typ, flags, sid, data)
-        local n = #data
-        return string.char(bit.rshift(n, 16), bit.band(bit.rshift(n, 8), 0xff), bit.band(n, 0xff),
+        local len = #data
+        return string.char(bit.rshift(len, 16), bit.band(bit.rshift(len, 8), 0xff), bit.band(len, 0xff),
                            typ, flags, 0, 0, 0, sid) .. data
     end
     local function str(x) return string.char(#x) .. x end
