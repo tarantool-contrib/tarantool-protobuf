@@ -901,6 +901,9 @@ function M.buffered_io(body)
         self.headers = headers
     end
     function io:write(flags, payload)
+        -- Nothing follows the EndStreamResponse (see stream_io).
+        if self.closed then return false end
+        if bit.band(flags, ENVELOPE_END_STREAM) ~= 0 then self.closed = true end
         self.chunks[#self.chunks + 1] = M.envelope(flags, payload)
         return true
     end
@@ -1017,8 +1020,15 @@ function M.stream_io(st)
     function io:write_headers(headers)
         locked(function() st:write_head(200, headers) end)
     end
+    -- Once the EndStreamResponse is on its way nothing else may follow
+    -- it: the check sits inside the lock, so a send that was encoding
+    -- (and yielding) while the end of the stream was written is refused
+    -- instead of landing after it.
+    local closed = false
     function io:write(flags, payload)
         return locked(function()
+            if closed then return false end
+            if bit.band(flags, ENVELOPE_END_STREAM) ~= 0 then closed = true end
             return st:write(M.envelope(flags, payload)) == true
         end)
     end
@@ -1066,10 +1076,13 @@ function Handler:_serve_stream(call, req, io)
             -- reading.)
             io:drain(math.max(DRAIN_BYTES, h._limit), DRAIN_SECONDS)
         end
+        -- The stream is ending: sends from now on are refused (and the
+        -- I/O refuses any write after the EndStreamResponse, for a send
+        -- already past this check).
+        if state ~= nil then state.done = true end
         send_headers()
         local trailing = state ~= nil and ctx.trailing_metadata or nil
         io:write(ENVELOPE_END_STREAM, M.end_stream_json(st, trailing))
-        if state ~= nil then state.done = true end
         return io:finish()
     end
     if state == nil then

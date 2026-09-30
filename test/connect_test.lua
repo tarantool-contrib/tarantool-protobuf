@@ -184,10 +184,84 @@ u.test_stream_io_write = function()
     t.assert_equals(st.head, {200, {['content-type'] = 'application/connect+proto'}})
     t.assert_equals(st.out, {E(0, 'a'), E(2, '{}')})
     t.assert(st.finished)
+    -- A send that arrives after the EndStreamResponse is refused.
+    t.assert_equals(io:write(0, 'late'), false)
+    t.assert_equals(io:write(2, '{}'), false)
+    t.assert_equals(st.out, {E(0, 'a'), E(2, '{}')})
+    -- The same for the buffered I/O.
+    local b = connect.buffered_io('')
+    t.assert_equals(b:write(0, 'a'), true)
+    t.assert_equals(b:write(2, '{}'), true)
+    t.assert_equals(b:write(0, 'late'), false)
+    t.assert_equals(b:finish().body, E(0, 'a') .. E(2, '{}'))
+
+    st = fake_st({})
+    io = connect.stream_io(st)
     st.write = function() return nil, 'cancelled' end
     t.assert_equals(io:write(0, 'b'), false)
     st.cancelled = true
     t.assert_equals(io:is_cancelled(), true)
+end
+
+-- race_st(split) -> a fake streaming exchange whose writes yield, as a
+-- real one does under backpressure. With `split`, a write puts half its
+-- bytes out, yields, then the rest (a partial socket write).
+local function race_st(split, request)
+    local st = fake_st({request})
+    st.bytes = {}
+    function st:write(data)
+        if split then
+            local half = math.floor(#data / 2)
+            self.bytes[#self.bytes + 1] = data:sub(1, half)
+            fiber.sleep(0.001)
+            self.bytes[#self.bytes + 1] = data:sub(half + 1)
+        else
+            fiber.sleep(0.001)
+            self.bytes[#self.bytes + 1] = data
+        end
+        return true
+    end
+    return st
+end
+
+-- A server stream whose messages come from several fibers that keep
+-- sending while the handler returns: the end of the stream races them.
+local function racing_stream(split)
+    local hello = require('full.hello.hello_pb')
+    local h = connect.new({hello.Greeter_server({
+        StreamHellos = function(_, stream)
+            for f = 1, 8 do
+                fiber.create(function()
+                    for i = 1, 20 do
+                        if not stream:send({greeting = f .. '/' .. i}) then return end
+                    end
+                end)
+            end
+            fiber.sleep(0.003)
+        end,
+    })})
+    local head = {method = 'POST', path = '/hello.Greeter/StreamHellos', version = 'HTTP/2',
+                  headers = {['content-type'] = 'application/connect+proto'}}
+    local st = race_st(split, E(0, hello.HelloRequest_encode({name = 'x'})))
+    h:stream_handler(head)(head, st)
+    fiber.sleep(0.2) -- let the senders run out
+    return st, hello
+end
+
+-- Nothing is written after the EndStreamResponse, however the sends
+-- and the end of the stream interleave.
+u.test_stream_end_is_last = function()
+    local st = racing_stream(false)
+    local list = envelopes(table.concat(st.bytes))
+    local ends = 0
+    for i, e in ipairs(list) do
+        if e[1] == 2 then
+            ends = ends + 1
+            t.assert_equals(i, #list, 'the end-stream envelope is the last one')
+        end
+    end
+    t.assert_equals(ends, 1)
+    t.assert_gt(#list, 1, 'some messages went out before the end')
 end
 
 u.test_end_stream_json = function()
