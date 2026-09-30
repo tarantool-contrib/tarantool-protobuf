@@ -250,6 +250,84 @@ the examples in this repository.
 To call a running [`pb.server`](16-network-server.md) with
 `buf curl`, see [how-to 16](16-network-server.md#3-talk-to-it).
 
+## EasyP
+
+[EasyP](https://easyp.tech/) is an alternative to `buf` with one
+`easyp.yaml` for linting (buf-compatible rules), breaking-change
+checks, dependencies and generation. Dependencies are git repositories
+(`github.com/org/repo@<tag or commit>`), not registry modules. It has
+no counterpart of `buf curl`; use grpcurl or `buf curl` against the
+server.
+
+The same schema as in the `buf` section, laid out for EasyP:
+
+```
+easyp.yaml
+easyp.lock                        # written by `easyp mod download`
+bin/protoc-gen-tarantool
+proto/shop/v1/shop.proto          # the schema from the buf section
+proto/tarantool/tarantool.proto   # copied from options/tarantool/
+```
+
+```yaml
+lint:
+  use:
+    - MINIMAL
+    - BASIC
+  ignore:
+    - tarantool
+
+deps:
+  - github.com/googleapis/googleapis@93d6085996d0b4ff7e7e86ca9945d5524bb380d1
+
+generate:
+  inputs:
+    - directory:
+        path: .
+        root: proto
+  plugins:
+    - path: ./bin/protoc-gen-tarantool
+      out: gen
+      opts:
+        mode: full
+```
+
+```bash
+easyp validate-config
+easyp mod download        # fetches googleapis, pins it in easyp.lock
+easyp generate            # writes gen/shop/shop_pb.lua
+easyp lint --root proto
+```
+
+- **`google/api/annotations.proto`** comes from the googleapis git
+  repository, whose files sit at the import paths. Pin a commit: its
+  only tag, `common-protos-1_3_1`, carries an `http.proto` without
+  `response_body`. `easyp.lock` records what was fetched; commit it.
+- **Inputs.** `path` is relative to `root`, and `root` is the import
+  root, so `root: proto` names the file `shop/v1/shop.proto` as
+  `protoc -I proto` does. The short form `- directory: proto` makes
+  the project directory the import root instead: the file becomes
+  `proto/shop/v1/shop.proto`, imports of local files need the
+  `proto/` prefix (the `tarantool/tarantool.proto` import above no
+  longer resolves), and server reflection shows those names.
+- **`tarantool/tarantool.proto`** sits inside the input root: `easyp
+  lint` resolves imports only from its `--root`, the dependencies and
+  the well-known types, not from other inputs. EasyP generates every
+  file under an input, so it also writes an unused
+  `gen/tarantool/tarantool_pb.lua`; `ignore: [tarantool]` keeps the
+  copy out of the lint (it fails `PACKAGE_VERSION_SUFFIX` under
+  `DEFAULT`). A git dependency on this repository does not replace the
+  copy: EasyP installs the file under its repository path,
+  `options/tarantool/tarantool.proto`, so `import
+  "tarantool/tarantool.proto"` does not resolve.
+- `opts:` is a map of the `--tarantool_opt` keys (`mode`, `prefix`,
+  `int64_as_number`).
+- Well-known types are built in.
+
+The generated modules load like the `buf` ones. As with `buf`, only
+the embedded descriptors differ from `protoc` output, in the order of
+option fields; `just test-easyp` checks the examples.
+
 ## CMake
 
 ```cmake

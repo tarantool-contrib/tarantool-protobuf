@@ -141,6 +141,15 @@ Connect protocol is not supported yet. See
 [docs/howto/12-build-integration.md](docs/howto/12-build-integration.md#buf)
 and [docs/howto/16-network-server.md](docs/howto/16-network-server.md#3-talk-to-it).
 
+### Using EasyP
+
+[EasyP](https://easyp.tech/) runs the plugin with `path:` in the
+`generate.plugins` of its `easyp.yaml` and takes
+`google/api/annotations.proto` from a git dependency on
+`github.com/googleapis/googleapis`. Its output matches `protoc`'s too
+(`just test-easyp`). See
+[docs/howto/12-build-integration.md](docs/howto/12-build-integration.md#easyp).
+
 ## Serving gRPC and HTTP/JSON
 
 `pb.server` serves the generated services over the network: gRPC over
@@ -183,8 +192,10 @@ Without the rock, the luatest cases that need a live server skip,
 `just test-server-go` skips its tests. `just test-server-go` builds
 grpcurl into a temporary directory (set `GRPCURL=<path>` to use an
 installed one) and runs its `buf curl` cases when `buf` is on `PATH`.
-`just test-buf` checks `buf generate` output against `protoc`'s; it
-skips without `buf`.
+`just test-toolchains` checks `buf generate` and `easyp generate`
+output against `protoc`'s (`just test-buf` and `just test-easyp` run
+one tool); a tool that is not installed is skipped, and EasyP is found
+as `$EASYP` or `easyp` on `PATH`.
 
 ## Vendoring an upstream `.proto` schema
 
