@@ -150,11 +150,14 @@ end
 -- Propagation through loopback / multiplex
 -- ---------------------------------------------------------------------------
 
+-- The client must receive the very object the handler raised, not a
+-- rebuilt copy: identity first, then the fields for a readable failure.
 local function check_same_status(got, want)
     t.assert(grpc.is_status(got), 'expected a status object, got ' .. tostring(got))
+    t.assert_is(got, want)
     t.assert_equals(got.code, want.code)
     t.assert_equals(got.message, want.message)
-    t.assert_equals(got.details, want.details)
+    t.assert_is(got.details, want.details)
 end
 
 for _, mode in ipairs({'full', 'runtime'}) do
@@ -164,8 +167,9 @@ for _, mode in ipairs({'full', 'runtime'}) do
     local details = {detail('d')}
     local WANT = grpc.status(grpc.code.NOT_FOUND, 'book 42', details)
 
+    -- Raise the captured object itself so identity can be asserted.
     local function raise_want()
-        grpc.error(WANT.code, WANT.message, WANT.details)
+        error(WANT)
     end
 
     local impl = {
