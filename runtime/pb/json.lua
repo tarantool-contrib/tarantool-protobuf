@@ -967,6 +967,16 @@ end
 
 to_json_value = encode_message
 
+-- Top-level field of desc by proto name. Scans `fields` because only
+-- pb.finalize_message builds field_by_name; runtime-built descriptors
+-- (pb.parse, pb.from_pb) carry field_by_id alone.
+local function top_field(desc, name)
+    for _, f in ipairs(desc.fields or {}) do
+        if f.name == name then return f end
+    end
+    return nil
+end
+
 -- Normalize encode opts once so the hot path reads a single boolean.
 local function normalize_encode_opts(opts, fname)
     if opts == nil then return nil end
@@ -1047,7 +1057,7 @@ end
 ---@param opts? pb.JsonEncodeOpts
 ---@return string
 function M.encode_field(desc, t, field_name, opts)
-    local f = desc.field_by_name and desc.field_by_name[field_name]
+    local f = top_field(desc, field_name)
     if f == nil then
         error('pb.json.encode_field: ' .. tostring(desc.name) ..
               ' has no field "' .. tostring(field_name) .. '"', 0)
@@ -1587,7 +1597,7 @@ end
 ---@param opts? pb.JsonDecodeOpts
 ---@return any
 function M.decode_field(desc, field_name, s, opts)
-    local f = desc.field_by_name and desc.field_by_name[field_name]
+    local f = top_field(desc, field_name)
     if f == nil then
         error('pb.json.decode_field: ' .. tostring(desc.name) ..
               ' has no field "' .. tostring(field_name) .. '"', 0)
