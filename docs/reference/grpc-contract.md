@@ -146,8 +146,17 @@ messages directly:
 
 ```lua
 server_view:recv() -> message, err  -- pull next request (client_stream, bidi)
-server_view:send(message)           -- push a reply (server_stream, bidi)
+server_view:send(message) -> ok     -- push a reply (server_stream, bidi)
+server_view:is_cancelled()          -- true once the client cancelled
 ```
+
+`send` returns what the transport's `send` returns: `false` once the
+client has cancelled (the reply is dropped). `is_cancelled` is present
+when the transport's server view has it (the in-process transports
+do). A handler that waits on something other than its stream — a health
+`Watch` waiting for a status change — checks either, or
+`ctx:is_cancelled()` on a network transport, so its fiber ends with the
+call.
 
 The handler signals end-of-stream by returning. Errors raised via
 `error(...)` propagate to the client as the `err` return of
@@ -190,7 +199,9 @@ In-process bridge using `fiber.channel`. Each streaming call spawns a
 worker fiber for the handler and pipes messages through a paired
 client/server stream view (`pb.grpc.new_stream_pair`). Channels
 default to a 16-message buffer; senders block when full, receivers
-block when empty.
+block when empty. `stream:cancel()` closes both channels: a handler
+blocked on a full buffer is released with `send() -> false`, replies
+already buffered stay readable, then `recv()` ends the stream.
 
 Use cases: tests, same-process apps (a Tarantool instance that
 implements a service and also calls it locally).

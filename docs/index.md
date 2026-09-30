@@ -47,7 +47,8 @@ collects the common errors and their fixes.
 
 - **[reference/runtime-api.md](reference/runtime-api.md)** — every
   export of `require('pb')`: codec, lazy view, dynamic descriptors,
-  JSON/text/WKT/gRPC, the tuple bridge, sentinels, codegen helpers.
+  JSON/text/WKT/gRPC, server reflection and health, the tuple bridge,
+  sentinels, codegen helpers.
 - **[reference/generated-api.md](reference/generated-api.md)** —
   what each `_pb.lua` exposes per message, enum, and service.
 - **[reference/cli.md](reference/cli.md)** — driving

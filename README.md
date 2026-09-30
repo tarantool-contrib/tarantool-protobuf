@@ -42,6 +42,8 @@ wire format. Only editions are out of scope for now.
 | Loopback / multiplex transport   | ✅           |
 | gRPC status codes + status errors (`pb.grpc.error`) | ✅ |
 | `google.api.http` rules in service descriptors | ✅ |
+| gRPC server reflection v1 / v1alpha (`pb.reflection`) | ✅ |
+| gRPC health service (`pb.health`) | ✅ |
 | WKT: Timestamp ↔ `datetime`      | ✅           |
 | WKT: Duration, Empty, wrappers   | ✅           |
 | WKT: Struct, Value, ListValue    | ✅           |
@@ -336,6 +338,10 @@ runtime/pb/                  pure-Lua runtime (`require('pb')`)
   wkt.lua                    Timestamp / Duration / Empty / Wrappers /
                              Struct / Value / ListValue / Any / FieldMask
   grpc.lua                   transport interface + loopback / multiplex
+  reflection.lua             gRPC server reflection (v1, v1alpha)
+  health.lua                 gRPC health service
+  gen/                       reflection + health modules generated from
+                             third_party/grpc-proto by this plugin
   parser.lua                 pure-Lua proto3 schema parser (.proto → AST)
   dynamic.lua                AST → descriptor module
   fileset.lua                FileDescriptorSet bytes → descriptor module
