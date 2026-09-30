@@ -660,7 +660,10 @@ local function invoke(state, fn, ...)
     end)
     f:name('pb.connect ' .. tostring(state.method), {truncate = true})
     local r = ch:get(left)
-    if r == nil then
+    -- A result that arrives once the deadline has passed is dropped as
+    -- well: a handler polling ctx:is_cancelled() returns right when the
+    -- deadline passes, and may wake before this wait does.
+    if r == nil or fiber.clock() >= state.deadline then
         state.cancelled = true
         return false, grpc.status(CODE.DEADLINE_EXCEEDED, 'deadline exceeded')
     end
