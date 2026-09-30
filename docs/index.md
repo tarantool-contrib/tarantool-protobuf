@@ -88,6 +88,12 @@ for work that's either partly shipped or planned.
   brainstorm for a sibling MsgPack codec over the same descriptors.
   Not implemented; design sketch for picking up later.
 
+## Maintainers
+
+- **[releasing.md](releasing.md)** — what a release publishes besides
+  the tag: the options module on the Buf Schema Registry (exact
+  commands, CI sketch) and the extension-number question.
+
 ## Internals
 
 - **[codegen.md → The hot-path rules the generated code observes](codegen.md#the-hot-path-rules-the-generated-code-observes)**
