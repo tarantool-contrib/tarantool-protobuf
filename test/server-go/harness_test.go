@@ -137,10 +137,12 @@ func startServer() *server {
 	case line, ok := <-lines:
 		if !ok {
 			_ = cmd.Wait()
-			if strings.Contains(s.stderr.String(), "tarantool-http2 rock is required") {
-				s.skip = "the http2 rock is not available (set TARANTOOL_HTTP2_RUNTIME): " +
-					lastLine(s.stderr.String())
-				return s
+			for _, line := range strings.Split(s.stderr.String(), "\n") {
+				if strings.Contains(line, "tarantool-http2 rock is required") {
+					s.skip = "the http2 rock is not available (set TARANTOOL_HTTP2_RUNTIME): " +
+						strings.TrimSpace(line)
+					return s
+				}
 			}
 			s.err = fmt.Errorf("server exited before listening: %s", s.stderr.String())
 			return s
