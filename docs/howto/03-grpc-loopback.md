@@ -304,6 +304,8 @@ and [→ pb.health](../reference/runtime-api.md#grpc-health--pbhealth).
 
 - [Reference: grpc-contract](../reference/grpc-contract.md) — the
   shipped contract, stream objects, helper wrappers.
+- [How-to: a gRPC and HTTP/JSON server](16-network-server.md) — the
+  same server tables served over the network by `pb.server`.
 - [How-to: custom transport](13-custom-transport.md) — when you
   need to talk to a real network endpoint.
 - [Specs: gRPC transports](../specs/grpc_transports.md) — the
