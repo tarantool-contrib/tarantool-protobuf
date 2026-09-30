@@ -166,3 +166,29 @@ g.test_round_trip_through_dynamic = function()
     local decoded = dyn().Person_decode(bytes)
     t.assert_equals(dyn().Person_encode(decoded), bytes)
 end
+
+-- An rpc whose types live in another file of the set resolves across it.
+g.test_service_types_resolve_across_files = function()
+    local src = fio.pathjoin(fio.tempdir(), 'proto')
+    assert(fio.mktree(fio.pathjoin(src, 'xf')))
+    local function write(rel, body)
+        local f = assert(io.open(fio.pathjoin(src, rel), 'wb'))
+        f:write(body)
+        f:close()
+    end
+    write('xf/types.proto', 'syntax = "proto3";\npackage xf;\n'
+        .. 'message In { string x = 1; }\nmessage Out { int32 y = 1; }\n')
+    write('xf/svc.proto', 'syntax = "proto3";\npackage xf;\n'
+        .. 'import "xf/types.proto";\n'
+        .. 'service S { rpc M(xf.In) returns (xf.Out); }\n')
+    local out = fio.pathjoin(fio.tempdir(), 'set.pb')
+    local cmd = string.format(
+        'protoc --include_imports --descriptor_set_out=%q -I %q %q',
+        out, src, fio.pathjoin(src, 'xf', 'svc.proto'))
+    local ok = os.execute(cmd)
+    t.assert(ok == 0 or ok == true, cmd)
+    local set = pb.from_pb(slurp(out))
+    local m = set.files['xf/svc.proto'].S_service.methods.M
+    t.assert_is(m.input, set.lookup('xf.In'))
+    t.assert_is(m.output, set.lookup('xf.Out'))
+end

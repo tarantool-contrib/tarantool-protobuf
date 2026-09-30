@@ -305,17 +305,33 @@ function M.parse(bytes)
     local set = codec.decode(descpb.FileDescriptorSet, bytes)
     local files = {}
     local order = {}
+    local asts = {}
     for _, f in ipairs(set.file or {}) do
         local ast = translate_file(f)
         local module = dynamic.build(ast)
         local name = f.name ~= '' and f.name or ('file_' .. tostring(#order + 1))
         files[name] = module
+        asts[name] = ast
         table.insert(order, name)
+    end
+    local lookup = build_lookup(files, order)
+    -- dynamic.build sees one file at a time, so an rpc whose input or
+    -- output type lives in another file of the set comes back nil;
+    -- resolve those across the whole set.
+    for _, name in ipairs(order) do
+        for _, svc in ipairs(asts[name].services) do
+            local methods = files[name][svc.name .. '_service'].methods
+            for _, m in ipairs(svc.methods) do
+                local entry = methods[m.name]
+                if entry.input == nil then entry.input = lookup(m.input) end
+                if entry.output == nil then entry.output = lookup(m.output) end
+            end
+        end
     end
     return {
         files  = files,
         order  = order,
-        lookup = build_lookup(files, order),
+        lookup = lookup,
     }
 end
 

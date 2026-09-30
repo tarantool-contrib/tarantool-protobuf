@@ -135,9 +135,11 @@ file, in the generated shape (`name`, `full_name`, `methods[<Method>]`
 with `input`, `output`, the streaming flags and, for methods annotated
 with `google.api.http`, the same normalised `http` array codegen emits
 — see [generated-api.md](generated-api.md#mservice_service)). `input` /
-`output` are `nil` when the type is declared in another file of the
-set. `pb.parse` builds the same service tables, without `http` (the
-text parser skips method options).
+`output` resolve across the files of the set (pass `--include_imports`
+to protoc so the types' files are in it); they are `nil` only when the
+type's file is missing from the set. `pb.parse` builds the same service
+tables for one file, without `http` (the text parser skips method
+options).
 
 ```lua
 local set = pb.from_pb(io.open('build/all.pb', 'rb'):read('*a'))
