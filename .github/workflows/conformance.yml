@@ -1,0 +1,64 @@
+name: Conformance
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROTOC_VERSION: '36.2'
+  # The tag the Justfile's conformance recipes run.
+  IMAGE: tarantool-protobuf-conformance:latest
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Setup protoc
+        run: |
+          curl -fsSL -o /tmp/protoc.zip \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          mkdir -p "$HOME/.local/protoc"
+          unzip -q /tmp/protoc.zip -d "$HOME/.local/protoc"
+          echo "$HOME/.local/protoc/bin" >> "$GITHUB_PATH"
+
+      - uses: extractions/setup-just@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Building protobuf's conformance runner from source takes 10-15
+      # minutes; the layer cache makes it a download until the Dockerfile
+      # changes.
+      - name: Build the conformance image
+        uses: docker/build-push-action@v7
+        with:
+          context: docker
+          file: docker/conformance.Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha,scope=conformance
+          cache-to: type=gha,scope=conformance,mode=max
+
+      - name: Generate code
+        run: just gen
+
+      - name: Conformance, Lua codecs
+        run: just conformance-run
+
+      - name: Conformance, C runtime
+        if: ${{ !cancelled() }}
+        run: just conformance-c-run

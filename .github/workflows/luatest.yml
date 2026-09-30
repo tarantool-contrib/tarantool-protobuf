@@ -1,0 +1,115 @@
+name: luatest
+
+# The luatest suite on a set of Tarantool series, called by Test (the
+# oldest and the newest series) and by Full CI (every series). A series
+# such as '3.4' installs its latest patch release.
+
+on:
+  workflow_call:
+    inputs:
+      tarantool:
+        description: JSON array of Tarantool series to run the suite on with the Lua codecs
+        type: string
+        required: true
+      tarantool-c:
+        description: JSON array of Tarantool series (3.5 or later) to run the suite on with the C runtime
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match the protoc used to generate the committed files under
+  # examples/expected/ and runtime/pb/: the freshness check below fails
+  # when a different release produces different output.
+  PROTOC_VERSION: '36.2'
+
+jobs:
+  lua:
+    name: lua (${{ matrix.tarantool }})
+    if: ${{ inputs.tarantool != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        tarantool: ${{ fromJSON(inputs.tarantool) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Setup protoc
+        run: |
+          curl -fsSL -o /tmp/protoc.zip \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          mkdir -p "$HOME/.local/protoc"
+          unzip -q /tmp/protoc.zip -d "$HOME/.local/protoc"
+          echo "$HOME/.local/protoc/bin" >> "$GITHUB_PATH"
+
+      - uses: extractions/setup-just@v4
+
+      - uses: tarantool/setup-tarantool@v4
+        with:
+          tarantool-version: ${{ matrix.tarantool }}
+
+      - name: Setup tt
+        run: |
+          curl -L https://tarantool.io/release/2/installer.sh | sudo bash
+          sudo apt-get install -y tt
+
+      - name: Install luatest
+        run: tt rocks install luatest
+
+      - name: Run tests
+        run: just test
+
+      # `just test` regenerates every committed generated file first; a
+      # difference means a change to the plugin or the protos was committed
+      # without the regenerated output.
+      - name: Generated files are up to date
+        run: |
+          git add -N .
+          git diff --exit-code --stat
+
+  c:
+    name: c (${{ matrix.tarantool }})
+    if: ${{ inputs.tarantool-c != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        tarantool: ${{ fromJSON(inputs.tarantool-c) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Setup protoc
+        run: |
+          curl -fsSL -o /tmp/protoc.zip \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          mkdir -p "$HOME/.local/protoc"
+          unzip -q /tmp/protoc.zip -d "$HOME/.local/protoc"
+          echo "$HOME/.local/protoc/bin" >> "$GITHUB_PATH"
+
+      - uses: extractions/setup-just@v4
+
+      - uses: tarantool/setup-tarantool@v4
+        with:
+          tarantool-version: ${{ matrix.tarantool }}
+
+      - name: Setup tt
+        run: |
+          curl -L https://tarantool.io/release/2/installer.sh | sudo bash
+          sudo apt-get install -y tt
+
+      - name: Install luatest
+        run: tt rocks install luatest
+
+      - name: Run tests with the C runtime
+        run: just test-c

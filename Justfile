@@ -30,6 +30,12 @@ proto2_test_dir   := "test/proto"
 luatest           := ".rocks/bin/luatest"
 image             := "tarantool-protobuf-conformance:latest"
 
+# luatest removes its var directory (default /tmp/t) when it starts, so
+# runs from two checkouts at once delete each other's files mid-run. Each
+# checkout gets its own directory, keyed by its path; VARDIR set in the
+# environment still wins.
+export VARDIR := env_var_or_default("VARDIR", "/tmp/t-" + shell('printf %s "$1" | cksum | cut -d" " -f1', justfile_directory()))
+
 # Import paths every protoc run shares: options/ holds this project's
 # tarantool/tarantool.proto (the published options module), and
 # third_party/googleapis the vendored google/api/{annotations,http}.proto.
@@ -399,7 +405,12 @@ conformance_testee := "/usr/bin/tarantool cmd/conformance-runner.lua"
 # the same pass.
 #
 # Run the conformance suite with --enforce_recommended, default + --performance.
-conformance: conformance-build gen
+conformance: conformance-build gen && conformance-run
+
+# CI loads the image from its build cache, so it runs this step alone.
+#
+# The run step of `conformance`: expects the image and `just gen` output.
+conformance-run:
     docker run --rm -v "$(pwd):/work" -w /work {{image}}
     docker run --rm -v "$(pwd):/work" -w /work {{image}} {{conformance_flags}} --performance {{conformance_testee}}
 
@@ -412,7 +423,10 @@ conformance-perf: conformance-build gen
 # dispatches to the C codec.
 #
 # Same as `conformance`, but through the C-acceleration path.
-conformance-c: conformance-build gen
+conformance-c: conformance-build gen && conformance-c-run
+
+# The run step of `conformance-c`: expects the image and `just gen` output.
+conformance-c-run:
     docker run --rm -v "$(pwd):/work" -w /work -e PB_ENABLE_C=1 \
         --entrypoint bash {{image}} -c '\
             set -e; \

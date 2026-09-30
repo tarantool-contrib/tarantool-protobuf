@@ -2,11 +2,11 @@
 // fixture × per size, encode + decode, throughput + alloc.
 //
 // Two implementations per case:
-//   * apiv2:   google.golang.org/protobuf reflective Marshal/Unmarshal
-//              — the default everyone gets out of the box.
-//   * vtproto: planetscale/vtprotobuf generated MarshalVT/UnmarshalVT
-//              — the fastest pure-Go path, conceptually equivalent to
-//              our `mode=full` codegen.
+//   - apiv2:   google.golang.org/protobuf reflective Marshal/Unmarshal
+//     — the default everyone gets out of the box.
+//   - vtproto: planetscale/vtprotobuf generated MarshalVT/UnmarshalVT
+//     — the fastest pure-Go path, conceptually equivalent to
+//     our `mode=full` codegen.
 //
 // Runs are single-threaded by default (testing.B doesn't parallelize
 // unless RunParallel is called).

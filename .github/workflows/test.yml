@@ -1,0 +1,70 @@
+name: Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  luacheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: tarantool/setup-tarantool@v4
+        with:
+          tarantool-version: '3.8'
+
+      - name: Setup tt
+        run: |
+          curl -L https://tarantool.io/release/2/installer.sh | sudo bash
+          sudo apt-get install -y tt
+
+      # rocks.tarantool.org carries 0.26.0 as its newest luacheck release.
+      - name: Install luacheck
+        run: tt rocks install luacheck 0.26.0
+
+      - name: Run luacheck
+        run: .rocks/bin/luacheck .
+
+  go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          test -z "$out" || { echo "gofmt needed:"; echo "$out"; exit 1; }
+
+      # The end-to-end suites under test/ are separate modules; vet compiles
+      # them too. bench/go is left out: it imports packages its bench recipe
+      # generates.
+      - name: go vet
+        run: |
+          for m in . test/server-go test/reflection-go; do
+            echo "::group::$m"
+            (cd "$m" && go vet ./...)
+            echo "::endgroup::"
+          done
+
+  # The oldest supported series and the newest; keep README's "Install"
+  # section in step. Full CI covers the series in between. The C runtime
+  # needs 3.5 or later.
+  luatest:
+    uses: ./.github/workflows/luatest.yml
+    with:
+      tarantool: '["3.1", "3.8"]'
+      tarantool-c: '["3.8"]'

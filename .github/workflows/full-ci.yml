@@ -1,0 +1,56 @@
+name: Full CI
+
+# The luatest suite on every supported Tarantool series, each at its
+# latest patch release, where Test runs only the oldest and the newest.
+# Runs weekly on master (a new patch release is picked up without a
+# commit), on demand, and on pull requests labelled "full ci".
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+  pull_request:
+    types: [ opened, reopened, synchronize, labeled ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  series:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'full ci')
+    runs-on: ubuntu-24.04
+    outputs:
+      lua: ${{ steps.list.outputs.lua }}
+      c: ${{ steps.list.outputs.c }}
+    steps:
+      # The series come from the package index setup-tarantool installs
+      # from, so a new minor release joins the matrix by itself. 3.1 is the
+      # oldest supported series; the C runtime needs 3.5 or later.
+      - id: list
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/Packages \
+            https://download.tarantool.org/tarantool/release/series-3/linux-deb/dists/static/main/binary-amd64/Packages
+          awk '/^Package: /{p=($2=="tarantool")} p && /^Version: /{print $2}' /tmp/Packages \
+            | awk -F. '$1==3 && $2>=1 {print $1"."$2}' \
+            | sort -u -t. -k1,1n -k2,2n > /tmp/series
+          test -s /tmp/series || { echo "no Tarantool series found in the index"; exit 1; }
+          lua=$(jq -R . /tmp/series | jq -sc .)
+          c=$(awk -F. '$2>=5' /tmp/series | jq -R . | jq -sc .)
+          echo "lua=$lua" >> "$GITHUB_OUTPUT"
+          echo "c=$c" >> "$GITHUB_OUTPUT"
+          echo "Lua codecs: $lua"
+          echo "C runtime:  $c"
+
+  luatest:
+    needs: series
+    uses: ./.github/workflows/luatest.yml
+    with:
+      tarantool: ${{ needs.series.outputs.lua }}
+      tarantool-c: ${{ needs.series.outputs.c }}

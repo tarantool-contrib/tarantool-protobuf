@@ -80,6 +80,9 @@ wire format. Only editions are out of scope for now.
 
 ## Install
 
+Requires Tarantool 3.1 or later; the optional C runtime needs 3.5 or
+later. CI tests 3.1 and 3.8.
+
 There is no published rock yet, so install from a local checkout:
 
 ```bash
