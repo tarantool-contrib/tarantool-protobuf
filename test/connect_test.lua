@@ -264,6 +264,19 @@ u.test_stream_end_is_last = function()
     t.assert_gt(#list, 1, 'some messages went out before the end')
 end
 
+-- Writes that yield halfway are not interleaved: every envelope is
+-- whole, and the end of the stream comes once, last. (stream_io's
+-- write lock; without it the envelopes tear.)
+u.test_stream_writes_are_serialized = function()
+    local st, hello = racing_stream(true)
+    local msgs, tail = end_stream(table.concat(st.bytes))
+    t.assert_equals(tail, {})
+    t.assert_gt(#msgs, 1)
+    for _, m in ipairs(msgs) do
+        t.assert_str_matches(hello.HelloReply_decode(m).greeting, '%d+/%d+')
+    end
+end
+
 u.test_end_stream_json = function()
     t.assert_equals(connect.end_stream_json(nil, nil), '{}')
     t.assert_equals(connect.end_stream_json(nil, {}), '{}')
