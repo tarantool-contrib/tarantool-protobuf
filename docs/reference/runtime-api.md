@@ -208,7 +208,12 @@ Strict proto3 JSON. See `runtime/pb/json.lua` for the canonical-mapping
 details (camelCase field names, base64 for `bytes`, RFC 3339 for
 `Timestamp`, etc.).
 
-- `pb.json.encode(desc, t) -> string`
+- `pb.json.encode(desc, t [, opts]) -> string` — `opts.use_proto_names`,
+  `opts.emit_defaults` (emit fields equal to their defaults, empty
+  repeated and map fields), `opts.emit_null_messages` (emit an unset
+  singular message field as `null`, as protojson's `EmitUnpopulated`
+  does; oneof members and proto3 `optional` fields stay absent),
+  `opts.indent`.
 - `pb.json.decode(desc, s [, opts]) -> table` —
   `opts.ignore_unknown_fields = true` accepts JSON with extra keys
   (matches the conformance suite's `JSON_IGNORE_UNKNOWN_PARSING_TEST`
@@ -338,10 +343,13 @@ router:routes()                              -- {{method, pattern, path, body?, 
 - `opts.unbound = true` — also route every unary method without rules as
   `POST /<package.Service>/<Method>` with the whole request as the JSON
   body. Off by default.
-- `opts.json` — options for the response JSON (`pb.json.encode`'s).
-  Defaults to `{emit_defaults = true}` with camelCase names, as
-  grpc-gateway does; `{emit_defaults = false}` gives proto3's elided
-  form, `{use_proto_names = true}` snake_case names.
+- `opts.json` — options for the response JSON (`pb.json.encode`'s),
+  merged over the default `{emit_defaults = true, emit_null_messages =
+  true}` with camelCase names: grpc-gateway's output, where every field
+  is present and an unset singular message is `null` (protojson's
+  `EmitUnpopulated`). `{emit_defaults = false, emit_null_messages =
+  false}` gives proto3's elided form, `{use_proto_names = true}`
+  snake_case names.
 - `req = {method, path, headers, body, version, peer}` — `path` as
   received, query string included; header names lowercased.
 - `resp = {status, headers, body}` — `content-type: application/json`

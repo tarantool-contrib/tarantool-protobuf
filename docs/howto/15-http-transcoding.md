@@ -177,7 +177,12 @@ to the Tarantool log, not to the client.
 ```lua
 pb.transcode.new(servers, {
     unbound = true,                 -- also POST /library.Library/<Method> for methods without rules
-    json = {emit_defaults = false}, -- response JSON options; default emits every field
+    -- Response JSON options. The default is grpc-gateway's: every
+    -- scalar, repeated and map field is present with its default, and
+    -- an unset singular message is null (oneof members and proto3
+    -- `optional` fields stay absent when unset). This gives proto3's
+    -- elided form instead:
+    json = {emit_defaults = false, emit_null_messages = false},
 })
 ```
 

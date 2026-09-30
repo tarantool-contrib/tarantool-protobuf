@@ -813,6 +813,25 @@ gb.test_unset_wrapper_is_null = function()
     t.assert_equals(body('/v1/label/x'), '"seven"')
 end
 
+-- The default response JSON follows grpc-gateway (protojson
+-- EmitUnpopulated): every field present, an unset message as null.
+gb.test_default_json_emits_unset_messages_as_null = function()
+    local m = pb.parse([[
+        syntax = "proto3"; package un;
+        message Inner { string s = 1; }
+        message Req { string id = 1; }
+        message Resp { Inner inner = 1; repeated Inner inners = 2; string name = 3;
+                       oneof o { Inner a = 4; string b = 5; } }
+        service U { rpc Get(Req) returns (Resp); }
+    ]])
+    local srv = fake_server(m.U_service, {Get = {{method = 'GET', pattern = '/v1/{id}'}}})
+    local resp = tc.new({srv}):handle(request('GET', '/v1/x'))
+    t.assert_equals(json.decode(resp.body), {inner = box.NULL, inners = {}, name = ''})
+    t.assert_str_contains(resp.body, '"inner":null')
+    resp = tc.new({srv}, {json = {emit_null_messages = false}}):handle(request('GET', '/v1/x'))
+    t.assert_equals(json.decode(resp.body), {inners = {}, name = ''})
+end
+
 -- ---------------------------------------------------------------------------
 -- End to end against the generated library example, both codegen modes
 -- ---------------------------------------------------------------------------

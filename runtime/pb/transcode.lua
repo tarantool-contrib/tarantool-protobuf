@@ -599,7 +599,8 @@ Router.__index = Router
 
 ---@class pb.TranscodeOpts
 ---@field unbound? boolean   expose unannotated unary methods as POST /pkg.Service/Method
----@field json?    pb.JsonEncodeOpts  response JSON options (default {emit_defaults = true})
+---@field json?    pb.JsonEncodeOpts  response JSON options, merged over the default
+---                                  {emit_defaults = true, emit_null_messages = true}
 
 -- new(servers, opts) -> router
 ---@param servers table[]   generated server tables (M.<Svc>_server(impl))
@@ -613,7 +614,9 @@ function M.new(servers, opts)
     if type(opts) ~= 'table' then
         error('pb.transcode.new: opts must be a table', 2)
     end
-    local json_opts = {emit_defaults = true}
+    -- grpc-gateway's default marshaler (protojson EmitUnpopulated):
+    -- every field is present, an unset message as null.
+    local json_opts = {emit_defaults = true, emit_null_messages = true}
     if opts.json ~= nil then
         if type(opts.json) ~= 'table' then
             error('pb.transcode.new: opts.json must be a table', 2)

@@ -625,6 +625,35 @@ gfield.test_decode_field_rejects_bad_input = function()
     t.assert_error_msg_contains('has no field', pb.json.decode_field, d, 'nope', '{}')
 end
 
+-- emit_null_messages: an unset singular message field is `null`; oneof
+-- members, proto3 `optional` and repeated fields are not affected.
+gfield.test_emit_null_messages = function()
+    local m = pb.parse([[
+        syntax = "proto3"; package jn;
+        import "google/protobuf/timestamp.proto";
+        message Inner { string s = 1; }
+        message Outer {
+          Inner inner = 1;
+          repeated Inner inners = 2;
+          oneof o { Inner a = 3; string b = 4; }
+          optional Inner opt = 5;
+          google.protobuf.Timestamp at = 6;
+          string name = 7;
+        }
+    ]])
+    local d = m.Outer_descriptor
+    t.assert_equals(reparse(pb.json.encode(d, {}, {emit_null_messages = true})),
+                    {inner = box.NULL, at = box.NULL})
+    local got = reparse(pb.json.encode(d, {}, {emit_null_messages = true, emit_defaults = true}))
+    t.assert_equals(got, {inner = box.NULL, at = box.NULL, inners = {}, name = ''})
+    t.assert_equals(reparse(pb.json.encode(d, {inner = {s = 'x'}}, {emit_null_messages = true})),
+                    {inner = {s = 'x'}, at = box.NULL})
+    -- Off by default, and emit_defaults alone keeps unset messages absent.
+    t.assert_equals(pb.json.encode(d, {}), '{}')
+    t.assert_equals(reparse(pb.json.encode(d, {}, {emit_defaults = true})),
+                    {inners = {}, name = ''})
+end
+
 gfield.test_json_name = function()
     t.assert_equals(pb.json.json_name('destination_shelf'), 'destinationShelf')
     t.assert_equals(pb.json.json_name('name'), 'name')

@@ -68,8 +68,8 @@ end
 
 local router = pb.transcode.new({lib.Library_server(impl)}, {
     -- proto3's elided form keeps the output short; the default emits
-    -- every field, as grpc-gateway does.
-    json = {emit_defaults = false},
+    -- every field (unset messages as null), as grpc-gateway does.
+    json = {emit_defaults = false, emit_null_messages = false},
 })
 
 print('routes:')

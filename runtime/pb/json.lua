@@ -872,6 +872,10 @@ encode_message = function(desc, t)
     local opts = CURRENT_ENCODE_OPTS
     local emit_defaults = opts and opts.emit_defaults
     local use_proto_names = opts and opts.use_proto_names
+    -- Unset singular message fields as JSON null (protojson's
+    -- EmitUnpopulated, grpc-gateway's default). Oneof members and
+    -- proto3 `optional` fields stay absent, as there.
+    local emit_null_messages = opts and opts.emit_null_messages
 
     local out = setmetatable({}, {__serialize='map'})
     for _, f in ipairs(desc.fields) do
@@ -938,6 +942,10 @@ encode_message = function(desc, t)
                 if z ~= nil then out[key] = encode_field_value(f, z) end
             end
         end
+        if emit_null_messages and rawequal(v, nil) and f.kind == 'message'
+                and not f.repeated and not (f.optional or f.oneof) then
+            out[key] = box.NULL
+        end
     end
     -- Proto2 extensions: surface set entries under their bracketed
     -- fully-qualified name (`[pkg.ext_name]`). Walk the array
@@ -987,6 +995,7 @@ local function normalize_encode_opts(opts, fname)
         use_proto_names = opts.use_proto_names and true or false,
         emit_defaults   = (opts.emit_defaults or opts.always_emit_zero_value)
                           and true or false,
+        emit_null_messages = opts.emit_null_messages and true or false,
         indent          = opts.indent,
     }
     if norm.indent ~= nil and type(norm.indent) ~= 'string' then

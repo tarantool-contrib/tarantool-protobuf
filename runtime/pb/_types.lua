@@ -126,6 +126,7 @@
 ---@field use_proto_names?       boolean    emit snake_case field names instead of camelCase
 ---@field emit_defaults?         boolean    emit fields equal to proto3 defaults (alias: always_emit_zero_value)
 ---@field always_emit_zero_value? boolean   deprecated alias of emit_defaults
+---@field emit_null_messages?    boolean    emit unset singular message fields (not oneof/optional) as null
 ---@field indent?                string     non-empty string ⇒ pretty-print with that indent unit
 
 ---@class pb.JsonDecodeOpts
