@@ -258,6 +258,48 @@ local catalog_client = catalog.Catalog_client(transport)
 the same package + service name will fail loudly at setup time, not
 silently at the first dispatch.
 
+## Reflection and health
+
+`pb.reflection` and `pb.health` return server tables of the same
+shape, so they join the others on a transport
+([`examples/grpc/reflection_health.lua`](../../examples/grpc/reflection_health.lua),
+`just examples grpc-reflection-health`):
+
+```lua
+local health = pb.health.new()
+health:set('hello.Greeter', 'SERVING')
+
+local refl = pb.reflection.new({services = {greeter, health:server()}})
+
+local servers = {greeter, health:server()}
+for _, s in ipairs(refl:servers()) do table.insert(servers, s) end
+local transport = pb.grpc.multiplex(servers)
+```
+
+The clients generated from the upstream protos talk to them:
+
+```lua
+local reflection_pb = require('pb.gen.grpc.reflection.v1.reflection_pb')
+local info = reflection_pb.ServerReflection_client(transport).ServerReflectionInfo({})
+info:send({list_services = ''})
+-- grpc.health.v1.Health, grpc.reflection.v1.ServerReflection,
+-- grpc.reflection.v1alpha.ServerReflection, hello.Greeter
+info:send({file_containing_symbol = 'hello.Greeter.SayHello'})
+-- hello.proto and the files it imports, as FileDescriptorProto bytes
+
+local health_pb = require('pb.gen.grpc.health.v1.health_pb')
+local hc = health_pb.Health_client(transport)
+hc.Check({service = 'hello.Greeter'})      -- {status = 1} (SERVING)
+local watch = hc.Watch({service = 'hello.Greeter'})
+watch:recv()                               -- SERVING now, then each change
+```
+
+Reflection answers from `pb.descriptors`, so every generated module
+the process has loaded is describable. `health:shutdown()` flips every
+service to `NOT_SERVING` before a server drains. Details:
+[runtime-api.md → pb.reflection](../reference/runtime-api.md#grpc-server-reflection--pbreflection)
+and [→ pb.health](../reference/runtime-api.md#grpc-health--pbhealth).
+
 ## What's next
 
 - [Reference: grpc-contract](../reference/grpc-contract.md) — the

@@ -7,6 +7,7 @@
 # Run individual examples:
 #   just examples quickstart        # encode/decode round-trip
 #   just examples grpc-loopback     # Greeter end-to-end, all 4 streaming flavors
+#   just examples grpc-reflection-health  # server reflection + health services
 #   just examples dynamic-schemas   # pb.parse on a schema stored in a Tarantool space
 #   just examples tuple-range       # etcd-style Range response built from space tuples
 #   just examples tuple-layouts     # one nested message as a map, an array, raw bytes
@@ -35,7 +36,7 @@ default:
     @just --list --justfile {{justfile()}}
 
 # Run every non-interactive example in sequence.
-all: quickstart grpc-loopback dynamic-schemas tuple-range tuple-layouts transcode
+all: quickstart grpc-loopback grpc-reflection-health dynamic-schemas tuple-range tuple-layouts transcode
 
 # Encode/decode a quickstart.User round-trip. Drives the first-message howto.
 quickstart:
@@ -52,6 +53,10 @@ quickstart:
 # Greeter end-to-end via pb.grpc.loopback (all 4 streaming flavors).
 grpc-loopback:
     @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/grpc/client.lua
+
+# Server reflection + health next to Greeter, driven by their generated clients.
+grpc-reflection-health:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/grpc/reflection_health.lua < /dev/null
 
 # pb.parse on schema text stored in a Tarantool space (cache + evolution).
 dynamic-schemas:
