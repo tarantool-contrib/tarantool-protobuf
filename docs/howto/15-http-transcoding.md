@@ -18,11 +18,10 @@ grpc-gateway, ESP and Envoy use, specified in
 comment) and [AIP-127](https://google.aip.dev/127).
 
 `pb.transcode` is the routing and binding half of it: a pure function
-from an HTTP request table to a response table. **The network server
-that listens on a port and feeds it requests is not shipped yet**
-(see [specs/grpc_transports.md](../specs/grpc_transports.md)); until
-then, call `router:handle()` from any HTTP server you already run, as
-below.
+from an HTTP request table to a response table. `pb.server`
+([how-to 16](16-network-server.md)) feeds it requests from a real
+listener next to gRPC; this page calls `router:handle()` directly, which
+also works from any HTTP server you already run.
 
 The runnable version of this page is
 [`examples/http/transcode.lua`](../../examples/http/transcode.lua):
@@ -204,3 +203,5 @@ with a warning in the log.
   — the specification the router implements.
 - [gRPC with the loopback transport](03-grpc-loopback.md) — the same
   server table, called from Lua.
+- [A gRPC and HTTP/JSON server on one port](16-network-server.md) —
+  these routes and gRPC served over the network by `pb.server`.

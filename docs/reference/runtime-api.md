@@ -41,6 +41,10 @@ pb.health.new()                           -- gRPC health service
 local router = pb.transcode.new({srv1, ...} [, opts]) -- google.api.http router
 router:handle(req [, ctx])                -- HTTP request table -> response | nil
 
+local server = pb.server.new({listen = 'host:port', services = {srv1, ...}})
+server:start()                            -- gRPC + reflection + health + HTTP/JSON
+                                          -- on one port (needs the http2 rock)
+
 local conv  = pb.tuple.bind(desc, space [, opts]) -- message <-> space format
 conv:encode(tuple)                        -- box.tuple -> wire bytes
 conv:decode(bytes)                        -- wire bytes -> box.tuple
@@ -549,6 +553,90 @@ Methods, as grpc-go's health server answers them:
 
 The module is generated from the upstream `grpc/health/v1/health.proto`
 into `pb.gen.grpc.health.v1.health_pb`.
+
+## gRPC and HTTP/JSON server — `pb.server`
+
+A network server built from generated server tables: gRPC over HTTP/2
+(h2c, prior knowledge) with all four call kinds, server reflection,
+health and `google.api.http` transcoding over HTTP/1.1 and HTTP/2, on
+one listener. The walkthrough is
+[howto/16-network-server.md](../howto/16-network-server.md).
+
+Sockets and HTTP/2 come from the **tarantool-http2** rock
+(`require('http2')`, over the system `libnghttp2`), which
+`pb.server.new()` loads; without it `new()` raises an error naming the
+rock and the library. Nothing else in `pb` needs it.
+
+```lua
+local server = pb.server.new({
+    listen      = '127.0.0.1:0',   -- or host = ..., port = ...
+    services    = {greeter_pb.Greeter_server(impl), ...},
+    reflection  = true,
+    health      = true,
+    transcoding = true,
+    http        = function(req) ... end,
+    limits      = {max_recv_message_size = 4 * 1024 * 1024},
+}):start()
+server:address()                   -- {host = '127.0.0.1', port = 54321}
+server:set_serving_status('hello.Greeter', 'NOT_SERVING')
+server:stop(5)
+```
+
+| Option | Meaning |
+|---|---|
+| `listen` | `'host:port'` (`'[::1]:port'` for IPv6) or a port number; or `host` (default `'0.0.0.0'`) and `port` instead. Port `0` picks a free port. A port is required. |
+| `services` | Array of generated server tables (`M.<Service>_server(impl)`). |
+| `reflection` | Serve `grpc.reflection.v1` and `v1alpha` (default `true`). They list every service the server has: yours, health and reflection. |
+| `health` | Serve `grpc.health.v1.Health` (default `true`); a table is passed to `pb.health.new`. `''` and every service in `services` start `SERVING`. |
+| `transcoding` | Route HTTP requests by the services' `google.api.http` rules (default `true`); a table is passed to `pb.transcode.new` as its options (`{unbound = true, json = {...}}`). |
+| `http` | `function(req)` returning a response table or `nil`, called for HTTP requests the router does not match. |
+| `limits` | tarantool-http2 limits. The registry's keys (`max_recv_message_size`, `max_send_message_size`, `recv_buffer_size`, `max_recv_buffer_size`, `send_buffer_size`) go to `http2.grpc.new`, the rest (`max_body_size`, `max_concurrent_streams`, timeouts, ...) to `http2.server.new`. |
+
+An unknown option, a malformed `listen` or a method path served by two
+server tables (including a user copy of health or reflection next to
+the built-in one) is an error from `new()`.
+
+| Method | Semantics |
+|---|---|
+| `server:start()` | Bind and serve; raises when the address cannot be bound. Returns the server. |
+| `server:address()` | `{host, port}` of the listener, `nil` when not started. |
+| `server:stop(timeout?)` | `health:shutdown()` (every service `NOT_SERVING`, so `Watch` callers hear it), then no new connections, `GOAWAY`, and up to `timeout` seconds (default 5) for calls in flight before the rest is closed. An open `Watch` holds the stop for the whole timeout. `start()` after `stop()` serves again with health resumed. |
+| `server:set_serving_status(service, status)` | `health:set`; `false` while stopped. Raises when health is disabled. |
+| `server:health()` / `server:reflection()` / `server:router()` | The `pb.health`, `pb.reflection` and `pb.transcode` objects behind the server, `nil` when disabled. |
+
+**gRPC.** Each server table's `methods[path]` is a unary handler and
+`streams[path]` a streaming one, registered with http2 under the
+path's service name. Handlers receive http2's `ctx`: `method`,
+`metadata` (lowercase keys, `-bin` values decoded), `deadline` (a
+`fiber.clock()` value), `peer`, `response_metadata` and
+`trailing_metadata` for the handler to fill, and `ctx:is_cancelled()`.
+
+- A raised `pb.grpc` status object ends the call with its code and
+  message; its `details` are sent as `grpc-status-details-bin` (a
+  `google.rpc.Status` with the same code and message). A status with
+  code `OK` is treated as a plain error.
+- Any other error is `INTERNAL` with the message `internal error`; the
+  error and its traceback go to `log.error` (to `log.verbose` when the
+  call already ended), never to the client.
+- A unary handler may also return `nil, code[, message]`, as with
+  `pb.transcode`.
+- Streams: `recv()` gives the next message, `nil, nil` once the client
+  half-closed, `nil, 'canceled'` after a client reset and `nil,
+  <DEADLINE_EXCEEDED status>` after the deadline. `send()` returns
+  `false` once the client is gone and raises `RESOURCE_EXHAUSTED` for a
+  message over `max_send_message_size`. Returning from the handler ends
+  the call with `OK`. A server-streaming handler gets the request
+  message the client sent.
+- The server answers `UNIMPLEMENTED` for unknown methods and
+  `DEADLINE_EXCEEDED` when a deadline passes; the handler fiber is not
+  cancelled and should poll `ctx:is_cancelled()`.
+
+**HTTP.** Every HTTP/1.1 request and every HTTP/2 request without a
+gRPC content-type goes to the transcoding router, then to the `http`
+fallback, then gets a 404 with a `google.rpc.Status` JSON body
+(`{"code": 5, "message": "no route for GET /path", "details": []}`).
+Transcoded calls run with the `ctx` `pb.transcode` builds from the
+request (metadata from its headers, its peer, no deadline).
 
 ## Tuple bridge — `pb.tuple`
 

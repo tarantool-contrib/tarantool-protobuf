@@ -1,6 +1,9 @@
 # Spec: gRPC and HTTP/JSON serving for Tarantool
 
-Status: **in progress.** The in-process transport contract
+Status: **shipped** — `pb.transcode`, `pb.reflection`, `pb.health` and
+`pb.server` over the tarantool-http2 rock, verified against grpc-go,
+grpcurl and net/http (`test/server-go`). The non-goals below stay
+deferred. The in-process transport contract
 ([`runtime/pb/grpc.lua`](../../runtime/pb/grpc.lua): generated
 `M.<Service>_client(transport)` / `M.<Service>_server(impl)`, the
 four-method `transport:unary` / `:server_stream` / `:client_stream` /
@@ -159,11 +162,20 @@ pb.server.new({
     health      = true,                 -- default true
     transcoding = true,                 -- default true
     http        = fn(req) -> resp,      -- optional fallback for unrouted HTTP
-    limits      = {max_recv_message = 4 * 1024 * 1024, ...},
+    limits      = {max_recv_message_size = 4 * 1024 * 1024, ...},
 })
 server:start(); server:stop(timeout)
 server:set_serving_status(service_name, 'SERVING' | 'NOT_SERVING')
 ```
+
+Shipped in [`runtime/pb/server.lua`](../../runtime/pb/server.lua); the
+contract is in
+[runtime-api.md](../reference/runtime-api.md#grpc-and-httpjson-server--pbserver).
+`limits` takes http2's own key names: the registry's
+(`max_recv_message_size`, ...) go to `http2.grpc.new`, the rest to
+`http2.server.new`. On a stream, http2's end reasons reach the handler
+in `pb.grpc`'s terms: `'canceled'` after a client reset (the loopback's
+word) and a `DEADLINE_EXCEEDED` status object after the deadline.
 
 **Transcoding.** The plugin reads `google.api.http` on each method and
 emits the normalised rules into the service descriptor
@@ -269,7 +281,12 @@ server agree. Every layer is checked against an independent peer:
   the HTTP paths on the same port.
 - **`pb.server`:** grpc-go with `dynamicpb` against a server built from
   the example protos; `grpcurl` driven only by reflection (`list`,
-  `describe`, a call); `grpc_health_probe`-style health checks.
+  `describe`, a call); `grpc_health_probe`-style health checks. Shipped
+  as `test/server-go` (`just test-server-go`): the four Greeter call
+  kinds with messages built from reflected descriptors, status details
+  through `status.FromError(err).Details()`, metadata both ways,
+  client- and server-side deadlines, health `Check` and `Watch`, the
+  library routes over HTTP/1.1 and h2c, and grpcurl built from source.
 - **Transcoding:** table-driven tests of the path-template matcher and
   binder taken from the examples in `http.proto`, then end-to-end
   requests over HTTP/1.1 and HTTP/2.

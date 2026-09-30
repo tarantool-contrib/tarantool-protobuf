@@ -44,6 +44,10 @@ wire format. Only editions are out of scope for now.
 | `google.api.http` rules in service descriptors | ✅ |
 | gRPC server reflection v1 / v1alpha (`pb.reflection`) | ✅ |
 | gRPC health service (`pb.health`) | ✅ |
+| HTTP/JSON transcoding by `google.api.http` rules (`pb.transcode`) | ✅ |
+| gRPC over HTTP/2 (h2c) network server, all four call kinds (`pb.server`)¹ | ✅ |
+| HTTP/JSON transcoding over HTTP/1.1 and HTTP/2 on the gRPC port (`pb.server`)¹ | ✅ |
+| Reflection and health served over the network (`pb.server`)¹ | ✅ |
 | WKT: Timestamp ↔ `datetime`      | ✅           |
 | WKT: Duration, Empty, wrappers   | ✅           |
 | WKT: Struct, Value, ListValue    | ✅           |
@@ -68,6 +72,9 @@ wire format. Only editions are out of scope for now.
 | proto2 closed enums                       | ✅   |
 | `MessageSet` wire format (`message_set_wire_format`) | ✅ |
 | Editions                                  | ❌ deferred |
+
+¹ Requires the tarantool-http2 rock (HTTP/2 and HTTP/1.1 over the system
+`libnghttp2`); see [Serving gRPC and HTTP/JSON](#serving-grpc-and-httpjson).
 
 ## Install
 
@@ -120,6 +127,49 @@ prefix is prepended to the option's value. See
 
 For a full walk-through that takes a fresh `.proto` to a Tarantool process
 encoding and decoding it, see **[docs/howto/01-first-message.md](docs/howto/01-first-message.md)**.
+
+## Serving gRPC and HTTP/JSON
+
+`pb.server` serves the generated services over the network: gRPC over
+HTTP/2 (h2c) that grpc-go, grpcurl and other stock clients talk to,
+server reflection, health, and HTTP/JSON transcoding of the
+`google.api.http` rules over HTTP/1.1 and HTTP/2, all on one port:
+
+```lua
+local server = require('pb').server.new({
+    listen   = '0.0.0.0:8080',
+    services = {greeter_pb.Greeter_server(impl)},
+}):start()
+```
+
+It needs the **tarantool-http2** rock, which drives the system
+`libnghttp2` (≥ 1.57) through FFI. The rock is not published yet:
+install it from its source tree with `tt rocks make`; once published it
+becomes a regular dependency of this rock. Nothing else in `pb` needs
+it. See **[docs/howto/16-network-server.md](docs/howto/16-network-server.md)**.
+
+## Development
+
+The [Justfile](Justfile) is the entry point (`just --list`): `just gen`,
+`just test`, `just test-c`, `just examples all`, and the Go end-to-end
+checks `just test-reflection-go` and `just test-server-go`.
+
+The recipes that start a server (`just test`, `just test-c`,
+`just examples network-server`, `just test-server-go`) find the
+tarantool-http2 rock through `require('http2')`. To use a checkout of
+the rock instead of an installed one, export its `runtime/` directory
+(an absolute path); the Justfile appends it to `LUA_PATH`:
+
+```bash
+export TARANTOOL_HTTP2_RUNTIME=/path/to/tarantool-http2/runtime
+just test-server-go
+```
+
+Without the rock, the luatest cases that need a live server skip,
+`just examples all` skips `network-server` with a note, and
+`just test-server-go` skips its tests. `just test-server-go` builds
+grpcurl into a temporary directory (set `GRPCURL=<path>` to use an
+installed one).
 
 ## Vendoring an upstream `.proto` schema
 
@@ -340,6 +390,8 @@ runtime/pb/                  pure-Lua runtime (`require('pb')`)
   grpc.lua                   transport interface + loopback / multiplex
   reflection.lua             gRPC server reflection (v1, v1alpha)
   health.lua                 gRPC health service
+  transcode.lua              google.api.http HTTP/JSON router
+  server.lua                 network server over the tarantool-http2 rock
   gen/                       reflection + health modules generated from
                              third_party/grpc-proto by this plugin
   parser.lua                 pure-Lua proto3 schema parser (.proto → AST)

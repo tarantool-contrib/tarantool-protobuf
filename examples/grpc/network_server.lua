@@ -23,7 +23,8 @@ local greeter = hello.Greeter_server({
         -- ctx.metadata holds the request metadata; handlers may add
         -- response (header) and trailing metadata.
         ctx.response_metadata['x-served-by'] = 'tarantool'
-        if req.name == '' then
+        -- A proto3 string left empty decodes as nil.
+        if req.name == nil or req.name == '' then
             pb.grpc.error(pb.grpc.code.INVALID_ARGUMENT, 'name is required')
         end
         return {greeting = 'Hello, ' .. req.name}
@@ -33,7 +34,7 @@ local greeter = hello.Greeter_server({
 
     StreamHellos = function(req, stream)
         for i = 1, 3 do
-            if stream:send({greeting = ('Hello #%d, %s'):format(i, req.name)}) == false then
+            if stream:send({greeting = ('Hello #%d, %s'):format(i, req.name or '')}) == false then
                 return -- the client went away
             end
         end
@@ -47,7 +48,7 @@ local greeter = hello.Greeter_server({
                 if err ~= nil then error(err, 0) end
                 break -- the client half-closed
             end
-            names[#names + 1] = req.name
+            names[#names + 1] = req.name or ''
         end
         return {greeting = 'Hello, ' .. table.concat(names, ', ')}
     end,
@@ -59,7 +60,7 @@ local greeter = hello.Greeter_server({
                 if err ~= nil then error(err, 0) end
                 return
             end
-            stream:send({greeting = 'Echo ' .. req.name})
+            stream:send({greeting = 'Echo ' .. (req.name or '')})
         end
     end,
 })

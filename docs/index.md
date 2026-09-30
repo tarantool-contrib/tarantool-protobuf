@@ -39,6 +39,9 @@ links to the next.
 14. **[HTTP/JSON transcoding](howto/15-http-transcoding.md)** —
     `pb.transcode`: route HTTP requests to gRPC handlers by their
     `google.api.http` rules.
+15. **[A gRPC and HTTP/JSON server on one port](howto/16-network-server.md)** —
+    `pb.server`: real gRPC, reflection, health and transcoding over
+    the network (needs the tarantool-http2 rock).
 
 When something doesn't work, **[troubleshooting](troubleshooting.md)**
 collects the common errors and their fixes.
@@ -47,7 +50,8 @@ collects the common errors and their fixes.
 
 - **[reference/runtime-api.md](reference/runtime-api.md)** — every
   export of `require('pb')`: codec, lazy view, dynamic descriptors,
-  JSON/text/WKT/gRPC, server reflection and health, the tuple bridge,
+  JSON/text/WKT/gRPC, server reflection and health, the network
+  server (`pb.server`), the tuple bridge,
   sentinels, codegen helpers.
 - **[reference/generated-api.md](reference/generated-api.md)** —
   what each `_pb.lua` exposes per message, enum, and service.
@@ -74,13 +78,12 @@ collects the common errors and their fixes.
 Forward-looking design docs. These describe contracts and trade-offs
 for work that's either partly shipped or planned.
 
-- **[specs/grpc_transports.md](specs/grpc_transports.md)** — the
-  transport contract (shipped, stable), the protocol matrix
-  (HTTP/2 gRPC vs Connect vs net.box tunnel vs IProto), recommended
-  transports to build, and the gRPC status-code mapping. The
-  loopback and multiplex transports already ship in
-  `runtime/pb/grpc.lua`; external transports (`http_server`,
-  `netbox`, `http_client`) are not yet built.
+- **[specs/grpc_transports.md](specs/grpc_transports.md)** — gRPC
+  and HTTP/JSON serving: the split between `pb` and the tarantool-http2
+  rock, `pb.server`, transcoding, reflection and health, the status-code
+  mapping, and how each layer is verified against independent clients.
+  Shipped; TLS, compression, gRPC-Web and an outbound network client
+  are deferred.
 - **[specs/msgpack_encoding.md](specs/msgpack_encoding.md)** —
   brainstorm for a sibling MsgPack codec over the same descriptors.
   Not implemented; design sketch for picking up later.
