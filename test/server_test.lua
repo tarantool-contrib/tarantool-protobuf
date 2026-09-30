@@ -198,6 +198,45 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals({streaming('Chat', s)}, {})
     end
 
+    -- The same handler failure answers the same over gRPC (the adapter)
+    -- and over HTTP/JSON (the router pb.server builds): a status keeps
+    -- its code, a status claiming OK is an internal error on both.
+    g.test_grpc_http_status_parity = function()
+        local lib = require(mode .. '.library.library_pb')
+        local outcome
+        local lsrv = lib.Library_server({
+            GetBook = function()
+                if outcome.raise then grpc.error(outcome.code, 'raised') end
+                return nil
+            end,
+        })
+        -- A hand-written handler returning nil, code instead of raising.
+        local returning = {service = lsrv.service, streams = {}, methods = {
+            ['/library.Library/GetBook'] = function() return nil, outcome.code, 'returned' end,
+        }}
+        local path = '/library.Library/GetBook'
+        local breq = lib.GetBookRequest_encode({name = 'shelves/1/books/1'})
+        local hreq = {method = 'GET', path = '/v1/shelves/1/books/1', headers = {}, body = ''}
+        local cases = {
+            {code = grpc.code.OK, want = grpc.code.INTERNAL},
+            {code = grpc.code.NOT_FOUND, want = grpc.code.NOT_FOUND},
+        }
+        local n = 0
+        for _, c in ipairs(cases) do
+            for _, s in ipairs({{srv = lsrv, raise = true}, {srv = returning, raise = false}}) do
+                outcome = {code = c.code, raise = s.raise}
+                local label = ('code %d, %s'):format(c.code, s.raise and 'raised' or 'returned')
+                local _, code = server._unary_handler(s.srv.methods[path])(fake_ctx(path), breq)
+                t.assert_equals(code, c.want, 'gRPC: ' .. label)
+                local resp = pb.transcode.new({s.srv}):handle(hreq)
+                t.assert_equals(resp.status, grpc.http_status[c.want], 'HTTP: ' .. label)
+                t.assert_equals(json.decode(resp.body).code, c.want, 'HTTP body: ' .. label)
+                n = n + 1
+            end
+        end
+        t.assert_equals(n, 4)
+    end
+
     g.test_send_too_large = function()
         local s = fake_stream({req('x')})
         s.send_err = 'message too large'

@@ -902,6 +902,17 @@ function Router:_internal(ctx, path, err)
                                  FALLBACK_JSON)
 end
 
+-- _handler_status(st, ctx, path) -> response for a status a handler
+-- raised or returned. A status with code OK claims success without a
+-- response message: it is an internal error, the same answer pb.server
+-- gives it over gRPC.
+function Router:_handler_status(st, ctx, path)
+    if st.code == grpc.code.OK then
+        return self:_internal(ctx, path, 'handler failed with a status of code OK: ' .. tostring(st))
+    end
+    return self:_status_response(st, ctx)
+end
+
 local function new_ctx(r, req)
     local md = {}
     if type(req.headers) == 'table' then
@@ -945,14 +956,14 @@ function Router:_call(r, req, segs, n, last, query, ctx)
     local resp_bytes, st, msg
     ok, resp_bytes, st, msg = pcall(r.handler, req_bytes, ctx)
     if not ok then
-        if grpc.is_status(resp_bytes) then return self:_status_response(resp_bytes, ctx) end
+        if grpc.is_status(resp_bytes) then return self:_handler_status(resp_bytes, ctx, r.path) end
         return self:_internal(ctx, r.path, resp_bytes)
     end
     if resp_bytes == nil then
         -- Transport-style failure: nil, status[, message].
         if st ~= nil then
             if not grpc.is_status(st) then st = grpc.status(st, msg) end
-            return self:_status_response(st, ctx)
+            return self:_handler_status(st, ctx, r.path)
         end
         return self:_internal(ctx, r.path, 'handler returned no response')
     end

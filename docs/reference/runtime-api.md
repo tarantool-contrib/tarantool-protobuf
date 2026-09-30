@@ -444,7 +444,9 @@ the `google.rpc.Status` JSON shape `{"code", "message", "details"}` with
 - malformed JSON, a value that does not fit its field in the path or
   query, or a malformed percent-escape: 400 `INVALID_ARGUMENT` naming
   the field.
-- any other Lua error: 500 `INTERNAL` with the message `internal error`;
+- any other Lua error, and a status with code `OK` raised or returned
+  by the handler (a success without a response): 500 `INTERNAL` with
+  the message `internal error`, as `pb.server` answers it over gRPC;
   the real error goes to `log.error`.
 
 `ctx.trailing_metadata` has no HTTP/1.1 counterpart and is not sent.
