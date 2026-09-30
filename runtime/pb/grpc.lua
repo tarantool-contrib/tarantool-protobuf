@@ -25,8 +25,10 @@
 -- # Server-side stream view
 --
 -- Generated server code passes a "server_view" object to the user handler:
---   server_view:send(bytes)           -- push a reply (server_stream, bidi)
+--   server_view:send(bytes) -> ok     -- push a reply (server_stream, bidi);
+--                                     -- false once the client cancelled
 --   server_view:recv() -> bytes, err  -- pull next request (client_stream, bidi)
+--   server_view:is_cancelled()        -- true once the client cancelled
 --
 -- The handler signals end-of-stream by returning. Errors thrown via
 -- `error(...)` propagate to the client as the `err` returned by `recv()`.
@@ -289,9 +291,11 @@ function M.new_stream_pair(buf_size)
     function client:cancel()
         state.canceled = true
         if not c2s:is_closed() then c2s:close() end
-        -- We deliberately do NOT close s2c here. The handler fiber may
-        -- still write to it; closing under their feet would raise. Drain
-        -- on the next recv (which will see `canceled`).
+        -- Closing s2c wakes a handler blocked in send() on a full buffer:
+        -- a put on a closed channel returns false instead of blocking, so
+        -- the handler sees the call is gone and can return. Replies
+        -- already buffered stay readable; recv() then ends the stream.
+        if not s2c:is_closed() then s2c:close() end
     end
 
     -- Server-facing view (used by the handler running on a worker fiber)
@@ -310,8 +314,14 @@ function M.new_stream_pair(buf_size)
             return false
         end
         if s2c:is_closed() then return false end
-        s2c:put(bytes)
-        return true
+        -- false when cancel() closed the channel while this put waited.
+        return s2c:put(bytes)
+    end
+
+    -- true once the client cancelled the call. Lets a handler that waits
+    -- on something other than the stream notice the caller is gone.
+    function server:is_cancelled()
+        return state.canceled
     end
 
     -- Internal: invoked by the transport, not by user code. A status
@@ -499,7 +509,7 @@ end
 ---@param raw table                                              server-side stream view (bytes)
 ---@param input_decode?  fun(bytes: string): table               decoder for inbound messages (nil ⇒ server_stream: no inbound)
 ---@param output_encode? fun(msg: table): string                 encoder for outbound messages (nil ⇒ client_stream: no outbound)
----@return table                                                 {recv?, send?, close_send?, cancel}
+---@return table                                                 {recv?, send?, is_cancelled?}
 function M.wrap_server_view(raw, input_decode, output_encode)
     local wrapped = {}
     if input_decode ~= nil then
@@ -510,7 +520,12 @@ function M.wrap_server_view(raw, input_decode, output_encode)
         end
     end
     if output_encode ~= nil then
-        function wrapped:send(msg) raw:send(output_encode(msg)) end
+        -- Returns what the transport's send returns: false once the
+        -- caller has gone away.
+        function wrapped:send(msg) return raw:send(output_encode(msg)) end
+    end
+    if raw.is_cancelled ~= nil then
+        function wrapped:is_cancelled() return raw:is_cancelled() end
     end
     return wrapped
 end

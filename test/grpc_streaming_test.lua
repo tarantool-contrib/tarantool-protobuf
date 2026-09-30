@@ -256,6 +256,37 @@ u.test_finish_with_error_propagates = function()
     t.assert_equals(err, 'handler error')
 end
 
+-- A handler blocked in send() on a full buffer is released by cancel()
+-- with send() -> false, instead of waiting forever for a reader.
+u.test_cancel_releases_a_blocked_send = function()
+    local client, server = pb.grpc.new_stream_pair(1)
+    local results = fiber.channel(4)
+    fiber.create(function()
+        results:put(server:send('a'))   -- fills the buffer
+        results:put(server:send('b'))   -- blocks until cancel()
+        results:put(server:is_cancelled())
+    end)
+    t.assert_equals(results:get(1), true)
+    t.assert_equals(server:is_cancelled(), false)
+    client:cancel()
+    t.assert_equals(results:get(1), false)
+    t.assert_equals(results:get(1), true)
+    -- What was buffered before the cancel is still readable.
+    t.assert_equals(client:recv(), 'a')
+    t.assert_equals(client:recv(), nil)
+end
+
+-- The typed server view forwards send()'s result and is_cancelled().
+u.test_wrapped_server_view_reports_cancel = function()
+    local client, server = pb.grpc.new_stream_pair()
+    local view = pb.grpc.wrap_server_view(server, nil, function(s) return s end)
+    t.assert_equals(view:send('x'), true)
+    t.assert_equals(view:is_cancelled(), false)
+    client:cancel()
+    t.assert_equals(view:is_cancelled(), true)
+    t.assert_equals(view:send('y'), false)
+end
+
 u.test_send_after_close_send_errors = function()
     local client, _ = pb.grpc.new_stream_pair()
     client:close_send()
