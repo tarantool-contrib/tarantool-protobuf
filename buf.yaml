@@ -1,0 +1,31 @@
+# The options module: options/tarantool/tarantool.proto, which defines
+# the (tarantool.lua_package) file option. Nothing else in the
+# repository is part of it; `just test-options-module` pins its contents.
+#
+# Two consumers read this file:
+#
+# - `buf push` publishes the module to the Buf Schema Registry under
+#   `name` (docs/releasing.md). options/README.md becomes its
+#   documentation; the repository's LICENSE is used because the module
+#   has none of its own.
+# - EasyP strips `path` from the files of a git dependency on this
+#   repository, so they install as tarantool/tarantool.proto. It reads
+#   only `path`, not `excludes`: that is why the vendored google/api
+#   protos live in third_party/googleapis, outside the module.
+#
+# The repository's own buf checks (`just test-buf`) pass their own
+# workspace with `--config test/toolchains/buf.yaml`.
+version: v2
+modules:
+  - path: options
+    name: buf.build/tarantool-contrib/tarantool-protobuf
+lint:
+  use:
+    - STANDARD
+  except:
+    # The package is `tarantool`, not `tarantool.v1`: renaming it would
+    # rename the option every schema sets as (tarantool.lua_package).
+    - PACKAGE_VERSION_SUFFIX
+breaking:
+  use:
+    - FILE

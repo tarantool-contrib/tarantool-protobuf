@@ -241,8 +241,16 @@ test-all: test test-c
 # modes) and check them against the protoc outputs of `gen`: identical
 # code, embedded descriptors equal once decoded. Offline; each tool is
 # skipped when missing (EasyP: $EASYP or `easyp` on PATH).
-test-toolchains: gen
+test-toolchains: gen test-options-module
     test/toolchains/check.sh buf easyp
+
+# Pin the published options module (root buf.yaml): options/ must hold
+# only tarantool/tarantool.proto, as git tracks it (what EasyP installs)
+# and as `buf ls-files` lists it (what `buf push` sends); `buf lint`
+# must pass, and `buf breaking` against the newest tag if there is one.
+# The buf checks are skipped without buf on PATH.
+test-options-module:
+    test/toolchains/module.sh
 
 # `test-toolchains` for buf only.
 test-buf: gen
