@@ -327,8 +327,9 @@ function M.build(parsed)
     -- method options).
     for _, svc in ipairs(parsed.services or {}) do
         local full = pkg ~= '' and (pkg .. '.' .. svc.name) or svc.name
-        local methods = {}
+        local methods, order = {}, {}
         for _, m in ipairs(svc.methods) do
+            order[#order + 1] = m.name
             local entry = {
                 name      = m.name,
                 full_name = '/' .. full .. '/' .. m.name,
@@ -344,6 +345,8 @@ function M.build(parsed)
             name      = full,
             full_name = '/' .. full,
             methods   = methods,
+            -- Declaration order; `methods` is keyed by name.
+            method_order = order,
         }
     end
 

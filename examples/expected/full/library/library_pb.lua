@@ -4529,6 +4529,7 @@ M.Library_service = {
             server_streaming = true,
         },
     },
+    method_order = {"GetBook", "ListBooks", "CreateBook", "UpdateBook", "DeleteBook", "LookupBook", "MoveBook", "GetMessage", "GetFile", "CheckBook", "WatchShelf"},
 }
 
 function M.Library_client(transport)

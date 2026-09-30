@@ -382,8 +382,9 @@ match, segments are compared from the left: a literal beats `*`, which
 beats `**`, and a template that has ended beats one that continues with
 `**` (`/v1/files` wins over `/v1/{name=files/**}` for `/v1/files`). Then
 a template with a verb beats one without, then declaration order:
-servers in the order given, methods by name within a service (the
-descriptor does not record source order), rules in their `http` order.
+servers in the order given, methods in the service's `method_order`
+(source order; a hand-built service without it falls back to name
+order), rules in their `http` order.
 A path that matches only under another HTTP method returns `nil`, like
 an unknown path, so the caller decides between 404, 405 or a fallback.
 

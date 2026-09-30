@@ -368,6 +368,7 @@ M.Greeter_service = {
             server_streaming = true,
         },
     },
+    method_order = {"SayHello", "Echo", "StreamHellos", "CollectHellos", "Chat"},
 }
 
 function M.Greeter_client(transport)

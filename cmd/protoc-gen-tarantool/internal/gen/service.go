@@ -1,6 +1,9 @@
 package gen
 
 import (
+	"fmt"
+	"strings"
+
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
@@ -80,6 +83,14 @@ func emitService(w *writer, file *protogen.File, svc *protogen.Service, imports 
 		w.line("        },")
 	}
 	w.line("    },")
+	// `methods` is keyed by name, so it loses the declaration order;
+	// consumers that need it (the HTTP transcoder's tie-break) read
+	// this array.
+	order := make([]string, 0, len(svc.Methods))
+	for _, m := range svc.Methods {
+		order = append(order, fmt.Sprintf("%q", string(m.Desc.Name())))
+	}
+	w.line("    method_order = {%s},", strings.Join(order, ", "))
 	if opts := w.renderOpts(svc.Desc.Options()); opts != "" {
 		w.line("    options = %s,", opts)
 	}

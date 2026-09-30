@@ -90,6 +90,16 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(n, 10)
     end
 
+    -- `methods` is keyed by name; method_order keeps the source order.
+    g.test_method_order_is_declaration_order = function()
+        t.assert_equals(lib.Library_service.method_order, {
+            'GetBook', 'ListBooks', 'CreateBook', 'UpdateBook', 'DeleteBook',
+            'LookupBook', 'MoveBook', 'GetMessage', 'GetFile', 'CheckBook', 'WatchShelf',
+        })
+        t.assert_equals(library_set().files['library.proto'].Library_service.method_order,
+                        lib.Library_service.method_order)
+    end
+
     g.test_unannotated_method_has_no_http = function()
         local m = lib.Library_service.methods.WatchShelf
         t.assert_type(m, 'table')

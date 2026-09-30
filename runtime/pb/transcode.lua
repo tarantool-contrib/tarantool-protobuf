@@ -666,12 +666,15 @@ function M.new(servers, opts)
                 or type(server.methods) ~= 'table' then
             error(('pb.transcode.new: servers[%d] is not a generated server table'):format(si), 2)
         end
-        -- Method order within a service is not recorded in the
-        -- descriptor (methods is keyed by name), so sort by name for a
-        -- deterministic declaration order.
-        local names = {}
-        for name in pairs(server.service.methods) do names[#names + 1] = name end
-        table.sort(names)
+        -- Declaration order comes from `method_order`, which the plugin,
+        -- pb.parse and pb.from_pb emit (`methods` is keyed by name). A
+        -- hand-built service without it falls back to name order.
+        local names = server.service.method_order
+        if names == nil then
+            names = {}
+            for name in pairs(server.service.methods) do names[#names + 1] = name end
+            table.sort(names)
+        end
         for _, name in ipairs(names) do
             local m = server.service.methods[name]
             local streaming = m.client_streaming or m.server_streaming

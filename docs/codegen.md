@@ -223,6 +223,33 @@ friends parametrizes by mode (`{'full', 'runtime'}`) and runs the same
 assertions against `require('full.hello.hello_pb')` and
 `require('runtime.hello.hello_pb')`.
 
+### Service descriptors
+
+`M.<Service>_service` has the same shape in both modes, and `pb.parse`
+and `pb.from_pb` build it too:
+
+```lua
+{
+    name = 'pkg.Service',
+    full_name = '/pkg.Service',
+    methods = {
+        Method = {
+            name = 'Method', full_name = '/pkg.Service/Method',
+            input = <descriptor>, output = <descriptor>,  -- nil when not resolvable
+            client_streaming = true?, server_streaming = true?,
+            http = {{method=, pattern=, body=?, response_body=?}, ...}?,  -- google.api.http
+            options = {...}?,                              -- codegen only
+        },
+    },
+    method_order = {'Method', ...},   -- declaration order; `methods` is keyed by name
+    options = {...}?,
+}
+```
+
+`method_order` lists every method name in `.proto` source order. Anything
+that needs the declaration order (the HTTP transcoder breaks route ties
+with it) reads it rather than iterating `methods`.
+
 ## Inline (full) mode — what it looks like
 
 `inline.go` walks each field and emits Lua statements that call into

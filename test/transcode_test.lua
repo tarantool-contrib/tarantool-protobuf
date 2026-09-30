@@ -31,7 +31,8 @@ end
 -- respond(name, req, ctx) (default: an empty response message).
 local function fake_server(svc, rules, respond)
     local calls = {}
-    local service = {name = svc.name, full_name = svc.full_name, methods = {}}
+    local service = {name = svc.name, full_name = svc.full_name, methods = {},
+                     method_order = svc.method_order}
     local methods = {}
     for name, m in pairs(svc.methods) do
         local mm = shallow_copy(m)
@@ -694,9 +695,34 @@ gr.test_verb_beats_no_verb_and_declaration_order_breaks_ties = function()
     })
     t.assert_equals(winner(router, calls, 'POST', '/v1/job:run'), 'B')
     t.assert_equals(winner(router, calls, 'POST', '/v1/job'), 'A')
-    -- C and D have the same shape: declaration order (method name
-    -- within a service) decides.
+    -- C and D have the same shape: declaration order decides.
     t.assert_equals(winner(router, calls, 'GET', '/v1/x'), 'C')
+end
+
+-- Declaration order is the .proto source order (method_order), not the
+-- method name order.
+gr.test_declaration_order_is_source_order = function()
+    local m = pb.parse([[
+        syntax = "proto3"; package d;
+        message Req { string name = 1; }
+        message Resp { string text = 1; }
+        service S {
+          rpc Zeta(Req) returns (Resp);
+          rpc Alpha(Req) returns (Resp);
+        }
+    ]])
+    t.assert_equals(m.S_service.method_order, {'Zeta', 'Alpha'})
+    local srv, calls = fake_server(m.S_service, {
+        Zeta = {{method = 'GET', pattern = '/v1/{name}'}},
+        Alpha = {{method = 'GET', pattern = '/v1/{name}'}},
+    })
+    local router = tc.new({srv})
+    t.assert_equals(winner(router, calls, 'GET', '/v1/x'), 'Zeta')
+    t.assert_equals(router:routes()[1].path, '/d.S/Zeta')
+    -- Without method_order (a hand-built service) names are sorted.
+    srv.service.method_order = nil
+    router = tc.new({srv})
+    t.assert_equals(winner(router, calls, 'GET', '/v1/x'), 'Alpha')
 end
 
 gr.test_http_method_must_match = function()
