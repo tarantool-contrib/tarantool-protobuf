@@ -106,24 +106,149 @@ clean:
 
 ## `buf`
 
-`buf generate` reads a `buf.gen.yaml`:
+[`buf`](https://buf.build/docs/) runs `protoc-gen-tarantool` as a
+local plugin; nothing in the plugin is specific to `protoc`. The
+snippets below use the v2 configuration (buf 1.32 and later) and a
+project laid out like this:
+
+```
+buf.yaml
+buf.gen.yaml
+buf.lock                               # written by `buf dep update`
+bin/protoc-gen-tarantool               # the plugin, built from this repo
+proto/shop/v1/shop.proto               # your schema
+third_party/tarantool/tarantool.proto  # copied from options/tarantool/
+```
+
+The schema uses both kinds of option this plugin reads,
+`google.api.http` rules ([how-to 15](15-http-transcoding.md)) and
+`(tarantool.lua_package)`:
+
+```proto
+syntax = "proto3";
+
+package shop.v1;
+
+import "google/api/annotations.proto";
+import "tarantool/tarantool.proto";
+
+option (tarantool.lua_package) = "shop.shop_pb";
+
+message Item {
+  string name = 1;
+  int64 price = 2;
+}
+
+message GetItemRequest {
+  string name = 1;
+}
+
+service Shop {
+  rpc GetItem(GetItemRequest) returns (Item) {
+    option (google.api.http) = {get: "/v1/{name=items/*}"};
+  }
+}
+```
+
+### `buf.yaml`: where imports come from
 
 ```yaml
-version: v1
+version: v2
+modules:
+  - path: proto
+  - path: third_party
+deps:
+  - buf.build/googleapis/googleapis
+```
+
+- **`google/api/annotations.proto`** comes from the
+  [`buf.build/googleapis/googleapis`](https://buf.build/googleapis/googleapis)
+  module on the Buf Schema Registry, the usual source under `buf`. Run
+  `buf dep update` once to resolve it into `buf.lock` and commit both
+  files; public modules need no login.
+- **`tarantool/tarantool.proto`** (the `(tarantool.lua_package)`
+  option) is not published as a registry module. Copy
+  `options/tarantool/tarantool.proto` from this repository into a
+  directory that is one of your modules, keeping the `tarantool/`
+  directory so the import path stays `tarantool/tarantool.proto`. Skip
+  it if you do not use `lua_package`.
+- **Well-known types** (`google/protobuf/*.proto`) are built into
+  `buf`; nothing to add.
+
+Without the registry (offline builds, air-gapped CI), make this
+repository's `options/` directory a module instead of the `deps`
+entry. It carries `google/api/annotations.proto`, `google/api/http.proto`
+and `tarantool/tarantool.proto`:
+
+```yaml
+version: v2
+modules:
+  - path: proto
+  - path: vendor/tarantool-protobuf/options
+```
+
+Use one source or the other: with both, `buf` refuses to build
+(`google/api/annotations.proto is contained in multiple modules`).
+
+### `buf.gen.yaml`: running the plugin
+
+```yaml
+version: v2
 plugins:
-  - plugin: tarantool
+  - local: ./bin/protoc-gen-tarantool
     out: gen
     opt:
       - mode=full
-    path: ./bin/protoc-gen-tarantool
+    strategy: all
+inputs:
+  - directory: proto
 ```
 
-Then `buf generate`. `buf` discovers protos via `buf.yaml` (or
-`buf.work.yaml` for monorepos) and runs the plugin for each.
+- `local:` is a path to the plugin binary, or its name when it is on
+  `PATH` (`local: protoc-gen-tarantool`).
+- `opt:` takes the `--tarantool_opt` keys, one `key=value` per item:
+  `mode` (`full` or `runtime`), `prefix`, `int64_as_number` — see
+  [reference/cli.md](../reference/cli.md#--tarantool_opt). For
+  example `[mode=runtime, prefix=app]` writes
+  `gen/app/shop/shop_pb.lua`.
+- `strategy: all` runs the plugin once for every file, like a single
+  `protoc` call. The default (`directory`, one run per directory)
+  produces the same modules.
+- `inputs: - directory: proto` generates your module only; the
+  `third_party` module and the `googleapis` dependency just resolve
+  imports. Name a module directory as an input, not in `paths:` —
+  `buf` rejects a module path there
+  (`module "proto" was specified with --path`).
 
-The plugin doesn't depend on `buf` features beyond what every `protoc`
-plugin sees, so `buf generate` is a drop-in for `protoc` if your team
-prefers it.
+Then:
+
+```bash
+buf dep update     # once, and whenever deps change
+buf generate       # writes gen/shop/shop_pb.lua
+```
+
+Put `gen/` on `LUA_PATH` next to the runtime and the module works as
+with `protoc`:
+
+```lua
+local shop = require('shop.shop_pb')
+local item = shop.Item_decode(shop.Item_encode({name = 'pen', price = 3}))
+assert(item.name == 'pen' and item.price == 3LL)
+print(shop.Shop_service.methods.GetItem.http[1].pattern)  -- /v1/{name=items/*}
+```
+
+### Differences from `protoc` output
+
+Only one: each generated module embeds its `FileDescriptorProto`
+exactly as the compiler serialized it (server reflection serves those
+bytes), and `buf` writes the fields of option messages in a different
+order than `protoc` does (a `google.api.http` rule's `body` before
+`post`, for instance). The two descriptors decode to the same thing,
+and the generated code is the same. `just test-buf` checks this for
+the examples in this repository.
+
+To call a running [`pb.server`](16-network-server.md) with
+`buf curl`, see [how-to 16](16-network-server.md#3-talk-to-it).
 
 ## CMake
 
