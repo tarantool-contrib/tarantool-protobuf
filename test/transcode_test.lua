@@ -525,6 +525,31 @@ gq.test_dotted_key_through_scalar = function()
     t.assert_equals(#calls, 0)
 end
 
+-- Keys under a field bound by the path or the body are dropped before
+-- they are validated (grpc-gateway filters them first), so even a key
+-- that continues past a bound scalar does not fail the request.
+gq.test_keys_under_bound_fields_are_filtered_first = function()
+    local m = pb.parse(QUERY_SCHEMA)
+    local srv, calls = fake_server(m.Q_service, {
+        Get = {{method = 'GET', pattern = '/f/{big}'},
+               {method = 'POST', pattern = '/b', body = 'inner'},
+               {method = 'GET', pattern = '/n/{inner.s}'}},
+    })
+    local router = tc.new({srv})
+    t.assert_equals(call(router, calls, 'GET', '/f/1?big.x=bad&big=2'), {big = i64('1')})
+    t.assert_equals(call(router, calls, 'POST', '/b?inner.s.x=bad&inner.nope=1&inner=z',
+                         '{"s": "y"}'), {inner = {s = 'y'}})
+    t.assert_equals(call(router, calls, 'GET', '/n/v?inner.s.x=bad&inner.n=3'),
+                    {inner = {s = 'v', n = 3}})
+    -- Dotted keys through scalars that nothing binds stay errors.
+    local resp = router:handle(request('GET', '/f/1?small.x=1'))
+    t.assert_equals(resp.status, 400, resp.body)
+    t.assert_str_contains(json.decode(resp.body).message, 'field "small" is not a message')
+    resp = router:handle(request('GET', '/n/v?inner.n.x=1'))
+    t.assert_equals(resp.status, 400, resp.body)
+    t.assert_str_contains(json.decode(resp.body).message, 'field "inner.n" is not a message')
+end
+
 gq.test_repeated_via_repeated_keys = function()
     local router, calls = query_router()
     local req = call(router, calls, 'GET', '/v1/items/x?tags=a&nums=1&tags=b&nums=-2&tags=')

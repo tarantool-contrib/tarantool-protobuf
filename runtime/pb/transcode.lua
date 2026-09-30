@@ -800,11 +800,14 @@ local function bind(r, segs, n, last, query, body_text)
             if key == nil or val == nil then
                 invalid('malformed percent-encoding in query parameter %q', rk)
             end
-            -- Resolve the dotted key; unknown names are ignored, but a
-            -- key that continues past a known non-message field
-            -- (`big.x` for an int64 `big`) is an error, as in
-            -- grpc-gateway.
-            local chain, desc, canon = {}, r.input, {}
+            -- Resolve the dotted key. A key whose prefix is a field
+            -- bound by the path or carried in the body is skipped
+            -- before anything else is checked (grpc-gateway filters
+            -- such keys first, filter.HasCommonPrefix). Otherwise
+            -- unknown names are ignored, but a key that continues past
+            -- a known non-message field (`big.x` for an int64 `big`) is
+            -- an error, as in grpc-gateway.
+            local chain, desc, canon, skipped = {}, r.input, {}, false
             for i, id in ipairs((split(key, '.'))) do
                 if desc == nil then
                     invalid('query parameter %q: field "%s" is not a message',
@@ -814,6 +817,11 @@ local function bind(r, segs, n, last, query, body_text)
                 if f == nil then chain = nil; break end
                 chain[i] = f
                 canon[i] = f.name
+                if r.bound[table.concat(canon, '.')]
+                        or (i == 1 and r.body ~= nil and f.name == r.body) then
+                    skipped = true
+                    break
+                end
                 -- Descend into repeated messages too, so the check
                 -- below can reject them by name instead of ignoring
                 -- the key as unknown.
@@ -824,9 +832,7 @@ local function bind(r, segs, n, last, query, body_text)
                 end
             end
             local name = chain and table.concat(canon, '.')
-            -- Skip fields already bound by the path or carried in the body.
-            if chain ~= nil and #chain > 0 and not r.bound[name]
-                    and not (r.body ~= nil and canon[1] == r.body) then
+            if chain ~= nil and #chain > 0 and not skipped then
                 local leaf = chain[#chain]
                 if leaf.kind == 'map' then
                     invalid('map field "%s" cannot be bound from a query parameter', name)
