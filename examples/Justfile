@@ -11,6 +11,7 @@
 #   just examples tuple-range       # etcd-style Range response built from space tuples
 #   just examples tuple-layouts     # one nested message as a map, an array, raw bytes
 #   just examples json-http        # JSON-over-HTTP server (needs `tt rocks install http`)
+#   just examples transcode         # google.api.http routing of the library service
 #
 # With PB_ENABLE_C=1 set (and `just build-c` run), the examples go
 # through the C runtime.
@@ -34,7 +35,7 @@ default:
     @just --list --justfile {{justfile()}}
 
 # Run every non-interactive example in sequence.
-all: quickstart grpc-loopback dynamic-schemas tuple-range tuple-layouts
+all: quickstart grpc-loopback dynamic-schemas tuple-range tuple-layouts transcode
 
 # Encode/decode a quickstart.User round-trip. Drives the first-message howto.
 quickstart:
@@ -63,6 +64,10 @@ tuple-range:
 # One nested message laid out as a map, an array and raw bytes (pb.tuple).
 tuple-layouts:
     @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/tuple/nested_layouts.lua
+
+# google.api.http transcoding of the library service via pb.transcode.
+transcode:
+    @cd {{repo}} && LUA_PATH="{{lua_path}}" LUA_CPATH="{{lua_cpath}}" tarantool examples/http/transcode.lua
 
 # Interactive JSON-over-HTTP server on :8080 (needs `tt rocks install http`).
 json-http:

@@ -691,6 +691,19 @@ gn.test_streaming_rules_are_skipped = function()
     t.assert_equals(winner(router, calls, 'GET', '/v1/get/x'), 'Get')
 end
 
+-- A hand-written methods[path] function may answer nil, code, message.
+gn.test_transport_style_failure = function()
+    local m = pb.parse(NEW_SCHEMA)
+    local srv = fake_server(m.N_service, {Get = {{method = 'GET', pattern = '/v1/get/{name}'}}})
+    srv.methods['/n.N/Get'] = function() return nil, pb.grpc.code.PERMISSION_DENIED, 'nope' end
+    local resp = tc.new({srv}):handle(request('GET', '/v1/get/x'))
+    t.assert_equals(resp.status, 403)
+    t.assert_equals(json.decode(resp.body), {code = 7, message = 'nope', details = {}})
+    srv.methods['/n.N/Get'] = function() return nil end
+    resp = tc.new({srv}):handle(request('GET', '/v1/get/x'))
+    t.assert_equals(resp.status, 500)
+end
+
 gn.test_unbound_methods = function()
     local m = pb.parse(NEW_SCHEMA)
     local srv, calls = fake_server(m.N_service, {
