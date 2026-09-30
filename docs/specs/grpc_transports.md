@@ -1,297 +1,273 @@
-# Spec: gRPC transports for Tarantool
+# Spec: gRPC and HTTP/JSON serving for Tarantool
 
-Status: **shipped contract + loopback/multiplex; external transports
-deferred**. The transport *contract* is locked in
-[`runtime/pb/grpc.lua`](../../runtime/pb/grpc.lua) — generated
-`M.<Service>_client(transport)` / `M.<Service>_server(impl)` and the
+Status: **in progress.** The in-process transport contract
+([`runtime/pb/grpc.lua`](../../runtime/pb/grpc.lua): generated
+`M.<Service>_client(transport)` / `M.<Service>_server(impl)`, the
 four-method `transport:unary` / `:server_stream` / `:client_stream` /
-`:bidi` interface are stable, with `loopback` and `multiplex`
-reference transports in the runtime. What this spec covers is the
-forward-looking work: **which concrete external transports we'd build
-or recommend, and how a user picks between them**.
+`:bidi` interface, `loopback` and `multiplex`) is shipped and stays as
+is. This spec covers the network side: **a Tarantool process serves
+real gRPC over HTTP/2 and Google-style HTTP/JSON transcoding, out of
+the box, from one listener.**
 
-This spec maps the protocol landscape, says where Tarantool fits, and
-flags what we'd build vs. recommend an external library for.
+An earlier revision of this spec ruled HTTP/2 out ("put Envoy in
+front") and recommended Connect-JSON over `tarantool/http` instead.
+That premise no longer holds: the `tarantool-http2` rock provides an
+HTTP/2 server with gRPC framing, trailers and all four call kinds, in
+pure Lua over `libnghttp2` via FFI. Envoy stays a deployment option,
+not a requirement.
 
-## What's already shipped (and won't change)
+## Goals
 
-Generated `M.<Service>_client(transport)` and `M.<Service>_server(impl)`
-talk to the transport in a single contract, regardless of wire protocol:
+1. **gRPC over HTTP/2 (h2c)** that off-the-shelf clients (grpc-go,
+   grpc-java, grpcurl, …) talk to without a proxy. All four call kinds,
+   status codes, metadata, deadlines, cancellation.
+2. **HTTP/JSON transcoding driven by `google.api.http` annotations**
+   ([AIP-127](https://google.aip.dev/127),
+   [`google/api/http.proto`](https://github.com/googleapis/googleapis/blob/master/google/api/http.proto)),
+   the same scheme Google Cloud APIs, ESP and grpc-gateway use:
+   `GET /v1/{name=shelves/*}/books` routes to a gRPC method, path
+   variables and query parameters bind to request fields, the body is
+   proto3 JSON.
+3. **Server reflection and health** (`grpc.reflection.v1`,
+   `grpc.reflection.v1alpha`, `grpc.health.v1`) enabled by default, so
+   `grpcurl list` works against a fresh server with no `.proto` files.
+4. **One port.** gRPC, HTTP/2 JSON and HTTP/1.1 JSON share a listener.
+5. **Out of the box.** One call builds the server from generated
+   modules:
+
+   ```lua
+   local server = require('pb.server').new({
+       listen   = '0.0.0.0:8080',
+       services = {greeter_pb.Greeter_server(impl)},
+   })
+   server:start()
+   ```
+
+## Non-goals (for now)
+
+- **TLS.** Plaintext only (h2c with prior knowledge, HTTP/1.1). TLS is
+  deferred, not rejected: the planned route is OpenSSL through FFI with
+  memory BIOs between the socket and the (already memory-I/O) nghttp2
+  session, with ALPN (`h2`, `http/1.1`) replacing preface sniffing.
+  Tarantool 3.9 is expected to export the `SSL_*` symbols this needs.
+  Until then, terminate TLS in a proxy. The server is built so the TLS
+  layer slots in between socket and session without touching dispatch.
+- **Message compression.** v1 accepts `identity` only; a request with
+  another `grpc-encoding` gets `UNIMPLEMENTED` and the server advertises
+  `grpc-accept-encoding: identity`. gzip is a follow-up.
+- **h2c upgrade** (`Upgrade: h2c` from HTTP/1.1). No gRPC client uses
+  it and browsers never do. Prior knowledge only.
+- **gRPC-Web, Connect.** Not in v1; they would ride the same listener
+  later.
+- **An outbound gRPC client over the network.** Server first.
+
+## Architecture
+
+Two repositories, one boundary:
 
 ```
-transport:unary(path, req_bytes, ctx)         -> resp_bytes
-transport:server_stream(path, req_bytes, ctx) -> stream
-transport:client_stream(path, ctx)            -> stream
-transport:bidi(path, ctx)                     -> stream
+tarantool-http2 (rock `http2`)               tarantool-protobuf (rock `pb`)
+────────────────────────────────             ──────────────────────────────
+socket accept (one listener)                 pb.server      glue + options
+  └─ sniff first 24 bytes                      ├─ gRPC registry  ← M.<Svc>_server(impl)
+      ├─ HTTP/2 preface → nghttp2 session      ├─ pb.transcode   google.api.http router
+      │    per stream, on end of headers:      ├─ reflection     embedded descriptors
+      │    content-type application/grpc*      └─ health
+      │      → gRPC dispatch (bytes)  ─────────►  status errors, ctx
+      │    otherwise → HTTP handler  ─────────►  transcoding (JSON)
+      └─ anything else → HTTP/1.1 parser
+           → HTTP handler            ─────────►  transcoding (JSON)
 ```
 
-`path` is `/pkg.Service/Method`. `ctx` is an opaque Lua table (headers,
-deadline, metadata, …). Generated code encodes the request, hands raw
-bytes to the transport, and decodes the response.
+`http2` knows nothing about protobuf: gRPC handlers take and return
+message bytes; HTTP handlers take and return request/response tables.
+`pb` knows nothing about sockets or frames. `pb.server` requires
+`http2` lazily, so the codecs keep working on a machine without
+`libnghttp2`; only starting a server needs it.
 
-This is deliberately HTTP/2-shaped — `path`, byte-oriented messages,
-streams — but **the contract makes no commitment to a wire protocol**.
-Every transport in this spec is a different plug-in behind the same
-four methods.
+### The `http2` side
 
-Reference transports already in `runtime/pb/grpc.lua`:
+- **One server object, one listener.** The first bytes of a connection
+  decide the protocol: the HTTP/2 client preface
+  (`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`) selects HTTP/2, anything else
+  HTTP/1.1. The peeked bytes are fed to the chosen parser, not dropped.
+- **HTTP/2 streams are routed per stream** by `content-type`:
+  `application/grpc` and `application/grpc+*` go to the gRPC registry,
+  everything else to the HTTP handler with a buffered body.
+- **HTTP/1.1** is a deliberately small subset: request line, headers,
+  `Content-Length` and `chunked` bodies, keep-alive, no pipelining, no
+  `Expect: 100-continue`, no upgrade. Header and body size limits are
+  enforced. A gRPC request over HTTP/1.1 is answered with
+  `415`/`505`-style errors, not dispatched.
+- **gRPC semantics** the server owns: `grpc-timeout` becomes
+  `ctx.deadline` and is enforced (`DEADLINE_EXCEEDED`, stream reset);
+  client `RST_STREAM` marks the call cancelled; unsupported
+  `grpc-encoding` is rejected; maximum message size (default 4 MiB
+  receive, as in grpc-go) yields `RESOURCE_EXHAUSTED`; graceful stop
+  sends `GOAWAY` and drains in-flight calls up to a timeout.
 
-- `pb.grpc.loopback(server)` — in-process; uses `fiber.channel`. Bridges
-  client → server fiber for tests and same-process apps.
-- `pb.grpc.multiplex({srv1, srv2})` — fans several servers onto one
-  transport. Errors on duplicate paths.
+Contracts `http2` exposes to `pb`:
 
-## The protocol matrix
+```lua
+-- HTTP request (HTTP/1.1 and HTTP/2 alike)
+req = {
+    method  = 'GET',
+    path    = '/v1/shelves/1?view=FULL', -- as received, query included
+    headers = {['content-type'] = '...'},-- lowercased; repeats joined by ', '
+    body    = '',                        -- fully buffered
+    version = 'HTTP/1.1' | 'HTTP/2',
+    peer    = '127.0.0.1:53210',
+}
+resp = {status = 200, headers = {...}, body = '...'}
 
-For a request that crosses a process boundary, you pick a pair: a
-**wire protocol** (how bytes flow between processes) and a **codec**
-(how a message turns into bytes). The Lua-side transport bridges between
-the generated code and that wire/codec combo.
+-- gRPC call context
+ctx = {
+    method        = '/pkg.Service/Method',
+    metadata      = {...},   -- request headers minus pseudo/reserved ones
+    deadline      = <fiber.clock() value> | nil,
+    peer          = 'ip:port',
+    response_metadata = {},  -- handler may fill; sent with the headers
+    trailing_metadata = {},  -- handler may fill; sent with the trailers
+}
+ctx:is_cancelled() -> boolean   -- deadline passed or client reset
+```
 
-| Wire protocol             | Body codec   | Streaming           | Status signaling          | Browser-friendly | Off-the-shelf clients/servers | Tarantool fit                  |
-| ------------------------- | ------------ | ------------------- | ------------------------- | :--------------: | ----------------------------- | ------------------------------ |
-| **gRPC over HTTP/2**      | proto wire   | unary + all 3       | HTTP/2 trailers           | no               | every gRPC lib                 | needs an external HTTP/2 lib   |
-| **gRPC-Web over HTTP/2**  | proto wire   | unary + server      | trailers in body          | yes (with proxy) | grpc-web JS, Envoy             | same problem as gRPC + framing |
-| **gRPC-Web over HTTP/1.1**| proto wire   | unary + server      | trailers in body          | yes              | grpc-web JS                    | works with `tarantool/http`    |
-| **Connect over HTTP/1.1** | proto wire   | unary only          | HTTP status + body        | yes              | connectrpc clients             | works with `tarantool/http`    |
-| **Connect over HTTP/2**   | proto wire   | unary + all 3       | HTTP status / trailers    | yes              | connectrpc clients             | same HTTP/2 problem            |
-| **Connect-JSON**          | proto3 JSON  | unary only          | HTTP status + body        | yes              | curl + connectrpc clients      | drop-in for `tarantool/http`   |
-| **gRPC-Gateway / transcoded REST + JSON** | proto3 JSON | unary | HTTP status + body | yes | any HTTP client              | drop-in for `tarantool/http`   |
-| **gRPC over IProto tunnel** (Tarantool-native) | proto wire | unary + all 3 | IProto error code     | n/a              | this project, custom clients   | first-class                    |
-| **gRPC over net.box tunnel**                   | proto wire | unary + all 3 | net.box error           | n/a              | this project, custom clients   | first-class                    |
+A unary gRPC handler returns `response_bytes`, or
+`nil, status, message[, details_bin]` (`details_bin` becomes
+`grpc-status-details-bin`). A handler that raises produces `INTERNAL`
+without leaking the error text. Streaming handlers get a stream with
+`:recv(timeout)`, `:send(bytes)`, `:close(status, message)`.
 
-What's **not** in the matrix and why:
+### The `pb` side
 
-- **gRPC over HTTP/3 / QUIC** — too early; the Go and C++ gRPC stacks
-  themselves treat it as experimental. Not worth specifying yet.
-- **JSON-RPC, Thrift, etc.** — different IDL; off-topic.
+**Status errors.** `pb.grpc.code` holds the 17 canonical codes.
+`pb.grpc.error(code, message[, details])` raises a status object;
+`pb.grpc.is_status(v)` recognises one. Generated server wrappers are
+unchanged: a handler raises a status to fail the call, and the glue
+maps it. The in-process `loopback` transport propagates the same
+status objects, so a test written against the loopback sees the same
+errors as a network client.
 
-## What "Tarantool fit" actually means
+**`pb.server`.** Builds the `http2` server from generated
+`M.<Service>_server(impl)` results:
 
-Tarantool gives us:
+```lua
+pb.server.new({
+    listen      = 'host:port',          -- or host = ..., port = ...
+    services    = {...},                -- generated server tables
+    reflection  = true,                 -- default true
+    health      = true,                 -- default true
+    transcoding = true,                 -- default true
+    http        = fn(req) -> resp,      -- optional fallback for unrouted HTTP
+    limits      = {max_recv_message = 4 * 1024 * 1024, ...},
+})
+server:start(); server:stop(timeout)
+server:set_serving_status(service_name, 'SERVING' | 'NOT_SERVING')
+```
 
-- **`tarantool/http` server (HTTP/1.1)** — solid, idiomatic, lives in a
-  Lua rock. No HTTP/2, no server-pushed trailers. Good substrate for
-  Connect-JSON and gRPC-Gateway-style REST.
-- **`http_client` (libcurl-based)** — HTTP/1.1 and HTTP/2 client. Has
-  streaming via callbacks, but trailers and gRPC framing are not
-  first-class. Usable for HTTP/2 unary; awkward for streaming.
-- **`net.box`** — Tarantool's binary RPC protocol. Already gives us
-  request/response, streaming via long-poll, error propagation. Sane
-  default for in-cluster Tarantool→Tarantool calls.
-- **IProto** — the wire protocol under net.box. Lower level; lets us
-  define our own request type that carries gRPC framing if we want
-  zero overhead.
-- **No HTTP/2 server.** Real HTTP/2 termination needs a sidecar (Envoy,
-  nginx) or a new Lua library. Neither is something we'd ship.
+**Transcoding.** The plugin reads `google.api.http` on each method and
+emits the normalised rules into the service descriptor
+(`additional_bindings` flattened):
 
-So the practical bands are:
+```lua
+methods = {
+    GetBook = {
+        ...,
+        http = {
+            {method = 'GET', pattern = '/v1/{name=shelves/*/books/*}'},
+            {method = 'POST', pattern = '/v1/books:lookup', body = '*'},
+        },
+    },
+}
+```
 
-1. **In-cluster Tarantool↔Tarantool** → IProto or net.box tunnel.
-2. **External clients calling Tarantool over HTTP** → Connect-JSON or
-   gRPC-Gateway-style REST behind `tarantool/http`. Both are HTTP/1.1
-   only, both speak JSON, both work with `curl`/browsers without a
-   proxy.
-3. **External clients that insist on real gRPC** → put Envoy or
-   grpcurl in front, terminate HTTP/2 there, and send unary calls into
-   Tarantool over HTTP/1.1 or IProto. We don't terminate HTTP/2
-   ourselves.
-4. **Outbound calls from Tarantool to external gRPC services** →
-   `http_client` for HTTP/2 unary. For streaming, accept "we don't
-   support that yet" rather than shipping a half-baked HTTP/2 client.
+`pb.from_pb` produces the same field from a `FileDescriptorSet`, so
+dynamic schemas transcode too. `pb.parse` support for aggregate
+`option (google.api.http) = {...}` follows later.
 
-## Recommended transports to build
+`pb.transcode` is a pure function over the request/response tables,
+testable without sockets:
 
-Names below refer to packages we'd publish; nothing here lives in this
-repo yet beyond the contract.
+- path templates per `http.proto`: literals, `*`, `**`, `{field}`,
+  `{field=segments}`, nested field paths (`{book.shelf}`), a trailing
+  `:verb`;
+- match priority: literal segments beat variables, longest match wins,
+  ties resolved by declaration order;
+- bindings: path variables, then `body` (`*`, a field, or none), then
+  query parameters for every field not already bound (repeated fields
+  via repeated keys, nested fields via dotted keys);
+- `response_body` selects a sub-field of the response;
+- responses and errors are proto3 JSON via `pb.json`; errors use the
+  `google.rpc.Status` JSON shape (`{"code", "message", "details"}`)
+  with the HTTP status from the canonical mapping below;
+- **unbound methods** (no annotation) are optionally exposed as
+  `POST /{package.Service}/{Method}` with a JSON body, off by default.
 
-### `pb.grpc.transport.http_server` (HTTP/1.1 server-side)
-
-Adapts an `M.<Service>_server(impl)` result into a `tarantool/http`
-route handler. Wire protocol: **Connect-JSON over HTTP/1.1** by default,
-with content-negotiation for Connect-protobuf.
-
-- POST `/{package.Service}/{Method}` with `Content-Type: application/json`
-  → decode body via `pb.json.decode(input_desc, body)`, call the
-  generated handler, encode reply via `pb.json.encode`.
-- `application/proto` content type → use `pb.encode/pb.decode` instead.
-- Streaming methods: respond 501 for now. Connect's `application/connect+json`
-  framed streaming over HTTP/1.1 chunked transfer is feasible later;
-  out of scope for v1.
-- Errors: surface as Connect's JSON error envelope. Map common
-  gRPC status codes to HTTP status per the Connect spec.
-
-Why this first: it's the lowest-effort transport that gives us a real
-external interface, and it works with browsers and `curl`. It also
-covers the gRPC-Gateway use case without needing the gateway:
-`POST /myapp.v1.Greeter/SayHello` with a JSON body is a fine REST
-shape on its own.
-
-### `pb.grpc.transport.netbox` (in-cluster)
-
-`net.box` connection → speaks `pb.grpc` over a single user-defined
-function (e.g. `box.schema.func.create('grpc_dispatch')`). Body is
-a 2-tuple `{path, req_bytes}`; reply is `{ok, resp_bytes}` or
-`{err, status_code, message}`.
-
-Streaming: lean on net.box's stream/iterator support. Server runs the
-handler on a fiber; messages flow through `box.iproto.override` /
-`box.session.push`. Concretely tractable; out of scope for v1 but
-straightforward to add.
-
-Why second: in-cluster Tarantool clusters are a real and ready use
-case. The transport is small and self-contained.
-
-### `pb.grpc.transport.http_client_unary` (outbound, optional)
-
-Adapts `http_client` to speak Connect-JSON or Connect-protobuf to
-external services. Unary only. Easy. Useful for calling out from
-Tarantool app code to a Connect or HTTP/1.1 gRPC-Web server.
-
-## Not recommended (don't build)
-
-- **Tarantool-side HTTP/2 server.** Would require a new HTTP/2 library
-  in Lua or a C module. Effort vastly exceeds payoff — anyone needing
-  HTTP/2 termination should run Envoy in front. Document the Envoy
-  setup instead.
-- **Tarantool-side HTTP/2 streaming client.** `http_client`'s streaming
-  API isn't a clean fit for gRPC trailers and per-message framing.
-  Anyone needing this should bind to a real gRPC client (C, Go), not
-  reimplement in Lua. Document this limitation.
-- **gRPC-Web framing.** It's a small spec, but every modern stack
-  (browser SDK, mobile SDK) prefers Connect now. Don't fragment effort
-  unless a user demands it.
-
-## How a user picks
-
-Decision tree, top-down:
-
-1. Both endpoints in a Tarantool cluster?
-   → `pb.grpc.transport.netbox`.
-2. External clients only (browsers, curl, mobile)?
-   → `pb.grpc.transport.http_server` (Connect-JSON).
-3. Need to call an external gRPC service from Tarantool?
-   → Unary: `pb.grpc.transport.http_client_unary` (Connect or HTTP/1.1
-     gateway). Streaming: not supported; document the Envoy/sidecar
-     alternative.
-4. External clients insist on real HTTP/2 gRPC?
-   → Envoy in front. Envoy terminates HTTP/2, talks Connect to
-     Tarantool. Document the Envoy config; we don't ship it.
-
-## Conformance
-
-Validate against [`connectrpc/conformance`](https://github.com/connectrpc/conformance).
-Operationally identical to the protobuf conformance suite already
-running here (`docker/conformance.Dockerfile`, `cmd/conformance-runner.lua`):
-
-- Our impl runs as a subprocess that reads framed `ClientCompatRequest`
-  / writes `ClientCompatResponse` on stdin/stdout.
-- Two modes: `--mode server` (our impl is the server; Connect's
-  reference client drives it — fits `pb.grpc.transport.http_server`
-  validation) and `--mode client` (our impl is the client — fits
-  `pb.grpc.transport.http_client_unary` validation).
-- One harness covers all three protocols in scope: **gRPC over HTTP/2**,
-  **gRPC-Web**, and **Connect**. So if HTTP/2 termination ever ships
-  via Envoy or otherwise, the same runner re-validates it without a
-  second suite.
-- Coverage: unary, server-stream, client-stream, bidi, errors with
-  details, cancellation, deadlines, trailers, gzip/deflate compression,
-  TLS, HTTP/1.1 vs HTTP/2 negotiation.
-- Watchlist discipline: maintain `test/grpc_conformance/known_failures.txt`
-  (server mode) and `..._client.txt` (client mode) mirroring the
-  proto suite's pattern at `test/conformance/known_failures.txt`.
-
-Canonical [gRPC interop tests](https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md)
-(`empty_unary`, `large_unary`, `ping_pong`, …) are pre-Connect,
-HTTP/2-only, and use a client-and-server-binary model rather than a
-framed pipe. Skip them: less useful while we don't terminate HTTP/2,
-and operationally distant from what we already run.
+**Reflection** needs every file's `FileDescriptorProto`. The plugin
+embeds the serialized descriptor of each generated file
+(`M._file_descriptor`) plus the names of the files it imports; the
+runtime ships the descriptors of the well-known types and of
+`google/api/{annotations,http}.proto`. The reflection and health
+services are themselves generated by this plugin from their upstream
+`.proto` files and shipped in `runtime/pb/`.
 
 ## Status code mapping
 
-We adopt gRPC's canonical status codes (12 of them) as the cross-wire
-status type. Every transport translates to and from its native error
-representation:
+gRPC canonical codes, and the HTTP status transcoding answers with
+(the mapping Google APIs and grpc-gateway use):
 
-| gRPC status        | HTTP (Connect)  | net.box / IProto error      |
-| ------------------ | --------------- | --------------------------- |
-| `OK`               | 200             | success                     |
-| `CANCELLED`        | 499             | `ER_CANCELLED`              |
-| `INVALID_ARGUMENT` | 400             | `ER_PROC_LUA` (categorized) |
-| `DEADLINE_EXCEEDED`| 504             | `ER_TIMEOUT`                |
-| `NOT_FOUND`        | 404             | `ER_NO_SUCH_PROC`           |
-| `ALREADY_EXISTS`   | 409             | `ER_TUPLE_FOUND`            |
-| `PERMISSION_DENIED`| 403             | `ER_ACCESS_DENIED`          |
-| `RESOURCE_EXHAUSTED`| 429            | `ER_MEMORY_ISSUE` (etc.)    |
-| `FAILED_PRECONDITION`| 400           | `ER_*`                      |
-| `INTERNAL`         | 500             | `ER_PROC_LUA`               |
-| `UNAVAILABLE`      | 503             | `ER_NO_CONNECTION`          |
-| `UNAUTHENTICATED`  | 401             | `ER_LOGIN_REQUIRED`         |
+| Code | Name                  | HTTP |
+| ---: | --------------------- | ---: |
+|    0 | `OK`                  |  200 |
+|    1 | `CANCELLED`           |  499 |
+|    2 | `UNKNOWN`             |  500 |
+|    3 | `INVALID_ARGUMENT`    |  400 |
+|    4 | `DEADLINE_EXCEEDED`   |  504 |
+|    5 | `NOT_FOUND`           |  404 |
+|    6 | `ALREADY_EXISTS`      |  409 |
+|    7 | `PERMISSION_DENIED`   |  403 |
+|    8 | `RESOURCE_EXHAUSTED`  |  429 |
+|    9 | `FAILED_PRECONDITION` |  400 |
+|   10 | `ABORTED`             |  409 |
+|   11 | `OUT_OF_RANGE`        |  400 |
+|   12 | `UNIMPLEMENTED`       |  501 |
+|   13 | `INTERNAL`            |  500 |
+|   14 | `UNAVAILABLE`         |  503 |
+|   15 | `DATA_LOSS`           |  500 |
+|   16 | `UNAUTHENTICATED`     |  401 |
 
-The mapping table belongs in `runtime/pb/grpc.lua`. Each transport
-references it.
+The table lives in `runtime/pb/grpc.lua` (`pb.grpc.code`,
+`pb.grpc.http_status`).
 
-## Context propagation
+## Verification
 
-The `ctx` argument in the transport contract carries metadata between
-caller and transport. We standardize three keys:
+Tests that only talk to our own client prove only that our client and
+server agree. Every layer is checked against an independent peer:
 
-- `ctx.deadline` — fiber-clock timestamp (seconds, double). Transport
-  enforces by cancelling on overrun.
-- `ctx.headers` — flat `{string -> string}` map. Wire-side translation
-  is transport-specific (HTTP headers, IProto headers, …).
-- `ctx.trace_id`, `ctx.span_id` — optional tracing hooks. Transports
-  inject/extract per W3C `traceparent` for HTTP, custom IProto field
-  for net.box.
+- **`http2`:** a Go harness with grpc-go as the client (raw-bytes
+  codec, no generated code) covering all four call kinds, metadata in
+  both directions, deadlines, cancellation, oversize messages and
+  unknown methods; `curl --http2-prior-knowledge` and plain `curl` for
+  the HTTP paths on the same port.
+- **`pb.server`:** grpc-go with `dynamicpb` against a server built from
+  the example protos; `grpcurl` driven only by reflection (`list`,
+  `describe`, a call); `grpc_health_probe`-style health checks.
+- **Transcoding:** table-driven tests of the path-template matcher and
+  binder taken from the examples in `http.proto`, then end-to-end
+  requests over HTTP/1.1 and HTTP/2.
+- The [gRPC interop test cases](https://github.com/grpc/grpc/blob/master/doc/interop-test-descriptions.md)
+  (`empty_unary`, `large_unary`, `ping_pong`, `timeout_on_sleeping_server`, …)
+  are the reference list for the Go harness.
 
-Per-call overrides go in `ctx.options` (e.g. retry policy). User code
-shouldn't put anything else in `ctx`; we may add more standard keys.
+## Open questions
 
-## File / module layout
-
-```
-runtime/pb/grpc.lua                already exists; gains status-code
-                                    + ctx-key constants
-runtime/pb/grpc/http_server.lua    new — Connect-style HTTP/1.1 server
-runtime/pb/grpc/netbox.lua         new — net.box tunnel (in-cluster)
-runtime/pb/grpc/http_client.lua    new — outbound, unary only
-docs/grpc-howto.md                 new — user-facing recipes
-```
-
-Tests follow the existing pattern: each transport plugs into the
-loopback's test harness by replacing the in-process transport with the
-networked one, asserting end-to-end round-trip equality.
-
-## Open questions (defer)
-
-1. **Connect protocol version.** Connect v1 is stable; do we target the
-   spec verbatim, or shave it down to "POST + JSON body + JSON error"
-   without the framing layer? Probably full spec — clients depend on it.
-2. **Streaming over HTTP/1.1.** Connect frames bidi over HTTP/1.1
-   chunked transfer. Doable but adds parser surface. v1 ships unary
-   only and 501s on streaming; revisit when a user asks.
-3. **Tarantool admin protocol surface.** Should `box.iproto.override`
-   carry a dedicated `IPROTO_GRPC` request type so net.box transport
-   doesn't sit on top of `func_call`? Probably eventually; not now.
-4. **Auth.** Out of this spec. Each transport delegates to its host:
-   HTTP transports honor `Authorization` headers, net.box uses
-   Tarantool users.
-5. **Metadata semantics for in-cluster.** Net.box has no concept of
-   metadata; we'd thread it as an extra map argument. Cleanly resolved
-   once `IPROTO_GRPC` is its own request type.
-
-## What "later" decisions look like
-
-When this spec gets picked back up, the load-bearing calls are:
-
-1. **Connect-JSON as the default external transport.** Picking it
-   because it works with `tarantool/http` as-is, browsers can call it
-   without a proxy, and gRPC-Gateway folks have a clean migration.
-   Revisit if a user has a hard dependency on grpc-web or REST shapes
-   that don't match Connect's URL convention.
-2. **Don't ship HTTP/2 termination.** Push the HTTP/2 frontier to
-   Envoy. Revisit only if a Lua HTTP/2 library appears that's not a
-   sandcastle.
-3. **net.box tunnel before IProto type.** Cheaper to start, retains
-   the door for an `IPROTO_GRPC` type later. Once net.box is in real
-   use, we'll know what's missing.
+1. **Handler fiber on deadline or cancel.** The server answers
+   `DEADLINE_EXCEEDED` and drops the late result, but does not
+   `fiber:cancel()` the handler, which may be inside a transaction.
+   Handlers check `ctx:is_cancelled()`. Revisit if long handlers pile up.
+2. **Streaming transcoding.** Server-streaming methods over HTTP/JSON
+   (grpc-gateway emits newline-delimited JSON). Not in v1: such methods
+   are not routed.
+3. **In-cluster transport** (net.box / IProto tunnel) from the previous
+   revision is still a valid idea for Tarantool-to-Tarantool calls and
+   stays out of this spec.
