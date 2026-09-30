@@ -445,14 +445,23 @@ local function convert(f, s, where)
 end
 
 -- set_leaf(t, chain, value, append): walk (creating) the messages
--- along `chain` and store value at its last field. A oneof member
--- clears its siblings, as a decoder would.
+-- along `chain` and store value at its last field. Setting a oneof
+-- member while another member of the same oneof is already set (by the
+-- body, the path or an earlier query parameter) is a conflict and
+-- raises INVALID_ARGUMENT, as grpc-gateway does; setting the same
+-- member again is allowed. Synthetic oneofs of proto3 `optional`
+-- fields carry no siblings, so they never conflict.
 local function set_leaf(t, chain, value, append)
     local n = #chain
     for i = 1, n do
         local f = chain[i]
         if f.oneof_siblings then
-            for _, sib in ipairs(f.oneof_siblings) do t[sib] = nil end
+            for _, sib in ipairs(f.oneof_siblings) do
+                if t[sib] ~= nil then
+                    invalid('oneof "%s": field "%s" conflicts with "%s", which is already set',
+                            tostring(f.oneof), f.name, sib)
+                end
+            end
         end
         if i == n then
             if append then

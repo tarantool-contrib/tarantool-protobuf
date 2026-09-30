@@ -487,11 +487,34 @@ gq.test_well_known_types = function()
     t.assert_equals(req.at.epoch, 1704164645)
 end
 
-gq.test_oneof_last_member_wins = function()
+-- Two members of one oneof from path/query/body: 400, the RPC is not
+-- called (grpc-gateway rejects it too). The same member set by the
+-- body and then by the path is not a conflict.
+gq.test_oneof_conflicts_are_rejected = function()
     local router, calls = query_router()
-    local req = call(router, calls, 'GET', '/v1/items/x?a=1&b=2')
-    t.assert_equals(req.a, nil)
-    t.assert_equals(req.b, '2')
+    t.assert_equals(call(router, calls, 'GET', '/v1/items/x?a=1').a, '1')
+    local before = #calls
+    bad_request(router, '/v1/items/x?a=1&b=2', 'oneof "choice"')
+    bad_request(router, '/v1/items/x?b=2&a=1', 'oneof "choice"')
+    t.assert_equals(#calls, before)
+
+    local m = pb.parse(QUERY_SCHEMA)
+    local srv, pcalls = fake_server(m.Q_service, {
+        Get = {{method = 'GET', pattern = '/v1/ab/{a}/{b}'},
+               {method = 'PATCH', pattern = '/v1/a/{a}', body = '*'},
+               {method = 'GET', pattern = '/v1/a/{a}'}},
+    })
+    local prouter = tc.new({srv})
+    bad_request(prouter, '/v1/ab/1/2', 'oneof "choice"')
+    bad_request(prouter, '/v1/a/1?b=2', 'oneof "choice"')
+    t.assert_equals(#pcalls, 0)
+
+    local resp = prouter:handle(request('PATCH', '/v1/a/1', '{"b": "x"}'))
+    t.assert_equals(resp.status, 400, resp.body)
+    t.assert_str_contains(json.decode(resp.body).message, 'oneof "choice"')
+    t.assert_equals(#pcalls, 0)
+
+    t.assert_equals(call(prouter, pcalls, 'PATCH', '/v1/a/1', '{"a": "x"}'), {a = '1'})
 end
 
 gq.test_rejected_values = function()
