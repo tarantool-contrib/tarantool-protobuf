@@ -30,9 +30,18 @@ proto2_test_dir   := "test/proto"
 luatest           := ".rocks/bin/luatest"
 image             := "tarantool-protobuf-conformance:latest"
 
+# pb.server serves over the tarantool-http2 rock (`require('http2')`). Until
+# the rock is published, point TARANTOOL_HTTP2_RUNTIME at the `runtime/`
+# directory of a tarantool-http2 checkout; it is appended to LUA_PATH for
+# the test, example and Go end-to-end recipes. Unset, `http2` is looked up
+# as usual (e.g. installed with `tt rocks make`), and the tests that need
+# a server skip when it cannot be loaded.
+http2_runtime := env_var_or_default("TARANTOOL_HTTP2_RUNTIME", "")
+http2_lua_path := if http2_runtime == "" { "" } else { http2_runtime + "/?.lua;" + http2_runtime + "/?/init.lua;" }
+
 # Semicolon-joined LUA_PATH for the luatest suite. Trailing `;;` defers to the
 # standard package.path for everything not explicitly listed.
-lua_path := "./runtime/?/init.lua;./runtime/?.lua;./" + gen_dir + "/?.lua;./" + gen_dir + "/?/init.lua;./?.lua;./?/init.lua;./test/?.lua;;"
+lua_path := "./runtime/?/init.lua;./runtime/?.lua;./" + gen_dir + "/?.lua;./" + gen_dir + "/?/init.lua;./?.lua;./?/init.lua;./test/?.lua;" + http2_lua_path + ";"
 
 # LUA_CPATH for the optional C runtime (require('pb.c_runtime')). Trailing
 # `;;` defers to the standard cpath. The C module is built into
@@ -229,6 +238,13 @@ test-all: test test-c
 # in the conformance fixtures.
 test-reflection-go: gen
     cd test/reflection-go && go test -tags protolegacy -v -count=1 ./...
+
+# Check pb.server against independent clients (test/server-go): grpc-go
+# with dynamicpb messages built from server reflection alone, grpc-go's
+# health client, net/http over HTTP/1.1 and h2c, and grpcurl (built into a
+# temporary GOBIN). Needs the http2 rock: see TARANTOOL_HTTP2_RUNTIME above.
+test-server-go: gen
+    cd test/server-go && TARANTOOL_HTTP2_RUNTIME="{{http2_runtime}}" go test -v -count=1 ./...
 
 # ---------------------------------------------------------------------------
 # Bench
