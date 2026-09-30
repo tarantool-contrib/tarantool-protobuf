@@ -165,6 +165,15 @@ field_mask,source_context,struct,timestamp,type,wrappers}.proto`,
 `google/api/{annotations,http}.proto` ship with the runtime
 (`pb.descriptors_builtin`, loaded on first lookup).
 
+The shipped built-ins are produced by the protoc release the runtime
+was built with (its version is in the header of
+`runtime/pb/descriptors_builtin.lua`). Generated modules do not embed
+copies of these files, so a module compiled by a different protoc
+release still resolves them to the shipped bytes. The well-known types
+are stable across releases; what can differ is `descriptor.proto`
+(new `FeatureSet` / edition fields), which reflection clients only
+consult for custom options.
+
 ```lua
 require('myapp.hello_pb')                  -- registers 'hello.proto'
 
