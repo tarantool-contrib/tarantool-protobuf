@@ -171,11 +171,12 @@ pb.descriptors.files()                     -- sorted names, built-ins included
 pb.descriptors.dependencies('hello.proto') -- {'google/protobuf/timestamp.proto', ...}
 pb.descriptors.package('hello.proto')      -- 'hello'
 pb.descriptors.register(bytes)             -- -> 'hello.proto'
+pb.descriptors.register(bytes, {snapshot = true}) -- a copy of an import
 ```
 
 | Function | Semantics |
 |---|---|
-| `register(bytes) -> name` | Add a serialized `FileDescriptorProto`; returns its `name`. Identical bytes again are a no-op; different bytes under a registered name replace the earlier entry (the latest loaded module wins, as a hot code reload needs). Errors on non-string input, undecodable bytes, or a missing `name`. |
+| `register(bytes [, opts]) -> name` | Add a serialized `FileDescriptorProto`; returns its `name`. Without opts the entry is *authoritative* (a module's own file) and replaces anything registered under that name — the latest loaded module wins, as a hot code reload needs. With `{snapshot = true}` it is a *snapshot* (a copy of an import embedded by another module): it fills a missing entry but never replaces an existing one; two different snapshots of one file keep the first and log a warning once. Identical bytes are a no-op. Errors on non-string input, undecodable bytes, or a missing `name`. |
 | `file(name) -> bytes?` | The registered bytes for a file name as imported (`'google/api/http.proto'`). |
 | `files() -> {name, ...}` | Every registered name, sorted. |
 | `dependencies(name) -> {name, ...}?` | The file's direct imports, in declaration order. |

@@ -264,20 +264,23 @@ pb.descriptors.register(M._file_descriptor)
 ```
 
 `M._file_descriptor` is the serialized `google.protobuf.FileDescriptorProto`
-of the source file — exactly what protoc handed the plugin, with
-`source_code_info` stripped (as protoc-gen-go does) and fields in
-deterministic order. Loading the module registers it with
+of the source file, byte for byte as protoc serialized it into the
+plugin request (read off the wire, not re-marshalled), minus
+`source_code_info`. The bytes equal what `protoc --descriptor_set_out`
+writes for the same file. Loading the module registers it with
 [`pb.descriptors`](runtime-api.md#descriptor-registry--pbdescriptors),
-the input server reflection answers from. The import graph is covered
-too:
+the input server reflection answers from.
 
-- imports generated in the same protoc run are `require`d even when no
-  field references them, so their modules register themselves;
-- imports that are neither generated in the same run nor shipped with
-  the runtime (the well-known types and `google/api/{annotations,http}.proto`
-  are) — typically option files such as `tarantool/tarantool.proto` that
-  are only on the `-I` path — have their descriptors embedded and
-  registered by the importing module.
+The import graph is covered too: the module also embeds a **snapshot**
+of every direct and transitive import the runtime does not ship (the
+well-known types and `google/api/{annotations,http}.proto` it does
+ship), registered with `{snapshot = true}`. That holds whether the
+import is generated in the same protoc run or not, so the generated
+code does not depend on how protoc was invoked. A snapshot fills a gap
+until the import's own module is loaded and never replaces the
+descriptor that module registers, so an older parent module cannot
+shadow a newer dependency. Modules are only `require`d for imports that
+fields or rpcs reference.
 
 Registration runs once per module load and costs nothing on the
 encode/decode paths.

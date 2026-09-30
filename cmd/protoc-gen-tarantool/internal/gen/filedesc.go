@@ -4,26 +4,26 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/compiler/protogen"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/tarantool-contrib/tarantool-protobuf/internal/builtindesc"
 	"github.com/tarantool-contrib/tarantool-protobuf/internal/luastr"
 )
 
-// registrationDeps sorts the import graph of file for descriptor
-// registration:
+// snapshotDeps returns the paths of every direct and transitive import
+// of file that the runtime does not ship (builtindesc), dependencies
+// first. The generated module embeds a snapshot of each, so the
+// descriptor registry holds the file's whole import graph once the
+// module is loaded.
 //
-//   - generated: direct or transitive imports generated in this protoc
-//     run. Their modules register themselves; the caller requires them.
-//     The walk stops at them, since each module covers its own imports.
-//   - embedded: imports neither generated in this run nor shipped with
-//     the runtime (builtindesc), e.g. an options file such as
-//     tarantool/tarantool.proto that is only on the -I path. Their
-//     descriptors are embedded into this module, dependencies first.
-func registrationDeps(plug *protogen.Plugin, file *protogen.File) (generated []protoreflect.FileDescriptor, embedded []string) {
+// The rule deliberately ignores which files protoc generates in the
+// same run: generating files together or one per protoc invocation
+// must produce the same module. A dependency's own module, when it is
+// loaded, registers the authoritative copy, which snapshots never
+// override (see runtime/pb/descriptors.lua).
+func snapshotDeps(file *protogen.File) []string {
 	seen := map[string]bool{file.Desc.Path(): true}
+	var out []string
 	var visit func(fd protoreflect.FileDescriptor)
 	visit = func(fd protoreflect.FileDescriptor) {
 		imports := fd.Imports()
@@ -34,34 +34,27 @@ func registrationDeps(plug *protogen.Plugin, file *protogen.File) (generated []p
 				continue
 			}
 			seen[p] = true
-			if f, ok := plug.FilesByPath[p]; ok && f.Generate {
-				generated = append(generated, imp)
-				continue
-			}
 			visit(imp)
-			embedded = append(embedded, p)
+			out = append(out, p)
 		}
 	}
 	visit(file.Desc)
-	return generated, embedded
+	return out
 }
 
-// fileDescriptorBytes serializes the request's FileDescriptorProto for
-// path the way protoc-gen-go embeds descriptors: source_code_info
-// stripped, deterministic field order.
+// fileDescriptorBytes returns the FileDescriptorProto for path exactly
+// as protoc serialized it in the request, minus source_code_info.
 func fileDescriptorBytes(cfg Config, path string) ([]byte, error) {
-	fdp := cfg.FileDescriptors[path]
-	if fdp == nil {
+	b, ok := cfg.FileDescriptors[path]
+	if !ok {
 		return nil, fmt.Errorf("%s: no FileDescriptorProto in the request", path)
 	}
-	c := proto.Clone(fdp).(*descriptorpb.FileDescriptorProto)
-	c.SourceCodeInfo = nil
-	return proto.MarshalOptions{Deterministic: true}.Marshal(c)
+	return b, nil
 }
 
-// emitFileDescriptors emits M._file_descriptor and the registration calls
-// for it and for the embedded imports.
-func emitFileDescriptors(w *writer, file *protogen.File, cfg Config, embedded []string) error {
+// emitFileDescriptors emits M._file_descriptor with its registration,
+// then a snapshot registration per non-builtin import.
+func emitFileDescriptors(w *writer, file *protogen.File, cfg Config) error {
 	self, err := fileDescriptorBytes(cfg, file.Desc.Path())
 	if err != nil {
 		return err
@@ -70,18 +63,19 @@ func emitFileDescriptors(w *writer, file *protogen.File, cfg Config, embedded []
 	w.line("-- stripped), registered with pb.descriptors for server reflection.")
 	emitBytesExpr(w, "M._file_descriptor = ", self, "")
 	w.line("pb.descriptors.register(M._file_descriptor)")
-	if len(embedded) > 0 {
-		w.line("-- Imported files that are not generated alongside this one and")
-		w.line("-- that the runtime does not ship; registered so the import graph")
-		w.line("-- of this file is complete.")
+	deps := snapshotDeps(file)
+	if len(deps) > 0 {
+		w.line("-- Snapshots of the imports the runtime does not ship, so the import")
+		w.line("-- graph of this file is registered. A snapshot never replaces the")
+		w.line("-- descriptor an imported file's own module registers.")
 	}
-	for _, p := range embedded {
+	for _, p := range deps {
 		b, err := fileDescriptorBytes(cfg, p)
 		if err != nil {
 			return err
 		}
 		w.line("-- %s", p)
-		emitBytesExpr(w, "pb.descriptors.register(", b, ")")
+		emitBytesExpr(w, "pb.descriptors.register(", b, ", {snapshot = true})")
 	}
 	w.line("")
 	return nil

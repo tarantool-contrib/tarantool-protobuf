@@ -389,6 +389,8 @@ cmd/gen-builtin-descriptors/
 internal/
   builtindesc/         # the files whose descriptors the runtime ships
   luastr/              # byte-exact Lua string literals
+  rawdesc/             # FileDescriptorProto bytes read off the request /
+                       # FileDescriptorSet wire, source_code_info dropped
   messageset/          # MessageSet request fix-up shared by both plugins
 ```
 

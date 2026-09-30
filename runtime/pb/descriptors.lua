@@ -2,9 +2,9 @@
 -- keyed by .proto file name — the input server reflection needs.
 --
 -- Every generated module registers its own file's descriptor when it is
--- loaded (and the descriptors of imported files that were not generated
--- alongside it), so after requiring the generated modules of an
--- application the registry can answer:
+-- loaded (authoritative), plus snapshots of its non-builtin imports, so
+-- after requiring the generated modules of an application the registry
+-- can answer:
 --
 --   pb.descriptors.file('hello.proto')          -> bytes | nil
 --   pb.descriptors.files()                      -> {'google/api/http.proto', ...}
@@ -47,7 +47,15 @@ do
     codec.compile_readers(HEADER)
 end
 
-local function add(bytes)
+-- Names already warned about for conflicting snapshots (warn once each).
+local warned = {}
+
+-- Internal: where conflict warnings go. A field so tests can observe it.
+function M._warn(msg)
+    require('log').warn(msg)
+end
+
+local function add(bytes, snapshot)
     if type(bytes) ~= 'string' then
         error('pb.descriptors.register: expected FileDescriptorProto bytes, got '
             .. type(bytes), 3)
@@ -61,15 +69,32 @@ local function add(bytes)
     if name == nil or name == '' then
         error('pb.descriptors.register: FileDescriptorProto has no name', 3)
     end
+    -- Two ranks. A module's own file is authoritative; a copy of an
+    -- import embedded in another module is a snapshot, possibly older
+    -- than the imported file's own module.
+    --   snapshot over authoritative: ignored;
+    --   authoritative over anything: replaces (hot code reload);
+    --   snapshot over a different snapshot: the first stays, warn once.
     local cur = registry[name]
-    if cur ~= nil and cur.bytes == bytes then return name end
-    -- A different descriptor under a known name replaces the old one:
-    -- the latest loaded module wins, which is what a hot code reload
-    -- after a schema change needs.
+    if cur ~= nil then
+        if cur.bytes == bytes then
+            if not snapshot then cur.snapshot = false end
+            return name
+        end
+        if snapshot then
+            if cur.snapshot and not warned[name] then
+                warned[name] = true
+                M._warn(('pb.descriptors: conflicting snapshots of %q '
+                    .. 'embedded by different modules; keeping the first'):format(name))
+            end
+            return name
+        end
+    end
     registry[name] = {
         bytes        = bytes,
         package      = hdr.package or '',
         dependencies = hdr.dependency or {},
+        snapshot     = snapshot and true or false,
     }
     return name
 end
@@ -80,7 +105,7 @@ local function load_builtins()
     for _, f in ipairs(require('pb.descriptors_builtin')) do
         -- A module registered before the builtins were loaded keeps its
         -- own copy.
-        if registry[f.name] == nil then add(f.bytes) end
+        if registry[f.name] == nil then add(f.bytes, false) end
     end
 end
 
@@ -93,13 +118,25 @@ local function entry(name)
     return e
 end
 
--- register(bytes) -> file name. Adds a serialized FileDescriptorProto.
--- Registering identical bytes again is a no-op; different bytes under a
--- registered name replace the earlier descriptor.
+-- register(bytes[, opts]) -> file name. Adds a serialized
+-- FileDescriptorProto.
+--
+-- By default the entry is authoritative (a module registering its own
+-- file): it replaces whatever is registered under that name, so the
+-- latest loaded module wins, as a hot code reload needs. With
+-- `opts.snapshot = true` it is a snapshot (a module registering a copy
+-- of one of its imports): it fills a missing entry but never replaces
+-- an existing one; two different snapshots of one file keep the first
+-- and log a warning once. Identical bytes are always a no-op (an
+-- authoritative registration of snapshot bytes promotes the entry).
 ---@param bytes string   serialized google.protobuf.FileDescriptorProto
+---@param opts? {snapshot?: boolean}
 ---@return string name   the file name it was registered under
-function M.register(bytes)
-    return add(bytes)
+function M.register(bytes, opts)
+    if opts ~= nil and type(opts) ~= 'table' then
+        error('pb.descriptors.register: opts must be a table', 2)
+    end
+    return add(bytes, opts ~= nil and opts.snapshot == true)
 end
 
 -- file(name) -> bytes, or nil when no descriptor is registered for it.

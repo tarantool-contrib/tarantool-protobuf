@@ -51,10 +51,11 @@ local function only_file_of_set(set)
     return set:sub(pos, pos + n - 1)
 end
 
-local function protoc_descriptor(proto)
+local function protoc_descriptor(proto, dir)
+    dir = dir or PROTO_DIR
     local out = fio.pathjoin(fio.tempdir(), 'set.pb')
     sh(string.format('protoc --descriptor_set_out=%q -I %q -I %q %q',
-        out, PROTO_DIR, OPTIONS_DIR, fio.pathjoin(PROTO_DIR, proto)))
+        out, dir, OPTIONS_DIR, fio.pathjoin(dir, proto)))
     return only_file_of_set(slurp(out))
 end
 
@@ -148,22 +149,31 @@ end
 
 local g = t.group('descriptors')
 
--- The embedded bytes are what protoc itself serializes for the file.
-g.test_embedded_bytes_match_protoc = function()
-    local hello = require('full.hello.hello_pb')
-    t.assert_equals(hello._file_descriptor, protoc_descriptor('hello.proto'))
-    local kv = require('full.kv.kv_pb')
-    t.assert_equals(kv._file_descriptor, protoc_descriptor('kv.proto'))
-end
+-- The embedded bytes are exactly what protoc itself serializes for the
+-- file, for every generated .proto (library.proto carries extension
+-- options, whose field order a re-marshal would not preserve).
+local PROTO_DIRS = {
+    fio.pathjoin(REPO_ROOT, 'examples', 'proto'),
+    fio.pathjoin(REPO_ROOT, 'test', 'proto'),
+    fio.pathjoin(REPO_ROOT, 'test', 'conformance', 'proto'),
+}
 
--- With extension-carrying options the field order of a re-serialized
--- descriptor may differ from protoc's; the content must not.
-g.test_embedded_library_matches_protoc_decoded = function()
-    local lib = require('full.library.library_pb')
-    local ours = decode_file(lib._file_descriptor)
-    local theirs = decode_file(protoc_descriptor('library.proto'))
-    t.assert_equals(ours, theirs)
-    t.assert_equals(ours.service[1].method[1].options.http.get,
+g.test_embedded_bytes_match_protoc = function()
+    local n = 0
+    for _, row in ipairs(GENERATED) do
+        local fname, suffix = row[1], row[2]
+        local dir
+        for _, d in ipairs(PROTO_DIRS) do
+            if fio.path.exists(fio.pathjoin(d, fname)) then dir = d end
+        end
+        t.assert(dir, fname)
+        local m = require('full.' .. suffix)
+        t.assert_equals(m._file_descriptor, protoc_descriptor(fname, dir), fname)
+        n = n + 1
+    end
+    t.assert_equals(n, #GENERATED)
+    local lib = decode_file(require('full.library.library_pb')._file_descriptor)
+    t.assert_equals(lib.service[1].method[1].options.http.get,
                     '/v1/{name=shelves/*/books/*}')
 end
 
@@ -213,18 +223,66 @@ local function tiny_fdp(name, pkg)
     return '\x0a' .. string.char(#name) .. name .. '\x12' .. string.char(#pkg) .. pkg
 end
 
-g.test_register_semantics = function()
-    local a = tiny_fdp('reg/x.proto', 'one')
-    t.assert_equals(pb.descriptors.register(a), 'reg/x.proto')
-    t.assert_equals(pb.descriptors.file('reg/x.proto'), a)
+local SNAP = {snapshot = true}
+
+g.test_register_authoritative_replaces_authoritative = function()
+    local a = tiny_fdp('reg/aa.proto', 'one')
+    t.assert_equals(pb.descriptors.register(a), 'reg/aa.proto')
+    t.assert_equals(pb.descriptors.file('reg/aa.proto'), a)
     -- Identical bytes: no-op.
-    t.assert_equals(pb.descriptors.register(a), 'reg/x.proto')
-    -- Different bytes under the same name: the later one wins.
-    local b = tiny_fdp('reg/x.proto', 'two')
+    t.assert_equals(pb.descriptors.register(a), 'reg/aa.proto')
+    -- A newer own-file registration wins (hot reload).
+    local b = tiny_fdp('reg/aa.proto', 'two')
     pb.descriptors.register(b)
-    t.assert_equals(pb.descriptors.file('reg/x.proto'), b)
-    t.assert_equals(pb.descriptors.package('reg/x.proto'), 'two')
-    t.assert_equals(pb.descriptors.dependencies('reg/x.proto'), {})
+    t.assert_equals(pb.descriptors.file('reg/aa.proto'), b)
+    t.assert_equals(pb.descriptors.package('reg/aa.proto'), 'two')
+    t.assert_equals(pb.descriptors.dependencies('reg/aa.proto'), {})
+end
+
+g.test_register_snapshot_never_replaces_authoritative = function()
+    local own = tiny_fdp('reg/as.proto', 'own')
+    pb.descriptors.register(own)
+    pb.descriptors.register(tiny_fdp('reg/as.proto', 'stale'), SNAP)
+    t.assert_equals(pb.descriptors.file('reg/as.proto'), own)
+end
+
+g.test_register_authoritative_replaces_snapshot = function()
+    pb.descriptors.register(tiny_fdp('reg/sa.proto', 'stale'), SNAP)
+    t.assert_equals(pb.descriptors.package('reg/sa.proto'), 'stale')
+    local own = tiny_fdp('reg/sa.proto', 'own')
+    pb.descriptors.register(own)
+    t.assert_equals(pb.descriptors.file('reg/sa.proto'), own)
+    -- ...and is not displaced by a later snapshot either.
+    pb.descriptors.register(tiny_fdp('reg/sa.proto', 'late'), SNAP)
+    t.assert_equals(pb.descriptors.file('reg/sa.proto'), own)
+end
+
+g.test_register_snapshot_conflict_keeps_first_and_warns_once = function()
+    local orig = pb.descriptors._warn
+    local warnings = {}
+    pb.descriptors._warn = function(msg) warnings[#warnings + 1] = msg end
+    local ok, err = pcall(function()
+        local first = tiny_fdp('reg/ss.proto', 'first')
+        pb.descriptors.register(first, SNAP)
+        pb.descriptors.register(first, SNAP)          -- identical: silent
+        pb.descriptors.register(tiny_fdp('reg/ss.proto', 'second'), SNAP)
+        pb.descriptors.register(tiny_fdp('reg/ss.proto', 'third'), SNAP)
+        t.assert_equals(pb.descriptors.file('reg/ss.proto'), first)
+    end)
+    pb.descriptors._warn = orig
+    if not ok then error(err, 0) end
+    t.assert_equals(#warnings, 1)
+    t.assert_str_contains(warnings[1], 'reg/ss.proto')
+end
+
+-- Identical bytes registered by the file's own module promote a
+-- snapshot, so a later different snapshot cannot replace it.
+g.test_register_identical_promotes_snapshot = function()
+    local b = tiny_fdp('reg/pr.proto', 'same')
+    pb.descriptors.register(b, SNAP)
+    pb.descriptors.register(b)
+    pb.descriptors.register(tiny_fdp('reg/pr.proto', 'other'), SNAP)
+    t.assert_equals(pb.descriptors.file('reg/pr.proto'), b)
 end
 
 g.test_register_rejects_bad_input = function()
@@ -234,6 +292,8 @@ g.test_register_rejects_bad_input = function()
         pb.descriptors.register, '\x12\x03pkg')
     t.assert_error_msg_contains('not a FileDescriptorProto',
         pb.descriptors.register, '\x0a\x05ab')
+    t.assert_error_msg_contains('opts must be a table',
+        pb.descriptors.register, tiny_fdp('reg/bad.proto', 'x'), true)
 end
 
 -- ---------------------------------------------------------------------------
@@ -289,25 +349,43 @@ package emb;
 message Base { string y = 1; }
 ]]
 
-local function generate(mode)
-    local tmp = fio.tempdir()
-    local src = fio.pathjoin(tmp, 'proto')
-    local out = fio.pathjoin(tmp, 'out')
-    assert(fio.mkdir(src))
-    assert(fio.mkdir(fio.pathjoin(src, 'emb')))
-    assert(fio.mkdir(out))
-    spit(fio.pathjoin(src, 'emb', 'main.proto'), MAIN_PROTO)
-    spit(fio.pathjoin(src, 'emb', 'side.proto'), SIDE_PROTO)
-    spit(fio.pathjoin(src, 'emb', 'lib.proto'), LIB_PROTO)
-    spit(fio.pathjoin(src, 'emb', 'base.proto'), BASE_PROTO)
-    -- Only main and side are generated; lib and base are on -I only.
+-- Write `files` ({relative path = source}) under a fresh proto root.
+local function proto_tree(files)
+    local src = fio.pathjoin(fio.tempdir(), 'proto')
+    for rel, body in pairs(files) do
+        local path = fio.pathjoin(src, rel)
+        assert(fio.mktree(fio.dirname(path)))
+        spit(path, body)
+    end
+    return src
+end
+
+-- One protoc run generating `inputs` (paths relative to src) into out.
+local function protoc_gen(src, out, mode, prefix, inputs)
+    assert(fio.mktree(out))
+    local args = {}
+    for _, rel in ipairs(inputs) do
+        args[#args + 1] = ('%q'):format(fio.pathjoin(src, rel))
+    end
     sh(string.format(
-        'protoc --plugin=%q --tarantool_out=%q --tarantool_opt=mode=%s,prefix=emb_%s '
-        .. '-I %q -I %q %q %q 2>/dev/null',
-        PLUGIN, out, mode, mode, src, OPTIONS_DIR,
-        fio.pathjoin(src, 'emb', 'main.proto'),
-        fio.pathjoin(src, 'emb', 'side.proto')))
+        'protoc --plugin=%q --tarantool_out=%q --tarantool_opt=mode=%s,prefix=%s '
+        .. '-I %q -I %q %s 2>/dev/null',
+        PLUGIN, out, mode, prefix, src, OPTIONS_DIR, table.concat(args, ' ')))
     return out
+end
+
+local EMB_TREE = {
+    ['emb/main.proto'] = MAIN_PROTO,
+    ['emb/side.proto'] = SIDE_PROTO,
+    ['emb/lib.proto']  = LIB_PROTO,
+    ['emb/base.proto'] = BASE_PROTO,
+}
+
+-- main and side generated in one run; lib and base are on -I only.
+local function generate(mode)
+    local src = proto_tree(EMB_TREE)
+    return protoc_gen(src, fio.pathjoin(fio.tempdir(), 'out'), mode,
+        'emb_' .. mode, {'emb/main.proto', 'emb/side.proto'})
 end
 
 local function load(out, modname)
@@ -324,26 +402,95 @@ for _, mode in ipairs({'full', 'runtime'}) do
         local main = load(out, ('emb_%s.emb.main_pb'):format(mode))
         t.assert_equals(pb.descriptors.file('emb/main.proto'), main._file_descriptor)
 
-        -- Generated alongside but unreferenced: required, so it
-        -- registered itself.
-        t.assert_type(package.loaded[('emb_%s.emb.side_pb'):format(mode)], 'table')
-        t.assert_equals(pb.descriptors.file('emb/side.proto'),
-            package.loaded[('emb_%s.emb.side_pb'):format(mode)]._file_descriptor)
+        -- An import no field references is not required...
+        t.assert_equals(package.loaded[('emb_%s.emb.side_pb'):format(mode)], nil)
 
-        -- Not generated: embedded into main, transitively.
-        for _, name in ipairs({'emb/lib.proto', 'emb/base.proto',
-                               'tarantool/tarantool.proto'}) do
+        -- ...every non-builtin import, direct or transitive, generated
+        -- in the same run or not, is registered from a snapshot.
+        for _, name in ipairs({'emb/side.proto', 'emb/lib.proto',
+                               'emb/base.proto', 'tarantool/tarantool.proto'}) do
             local b = pb.descriptors.file(name)
             t.assert_type(b, 'string', name)
             t.assert_equals(decode_file(b).name, name)
         end
 
-        -- Side is not embedded into main: its own module carries it.
+        -- Built-ins are not embedded.
         local src = slurp(fio.pathjoin(out, ('emb_%s'):format(mode), 'emb', 'main_pb.lua'))
-        t.assert_not_str_contains(src, '-- emb/side.proto')
-        t.assert_str_contains(src, '-- emb/lib.proto')
+        t.assert_not_str_contains(src, '-- google/protobuf/descriptor.proto')
+        t.assert_str_contains(src, '-- emb/side.proto')
 
         t.assert(assert_import_graph_closed() > 0)
+    end
+
+    -- Generated code must not depend on how protoc was invoked: all files
+    -- in one run, or one run per file, produce the same modules.
+    ge.test_output_independent_of_invocation_shape = function()
+        local src = proto_tree(EMB_TREE)
+        local prefix = 'shape_' .. mode
+        local together = protoc_gen(src, fio.pathjoin(fio.tempdir(), 'out'),
+            mode, prefix, {'emb/main.proto', 'emb/side.proto'})
+        local separate = fio.pathjoin(fio.tempdir(), 'out')
+        protoc_gen(src, separate, mode, prefix, {'emb/main.proto'})
+        protoc_gen(src, separate, mode, prefix, {'emb/side.proto'})
+        local n = 0
+        for _, f in ipairs({'main_pb.lua', 'side_pb.lua'}) do
+            local rel = fio.pathjoin(prefix, 'emb', f)
+            t.assert_equals(slurp(fio.pathjoin(separate, rel)),
+                            slurp(fio.pathjoin(together, rel)), f)
+            n = n + 1
+        end
+        t.assert_equals(n, 2)
+    end
+
+    -- An older, independently generated parent carries a snapshot of
+    -- its import from before the import changed. Whichever order the
+    -- modules load in, the import's own (newer) descriptor ends up in
+    -- the registry. Each mode uses its own file names, since the
+    -- registry is process-wide.
+    ge.test_stale_parent_snapshot_never_wins = function()
+        for _, order in ipairs({'dep_first', 'parent_first'}) do
+            local dir = ('stale_%s_%s'):format(mode, order)
+            local dep = dir .. '/dep.proto'
+            local parent_src = ([[
+syntax = "proto3";
+package %s;
+import "%s";
+message Parent { string p = 1; }
+]]):format(dir, dep)
+            local dep_v1 = ('syntax = "proto3";\npackage %s;\n'
+                .. 'message Dep { string a = 1; }\n'):format(dir)
+            local dep_v2 = ('syntax = "proto3";\npackage %s;\n'
+                .. 'message Dep { string a = 1; int64 b = 2; }\n'):format(dir)
+
+            local old_src = proto_tree({[dep] = dep_v1, [dir .. '/parent.proto'] = parent_src})
+            local old_out = protoc_gen(old_src, fio.pathjoin(fio.tempdir(), 'out'),
+                mode, 'old', {dir .. '/parent.proto'})
+            local new_src = proto_tree({[dep] = dep_v2})
+            local new_out = protoc_gen(new_src, fio.pathjoin(fio.tempdir(), 'out'),
+                mode, 'new', {dep})
+
+            local function load_parent()
+                return load(old_out, ('old.%s.parent_pb'):format(dir))
+            end
+            local function load_dep()
+                return load(new_out, ('new.%s.dep_pb'):format(dir))
+            end
+
+            local new_dep
+            if order == 'dep_first' then
+                new_dep = load_dep()
+                load_parent()
+            else
+                load_parent()
+                -- The snapshot fills the gap until the import's module loads.
+                local snap = decode_file(pb.descriptors.file(dep))
+                t.assert_equals(#snap.message_type[1].field, 1, order)
+                new_dep = load_dep()
+            end
+            t.assert_equals(pb.descriptors.file(dep), new_dep._file_descriptor, order)
+            t.assert_equals(#decode_file(pb.descriptors.file(dep)).message_type[1].field,
+                            2, order)
+        end
     end
 
     -- Every byte value 0..255 survives the Lua string literal verbatim.

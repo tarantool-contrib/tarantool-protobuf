@@ -25,6 +25,7 @@ import (
 
 	"github.com/tarantool-contrib/tarantool-protobuf/cmd/protoc-gen-tarantool/internal/gen"
 	"github.com/tarantool-contrib/tarantool-protobuf/internal/messageset"
+	"github.com/tarantool-contrib/tarantool-protobuf/internal/rawdesc"
 )
 
 func main() {
@@ -37,12 +38,18 @@ func main() {
 		fail("parse CodeGeneratorRequest: %v", err)
 	}
 
-	// Keep every file's descriptor as protoc sent it: the go_package stub
-	// and the MessageSet strip below mutate the request, and the
-	// descriptors embedded into generated modules must carry neither.
-	originals := make(map[string]*descriptorpb.FileDescriptorProto, len(req.ProtoFile))
-	for _, f := range req.ProtoFile {
-		originals[f.GetName()] = proto.Clone(f).(*descriptorpb.FileDescriptorProto)
+	// Keep every file's descriptor exactly as protoc serialized it, read
+	// off the request wire (source_code_info dropped). The go_package
+	// stub and the MessageSet strip below mutate the parsed request, and
+	// a re-marshal could order fields differently from protoc; the
+	// descriptors embedded into generated modules must have neither.
+	rawFiles, err := rawdesc.FromRequest(in)
+	if err != nil {
+		fail("read proto_file entries: %v", err)
+	}
+	originals := make(map[string][]byte, len(rawFiles))
+	for _, f := range rawFiles {
+		originals[f.Name] = f.Bytes
 	}
 
 	// protogen requires a go_package on every input file even when we are not
