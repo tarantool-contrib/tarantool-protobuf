@@ -309,8 +309,9 @@ local M = {
 
 -- gRPC server reflection and health (runtime/pb/{reflection,health}.lua)
 -- load on first access: they are built on generated modules that
--- require('pb') themselves.
-local LAZY = {reflection = 'pb.reflection', health = 'pb.health'}
+-- require('pb') themselves. pb.server loads on first access too; it
+-- needs the http2 rock only when a server is built.
+local LAZY = {reflection = 'pb.reflection', health = 'pb.health', server = 'pb.server'}
 
 return setmetatable(M, {
     __index = function(t, k)
