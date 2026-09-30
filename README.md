@@ -132,7 +132,10 @@ from googleapis, Apache-2.0) under `options/`, so with `-I options` an
 `option (google.api.http) = {...}` is carried into the generated
 service descriptor as a normalised `http` array on the method (see
 [docs/reference/generated-api.md](docs/reference/generated-api.md#mservice_service)).
-Keep these annotations: they are what HTTP/JSON transcoding routes on.
+Keep these annotations: they are what HTTP/JSON transcoding
+(`pb.transcode`, see
+[docs/howto/15-http-transcoding.md](docs/howto/15-http-transcoding.md))
+routes on.
 
 Upstream protos also import annotation extensions that only the
 original generator consumes — `versionpb`, `gogoproto`,

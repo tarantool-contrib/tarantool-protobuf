@@ -36,6 +36,9 @@ pb.grpc.error(pb.grpc.code.NOT_FOUND, m)  -- fail a gRPC call with a status
 pb.grpc.loopback(server)                  -- in-process gRPC transport
 pb.grpc.multiplex({srv1, srv2, ...})      -- fan multiple servers
 
+local router = pb.transcode.new({srv1, ...} [, opts]) -- google.api.http router
+router:handle(req [, ctx])                -- HTTP request table -> response | nil
+
 local conv  = pb.tuple.bind(desc, space [, opts]) -- message <-> space format
 conv:encode(tuple)                        -- box.tuple -> wire bytes
 conv:decode(bytes)                        -- wire bytes -> box.tuple
@@ -210,6 +213,18 @@ details (camelCase field names, base64 for `bytes`, RFC 3339 for
   `opts.ignore_unknown_fields = true` accepts JSON with extra keys
   (matches the conformance suite's `JSON_IGNORE_UNKNOWN_PARSING_TEST`
   category).
+- `pb.json.encode_field(desc, t, field_name [, opts]) -> string` — the
+  JSON of one top-level field of `t`, as it would appear under its key
+  in `encode`'s output; an unset field renders as its default (`{}`,
+  `[]`, or the zero value). Takes `encode`'s options.
+- `pb.json.decode_field(desc, field_name, s [, opts]) -> value` — the
+  inverse: parse `s` as the JSON of that one field (an object, array or
+  scalar); `nil` for JSON `null`.
+- `pb.json.json_name(name) -> string` — the lowerCamelCase JSON name of
+  a proto field name.
+
+The two field helpers exist for HTTP transcoding (`response_body` and
+`body: "<field>"`, see [`pb.transcode`](#httpjson-transcoding--pbtranscode)).
 
 ### `pb.text`
 
@@ -300,6 +315,111 @@ object to the client unchanged; see
 The transport *contract* (`:unary`, `:server_stream`, `:client_stream`,
 `:bidi`) is documented in [grpc-contract.md](grpc-contract.md). Any
 table implementing those four methods plugs into a generated client.
+
+## HTTP/JSON transcoding — `pb.transcode`
+
+Maps plain HTTP requests onto the unary methods of generated servers by
+their `google.api.http` rules, the scheme of
+[`google/api/http.proto`](../../options/google/api/http.proto) and
+[AIP-127](https://google.aip.dev/127). Pure Lua over request/response
+tables, no sockets: an HTTP server passes each request in and sends back
+what comes out. A walkthrough is in
+[howto/15-http-transcoding.md](../howto/15-http-transcoding.md).
+
+```lua
+local router = pb.transcode.new(servers [, opts])
+local resp   = router:handle(req [, ctx])   -- nil when no route matches
+router:routes()                              -- {{method, pattern, path, body?, response_body?}, ...}
+```
+
+- `servers` — array of generated server tables (`M.<Svc>_server(impl)`
+  results). Rules come from `service.methods.<M>.http`, which the plugin
+  and `pb.from_pb` fill from the `google.api.http` option.
+- `opts.unbound = true` — also route every unary method without rules as
+  `POST /<package.Service>/<Method>` with the whole request as the JSON
+  body. Off by default.
+- `opts.json` — options for the response JSON (`pb.json.encode`'s).
+  Defaults to `{emit_defaults = true}` with camelCase names, as
+  grpc-gateway does; `{emit_defaults = false}` gives proto3's elided
+  form, `{use_proto_names = true}` snake_case names.
+- `req = {method, path, headers, body, version, peer}` — `path` as
+  received, query string included; header names lowercased.
+- `resp = {status, headers, body}` — `content-type: application/json`
+  plus whatever the handler put in `ctx.response_metadata`.
+- `ctx` — passed to the handler as is. When omitted, the router builds
+  `{method = '/pkg.Svc/M', metadata = <request headers minus hop-by-hop
+  ones and content-length>, peer = req.peer, response_metadata = {},
+  trailing_metadata = {}, is_cancelled = fn -> false}`.
+
+`new()` parses every template and checks it against the request message:
+a malformed template, a path variable naming a missing, repeated, map or
+message field, or a `body` / `response_body` naming a missing field is
+an error that names the method and the pattern. Rules on streaming
+methods are skipped with a `log.warn` (streaming transcoding is not
+supported).
+
+**Templates.** `/` segments of literals, `*` (one segment), `**` (zero or
+more, last only), `{field.path}` and `{field.path=segments}`, and an
+optional `:verb`. A request path is split at `/` before any
+percent-decoding. A single-segment variable is fully percent-decoded; a
+multi-segment one (`{name=shelves/*}`, `{path=**}`) is decoded except
+`%2F`/`%2f`, which stay encoded, as http.proto specifies. Literals match
+the raw or the percent-decoded segment. When the template has no verb, a
+`:suffix` in the request stays part of the last segment.
+
+**Choosing a route.** Only routes of the request's HTTP method are
+considered (`custom { kind: "*" }` accepts any). Among templates that
+match, segments are compared from the left: a literal beats `*`, which
+beats `**`, and a template that has ended beats one that continues with
+`**` (`/v1/files` wins over `/v1/{name=files/**}` for `/v1/files`). Then
+a template with a verb beats one without, then declaration order:
+servers in the order given, methods by name within a service (the
+descriptor does not record source order), rules in their `http` order.
+A path that matches only under another HTTP method returns `nil`, like
+an unknown path, so the caller decides between 404, 405 or a fallback.
+
+**Binding.** The request message is built from:
+
+1. the body, when the rule has one: `body: "*"` decodes the whole JSON
+   body into the message, `body: "field"` decodes it into that field.
+   An empty body leaves the message (or field) empty. A rule without
+   `body` ignores the request body (http.proto: such a rule has none).
+2. path variables, written after the body, so a field bound by the path
+   wins over the same field in the body (with `body: "*"` the body maps
+   only "every field not bound by the path template");
+3. query parameters, unless the body is `*`: each key is a dotted field
+   path (proto or JSON names per segment); repeated fields take repeated
+   keys; enums take names or numbers; 64-bit integers become cdata; bools
+   take `true/false/1/0/t/f` (and capitalised forms); bytes take standard
+   or URL-safe base64, padded or not; `Timestamp`, `Duration`,
+   `FieldMask` and the wrapper types take their JSON string forms. Keys
+   for fields bound by the path or under the body field are skipped;
+   unknown keys are ignored (grpc-gateway's behaviour). A map field, a
+   message field named directly, a repeated message on the way, or a
+   second value for a non-repeated field is a 400.
+
+**Calling.** The bound message is encoded, handed to
+`server.methods[path](bytes, ctx)` and the result decoded — the same
+wrapper a gRPC call goes through, at the cost of one extra encode and
+decode per request. A hand-written `methods[path]` function may also
+return `nil, code[, message]` instead of raising.
+
+**Responses.** 200 with the response as proto3 JSON, or only its
+`response_body` field. A `HEAD` request gets an empty body. Errors use
+the `google.rpc.Status` JSON shape `{"code", "message", "details"}` with
+`pb.grpc.http_status[code]`:
+
+- a status raised by the handler (`pb.grpc.error`) keeps its code,
+  message and details. Details whose type is registered with
+  `pb.register` render as their JSON with `@type`; others as `{"@type",
+  "value": <base64 of the payload>}`.
+- malformed JSON, a value that does not fit its field in the path or
+  query, or a malformed percent-escape: 400 `INVALID_ARGUMENT` naming
+  the field.
+- any other Lua error: 500 `INTERNAL` with the message `internal error`;
+  the real error goes to `log.error`.
+
+`ctx.trailing_metadata` has no HTTP/1.1 counterpart and is not sent.
 
 ## Tuple bridge — `pb.tuple`
 

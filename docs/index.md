@@ -36,6 +36,9 @@ links to the next.
 13. **[Tuples to protobuf and back](howto/14-tuples.md)** —
     `pb.tuple`: bind a message to a space format, convert rows in one
     call each (without a Lua table per row on the C runtime).
+14. **[HTTP/JSON transcoding](howto/15-http-transcoding.md)** —
+    `pb.transcode`: route HTTP requests to gRPC handlers by their
+    `google.api.http` rules.
 
 When something doesn't work, **[troubleshooting](troubleshooting.md)**
 collects the common errors and their fixes.

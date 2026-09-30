@@ -186,13 +186,17 @@ dynamic schemas transcode too. `pb.parse` support for aggregate
 `option (google.api.http) = {...}` follows later.
 
 `pb.transcode` is a pure function over the request/response tables,
-testable without sockets:
+testable without sockets. It ships in `runtime/pb/transcode.lua`; the
+exact rules it follows are in
+[reference/runtime-api.md](../reference/runtime-api.md#httpjson-transcoding--pbtranscode).
+In outline:
 
 - path templates per `http.proto`: literals, `*`, `**`, `{field}`,
   `{field=segments}`, nested field paths (`{book.shelf}`), a trailing
   `:verb`;
-- match priority: literal segments beat variables, longest match wins,
-  ties resolved by declaration order;
+- match priority: segment by segment from the left a literal beats `*`
+  beats `**` (an ended template beats one continuing with `**`), then a
+  verb beats no verb, ties resolved by declaration order;
 - bindings: path variables, then `body` (`*`, a field, or none), then
   query parameters for every field not already bound (repeated fields
   via repeated keys, nested fields via dotted keys);
