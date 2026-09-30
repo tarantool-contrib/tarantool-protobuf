@@ -197,9 +197,12 @@ In outline:
 - match priority: segment by segment from the left a literal beats `*`
   beats `**` (an ended template beats one continuing with `**`), then a
   verb beats no verb, ties resolved by declaration order;
-- bindings: path variables, then `body` (`*`, a field, or none), then
-  query parameters for every field not already bound (repeated fields
-  via repeated keys, nested fields via dotted keys);
+- bindings: `body` (`*`, a field, or none) first, then path variables,
+  which override a field the body also set (with `body: "*"` the body
+  carries only the fields the path does not bind), then query
+  parameters for every field bound by neither (repeated fields via
+  repeated keys, nested fields via dotted keys; none when the body is
+  `*`);
 - `response_body` selects a sub-field of the response;
 - responses and errors are proto3 JSON via `pb.json`; errors use the
   `google.rpc.Status` JSON shape (`{"code", "message", "details"}`)
