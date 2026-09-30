@@ -59,7 +59,7 @@ if c_runtime ~= nil then
 end
 
 ---@type pb.Module
-return {
+local M = {
     -- High-level codec
     encode = pb_encode,
     decode = pb_decode,
@@ -306,3 +306,17 @@ return {
         list[#list + 1] = ext
     end,
 }
+
+-- gRPC server reflection (runtime/pb/reflection.lua) loads on first
+-- access: it is built on generated modules that require('pb') themselves.
+local LAZY = {reflection = 'pb.reflection'}
+
+return setmetatable(M, {
+    __index = function(t, k)
+        local name = LAZY[k]
+        if name == nil then return nil end
+        local mod = require(name)
+        rawset(t, k, mod)
+        return mod
+    end,
+})
