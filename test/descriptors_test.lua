@@ -328,6 +328,21 @@ g.test_register_identical_promotes_snapshot = function()
     t.assert_equals(warnings, {})
 end
 
+g.test_generation_changes_with_the_registry = function()
+    pb.descriptors.files() -- built-ins loaded
+    local g0 = pb.descriptors.generation()
+    t.assert_equals(pb.descriptors.generation(), g0)
+    local a = tiny_fdp('gen/x.proto', 'one')
+    pb.descriptors.register(a)
+    local g1 = pb.descriptors.generation()
+    t.assert_not_equals(g1, g0)
+    -- Identical bytes change nothing.
+    pb.descriptors.register(a)
+    t.assert_equals(pb.descriptors.generation(), g1)
+    pb.descriptors.register(tiny_fdp('gen/x.proto', 'two'))
+    t.assert_not_equals(pb.descriptors.generation(), g1)
+end
+
 g.test_register_rejects_bad_input = function()
     t.assert_error_msg_contains('expected FileDescriptorProto bytes',
         pb.descriptors.register, 42)

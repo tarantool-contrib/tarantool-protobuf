@@ -23,6 +23,9 @@ local M = {}
 -- name -> {bytes = <string>, package = <string>, dependencies = {...}}
 local registry = {}
 local builtins_loaded = false
+-- Bumped on every change to the registry; lets consumers that derive
+-- indexes from it (pb.reflection's symbol table) know when to rebuild.
+local generation = 0
 
 -- Just the FileDescriptorProto fields the registry indexes; the codec
 -- skips the rest.
@@ -96,6 +99,7 @@ local function add(bytes, snapshot)
         dependencies = hdr.dependency or {},
         snapshot     = snapshot and true or false,
     }
+    generation = generation + 1
     return name
 end
 
@@ -177,6 +181,14 @@ end
 function M.package(name)
     local e = entry(name)
     return e and e.package
+end
+
+-- generation() -> integer that changes whenever a file is added or
+-- replaced (built-ins included). Anything derived from the registry
+-- can cache against it: equal numbers mean an unchanged registry.
+---@return integer
+function M.generation()
+    return generation
 end
 
 return M
