@@ -32,6 +32,18 @@ protoc \
     path/to/foo.proto path/to/bar.proto
 ```
 
+`-Ioptions` provides `tarantool/tarantool.proto`, for
+`(tarantool.lua_package)`. A schema that imports
+`google/api/annotations.proto` also needs a googleapis import root,
+such as this repository's `-Ithird_party/googleapis`.
+
+> **Changed include path.** Earlier revisions kept `google/api` under
+> `options/`, so `-Ioptions` covered both. Now `options/` holds only
+> `tarantool/tarantool.proto`: add `-Ithird_party/googleapis` (or your
+> own googleapis import root) wherever you import `google/api`;
+> without it `protoc` stops at
+> `google/api/annotations.proto: File not found.`
+
 Assumes `protoc-gen-tarantool` is on `PATH`. If not:
 
 ```bash

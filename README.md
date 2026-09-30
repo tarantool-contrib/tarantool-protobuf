@@ -216,6 +216,15 @@ Keep these annotations: they are what HTTP/JSON transcoding
 [docs/howto/15-http-transcoding.md](docs/howto/15-http-transcoding.md))
 routes on.
 
+> **Changed include path.** Earlier revisions kept these two files
+> under `options/`, so `-I options` resolved `google/api` as well. It
+> no longer does: `options/` holds only `tarantool/tarantool.proto`.
+> Keep `-I options` for `(tarantool.lua_package)` and add
+> `-I third_party/googleapis` (or the import root of your own
+> googleapis copy or dependency) for `google/api`; with `-I options`
+> alone, `protoc` stops at
+> `google/api/annotations.proto: File not found.`
+
 Upstream protos also import annotation extensions that only the
 original generator consumes — `versionpb`, `gogoproto`,
 `grpc.gateway.protoc_gen_openapiv2`. Mainline `protoc` won't parse a

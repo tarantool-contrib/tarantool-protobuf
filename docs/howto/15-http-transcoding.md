@@ -73,6 +73,20 @@ and `http.proto` under `third_party/googleapis/`, so pass
 copy). The plugin copies the rules into
 the service descriptor (`M.Library_service.methods.GetBook.http`).
 
+```bash
+mkdir -p gen
+protoc --tarantool_out=./gen \
+    -I examples/proto -I options -I third_party/googleapis \
+    examples/proto/library.proto
+```
+
+> **Changed include path.** Earlier revisions kept `google/api` under
+> `options/`, and `-I options` alone was enough. Now `options/` holds
+> only `tarantool/tarantool.proto`: keep `-I options` for
+> `(tarantool.lua_package)` and add `-I third_party/googleapis` (or
+> your googleapis import root) for `google/api`. Without it `protoc`
+> stops at `google/api/annotations.proto: File not found.`
+
 ## 2. Build a router
 
 ```lua
