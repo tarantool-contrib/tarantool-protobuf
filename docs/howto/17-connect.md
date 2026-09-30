@@ -169,9 +169,10 @@ response is written as the handler produces it.
   instead — a reset stream on HTTP/2, a closed connection on HTTP/1.1 —
   and no fiber of the call is left waiting on it.
 - **HTTP/1.1.** A stream that ends before reading the whole request (a
-  message over the limit, a handler that stopped reading) first reads
-  and drops the rest of the body, up to 4 MiB or 2 s, so the client,
-  still sending, gets a clean response and keeps its connection.
+  message over the limit, a handler that stopped reading) answers at
+  once; tarantool-http2 discards a bounded rest of the body or closes
+  with a lingering close (and announces `connection: close` when it
+  will), so a client still sending gets the whole response.
 
 Unary calls, GETs and the protocol's rejections stay on the buffered
 HTTP handler: a unary message is needed whole before the handler runs

@@ -924,11 +924,6 @@ M.RECV_SLICE = 3600
 -- go out before the exchange is aborted (see _serve_stream).
 M.DEADLINE_GRACE = 0.1
 
--- Bounds of reading the rest of an HTTP/1.1 request body that a
--- streaming call ends without reading (see _serve_stream's finish).
-local DRAIN_BYTES = 4 * 1024 * 1024
-local DRAIN_SECONDS = 2
-
 -- stream_io(st) -> the envelope I/O over a tarantool-http2 streaming
 -- exchange `st` (st:read, st:write_head, st:write, st:finish,
 -- st:is_cancelled). Writes are serialized: after a deadline the
@@ -999,28 +994,6 @@ function M.stream_io(st)
         return flags, take(len)
     end
 
-    -- drain(max_bytes, seconds) reads and drops what is left of the
-    -- request body, up to `max_bytes` bytes or `seconds`, whichever comes
-    -- first. Returns true when the body ended.
-    function io:drain(max_bytes, seconds)
-        local deadline = now() + seconds
-        local dropped = have
-        parts, have = {}, 0
-        while not eof and dropped <= max_bytes do
-            local left = deadline - now()
-            if left <= 0 then return false end
-            local chunk, err = st:read(left)
-            if chunk ~= nil then
-                dropped = dropped + #chunk
-            elseif err == nil then
-                eof = true
-            else
-                return false
-            end
-        end
-        return eof
-    end
-
     local function locked(fn, ...)
         lock:put(true)
         local ok, res = pcall(fn, ...)
@@ -1084,18 +1057,10 @@ function Handler:_serve_stream(call, req, io)
             -- 'canceled': the client went away; nobody reads this.
             st = grpc.status(CODE.CANCELLED, 'canceled')
         end
-        if io.drain ~= nil and req.version ~= 'HTTP/2'
-                and not (state ~= nil and state.cancelled) then
-            -- HTTP/1.1 is half duplex: a client sends its whole request
-            -- before it reads. Ending the response over an unread body
-            -- (a message over the limit, a handler that stopped reading)
-            -- makes the transport close the connection under a client
-            -- still writing, which then sees a broken response or a
-            -- dead pooled connection. Read the rest first, within
-            -- bounds. (Not after a deadline: the handler may still be
-            -- reading.)
-            io:drain(math.max(DRAIN_BYTES, h._limit), DRAIN_SECONDS)
-        end
+        -- An HTTP/1.1 request body the call did not read to the end (a
+        -- message over the limit, a handler that stopped reading) is the
+        -- transport's: it discards a bounded rest or closes with a
+        -- lingering close, so a client still sending gets the response.
         -- The stream is ending: sends from now on are refused (and the
         -- I/O refuses any write after the EndStreamResponse, for a send
         -- already past this check).

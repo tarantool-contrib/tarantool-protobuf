@@ -249,6 +249,52 @@ u.test_stream_deadline_bounds_writes = function()
     t.assert_lt(took, 0.03 + connect.DEADLINE_GRACE + 0.1)
 end
 
+-- An HTTP/1.1 stream answers at once even when the client is still
+-- sending (the unread rest is the transport's to discard): neither a
+-- deadline answer nor an early error waits on the request body.
+u.test_http1_stream_answers_without_reading_the_rest = function()
+    local clock = require('clock')
+    local hello = require('full.hello.hello_pb')
+    local function slow_body_st()
+        local st = fake_st({})
+        function st:read(timeout)
+            self.reads = self.reads + 1
+            fiber.sleep(math.min(timeout, 0.05))
+            return 'more'  -- a client that keeps sending
+        end
+        return st
+    end
+    local h = connect.new({hello.Greeter_server({
+        CollectHellos = function(stream)
+            -- Stops reading after an error and answers.
+            local _, err = stream:recv()
+            error(err, 0)
+        end,
+    })}, {max_recv_message_size = 3})
+    for _, c in ipairs({
+        {timeout = '10', body = nil},
+        {timeout = nil, body = E(0, 'too long')},
+    }) do
+        local st = slow_body_st()
+        if c.body then
+            local first = true
+            local read = st.read
+            st.read = function(self, timeout)
+                if first then first = false; return c.body end
+                return read(self, timeout)
+            end
+        end
+        local head = {method = 'POST', path = '/hello.Greeter/CollectHellos', version = 'HTTP/1.1',
+                      headers = {['content-type'] = 'application/connect+proto',
+                                 ['connect-timeout-ms'] = c.timeout}}
+        local t0 = clock.monotonic()
+        h:stream_handler(head)(head, st)
+        t.assert_lt(clock.monotonic() - t0, 0.3)
+        t.assert(st.finished)
+        t.assert_le(st.reads, 3, 'the rest of the body is not read')
+    end
+end
+
 u.test_stream_io_write = function()
     local st = fake_st({})
     local io = connect.stream_io(st)

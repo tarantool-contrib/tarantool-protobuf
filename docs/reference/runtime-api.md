@@ -604,9 +604,9 @@ HTTP/2, a client that goes away turns `ctx:is_cancelled()` true (and
 bounds every wait, writes included: after it the EndStreamResponse
 gets `pb.connect.DEADLINE_GRACE` seconds (0.1) to go out, then the
 exchange is aborted (`st:abort`: HTTP/2 RST_STREAM, HTTP/1.1 close),
-which releases any fiber blocked on it. On HTTP/1.1, a stream that ends before its request
-body did reads and drops the rest (up to 4 MiB or 2 s) before
-answering. `handle` also serves streaming calls, over a body already in
+which releases any fiber blocked on it. An HTTP/1.1 request body a
+stream leaves unread is left to the transport (bounded discard or a
+lingering close). `handle` also serves streaming calls, over a body already in
 memory, for use without a streaming transport.
 
 `match` returns `strong = true` when the request can only be Connect

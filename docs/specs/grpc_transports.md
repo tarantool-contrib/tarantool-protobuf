@@ -306,8 +306,9 @@ incremental, client streams read messages as they arrive, bidi is full
 duplex on HTTP/2 (and with it Connect reflection works), the deadline
 bounds every wait, a client that goes away cancels the call, and a
 message over the limit is refused from its length prefix. On HTTP/1.1
-a stream that ends before its request body did reads the rest (bounded)
-first, since the client is still sending. Unary calls, GETs and
+a stream that ends before its request body did answers at once; the
+transport's bounded discard and lingering close keep a client that is
+still sending from losing the response. Unary calls, GETs and
 rejections stay buffered: the message is needed whole anyway, and the
 transcoding router, which may take them first, needs the body; the one
 thing they lack is noticing a client that goes away mid-call.
