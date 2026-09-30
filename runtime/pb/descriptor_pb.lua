@@ -80,12 +80,47 @@ M.EnumDescriptorProto = {
     },
 }
 
+-- google.api.CustomHttpPattern (google/api/http.proto).
+M.CustomHttpPattern = {
+    name = 'google.api.CustomHttpPattern',
+    fields = {
+        {name = 'kind', id = 1, kind = 'scalar', proto_type = 'string'},
+        {name = 'path', id = 2, kind = 'scalar', proto_type = 'string'},
+    },
+}
+
+-- google.api.HttpRule (google/api/http.proto). The `pattern` oneof
+-- members are plain fields here: a well-formed rule sets one of them.
+M.HttpRule = {name = 'google.api.HttpRule'}
+M.HttpRule.fields = {
+    {name = 'selector',            id = 1,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'get',                 id = 2,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'put',                 id = 3,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'post',                id = 4,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'delete',              id = 5,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'patch',               id = 6,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'body',                id = 7,  kind = 'scalar',  proto_type = 'string'},
+    {name = 'custom',              id = 8,  kind = 'message', message = M.CustomHttpPattern},
+    {name = 'additional_bindings', id = 11, kind = 'message', message = M.HttpRule, repeated = true},
+    {name = 'response_body',       id = 12, kind = 'scalar',  proto_type = 'string'},
+}
+
+-- MethodOptions: subset — only the google.api.http extension
+-- (google/api/annotations.proto), decoded as if it were a plain field.
+M.MethodOptions = {
+    name = 'google.protobuf.MethodOptions',
+    fields = {
+        {name = 'http', id = 72295728, kind = 'message', message = M.HttpRule},
+    },
+}
+
 M.MethodDescriptorProto = {
     name = 'google.protobuf.MethodDescriptorProto',
     fields = {
         {name = 'name',             id = 1, kind = 'scalar', proto_type = 'string'},
         {name = 'input_type',       id = 2, kind = 'scalar', proto_type = 'string'},
         {name = 'output_type',      id = 3, kind = 'scalar', proto_type = 'string'},
+        {name = 'options',          id = 4, kind = 'message', message = M.MethodOptions},
         {name = 'client_streaming', id = 5, kind = 'scalar', proto_type = 'bool'},
         {name = 'server_streaming', id = 6, kind = 'scalar', proto_type = 'bool'},
     },
@@ -142,6 +177,9 @@ finalize(M.FieldDescriptorProto)
 finalize(M.OneofDescriptorProto)
 finalize(M.EnumValueDescriptorProto)
 finalize(M.EnumDescriptorProto)
+finalize(M.CustomHttpPattern)
+finalize(M.HttpRule)
+finalize(M.MethodOptions)
 finalize(M.MethodDescriptorProto)
 finalize(M.ServiceDescriptorProto)
 finalize(M.DescriptorProto)

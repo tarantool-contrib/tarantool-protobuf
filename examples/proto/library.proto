@@ -1,0 +1,180 @@
+// A small library API annotated with google.api.http, covering the
+// shapes documented in google/api/http.proto: path variables with and
+// without a segment pattern, nested field paths, `**`, `body: "*"` and
+// `body: "<field>"`, `response_body`, `additional_bindings`, a custom
+// verb suffix (`:lookup`) and a `custom` HTTP method.
+syntax = "proto3";
+
+package library;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+message Book {
+  // Resource name: shelves/{shelf}/books/{book}.
+  string name = 1;
+  string shelf = 2;
+  string title = 3;
+  string author = 4;
+  string isbn = 5;
+}
+
+message GetBookRequest {
+  string name = 1;
+}
+
+message ListBooksRequest {
+  // Parent shelf: shelves/{shelf}.
+  string parent = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListBooksResponse {
+  repeated Book books = 1;
+  string next_page_token = 2;
+}
+
+message CreateBookRequest {
+  string parent = 1;
+  Book book = 2;
+}
+
+message UpdateBookRequest {
+  Book book = 1;
+}
+
+message DeleteBookRequest {
+  string name = 1;
+}
+
+message LookupBookRequest {
+  string isbn = 1;
+}
+
+message LookupBookResponse {
+  Book book = 1;
+}
+
+message MoveBookRequest {
+  Book book = 1;
+  string destination_shelf = 2;
+}
+
+// The GetMessage example from http.proto: a path variable, query
+// parameters for the other fields (including a nested one), and an
+// additional binding with a second path variable.
+message GetMessageRequest {
+  message SubMessage {
+    string subfield = 1;
+  }
+  string message_id = 1;
+  string user_id = 2;
+  int64 revision = 3;
+  SubMessage sub = 4;
+}
+
+message Message {
+  string text = 1;
+}
+
+message GetFileRequest {
+  // Multi-segment path, e.g. files/a/b/c.txt.
+  string path = 1;
+}
+
+message File {
+  string path = 1;
+  bytes content = 2;
+}
+
+message WatchShelfRequest {
+  string shelf = 1;
+}
+
+service Library {
+  rpc GetBook(GetBookRequest) returns (Book) {
+    option (google.api.http) = {
+      get: "/v1/{name=shelves/*/books/*}"
+    };
+  }
+
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse) {
+    option (google.api.http) = {
+      get: "/v1/{parent=shelves/*}/books"
+    };
+  }
+
+  rpc CreateBook(CreateBookRequest) returns (Book) {
+    option (google.api.http) = {
+      post: "/v1/{parent=shelves/*}/books"
+      body: "book"
+    };
+  }
+
+  rpc UpdateBook(UpdateBookRequest) returns (Book) {
+    option (google.api.http) = {
+      patch: "/v1/{book.name=shelves/*/books/*}"
+      body: "book"
+      additional_bindings {
+        put: "/v1/{book.name=shelves/*/books/*}"
+        body: "*"
+      }
+    };
+  }
+
+  rpc DeleteBook(DeleteBookRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/{name=shelves/*/books/*}"
+    };
+  }
+
+  rpc LookupBook(LookupBookRequest) returns (LookupBookResponse) {
+    option (google.api.http) = {
+      post: "/v1/books:lookup"
+      body: "*"
+      response_body: "book"
+      additional_bindings {
+        get: "/v1/books:lookup"
+        response_body: "book"
+      }
+    };
+  }
+
+  rpc MoveBook(MoveBookRequest) returns (Book) {
+    option (google.api.http) = {
+      post: "/v1/shelves/{book.shelf}/books/{book.name}:move"
+      body: "*"
+    };
+  }
+
+  rpc GetMessage(GetMessageRequest) returns (Message) {
+    option (google.api.http) = {
+      get: "/v1/messages/{message_id}"
+      additional_bindings {
+        get: "/v1/users/{user_id}/messages/{message_id}"
+      }
+      additional_bindings {
+        get: "/v1/messages/{message_id}/revisions/{revision}"
+      }
+    };
+  }
+
+  rpc GetFile(GetFileRequest) returns (File) {
+    option (google.api.http) = {
+      get: "/v1/{path=files/**}"
+    };
+  }
+
+  rpc CheckBook(GetBookRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      custom {
+        kind: "HEAD"
+        path: "/v1/{name=shelves/*/books/*}"
+      }
+    };
+  }
+
+  // No annotation: not routed over HTTP/JSON, no `http` field.
+  rpc WatchShelf(WatchShelfRequest) returns (stream Book);
+}

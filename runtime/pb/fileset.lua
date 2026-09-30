@@ -192,6 +192,52 @@ local function translate_message(msg_proto, scope, map_entries)
     return ast
 end
 
+-- google.api.HttpRule pattern oneof members, in field-number order, and
+-- the HTTP method each one stands for.
+local HTTP_VERBS = {
+    {'get', 'GET'}, {'put', 'PUT'}, {'post', 'POST'},
+    {'delete', 'DELETE'}, {'patch', 'PATCH'},
+}
+
+local function non_empty(s)
+    if s == nil or s == '' then return nil end
+    return s
+end
+
+-- Append one decoded HttpRule, then its additional_bindings, to `out` as
+-- normalised {method, pattern, body?, response_body?} entries — the same
+-- flattening protoc-gen-tarantool does at build time.
+local function flatten_http_rule(rule, out)
+    local method, pattern
+    for _, v in ipairs(HTTP_VERBS) do
+        if rule[v[1]] ~= nil then method, pattern = v[2], rule[v[1]] end
+    end
+    if rule.custom ~= nil then
+        method, pattern = rule.custom.kind or '', rule.custom.path or ''
+    end
+    if method ~= nil then
+        out[#out + 1] = {
+            method        = method,
+            pattern       = pattern,
+            body          = non_empty(rule.body),
+            response_body = non_empty(rule.response_body),
+        }
+    end
+    for _, add in ipairs(rule.additional_bindings or {}) do
+        flatten_http_rule(add, out)
+    end
+end
+
+-- MethodOptions -> normalised http bindings, or nil without an annotation.
+local function method_http(options)
+    local rule = options and options.http
+    if rule == nil then return nil end
+    local out = {}
+    flatten_http_rule(rule, out)
+    if #out == 0 then return nil end
+    return out
+end
+
 -- Translate a FileDescriptorProto into the AST shape pb.dynamic.build expects.
 local function translate_file(file_proto)
     local ast = {
@@ -227,6 +273,7 @@ local function translate_file(file_proto)
                 output            = strip_dot(m.output_type),
                 client_streaming  = m.client_streaming or false,
                 server_streaming  = m.server_streaming or false,
+                http              = method_http(m.options),
             })
         end
         table.insert(ast.services, {name = svc.name, methods = methods})

@@ -40,6 +40,8 @@ wire format. Only editions are out of scope for now.
 | gRPC service stubs (unary)       | ✅           |
 | gRPC streaming (server / client / bidi) | ✅      |
 | Loopback / multiplex transport   | ✅           |
+| gRPC status codes + status errors (`pb.grpc.error`) | ✅ |
+| `google.api.http` rules in service descriptors | ✅ |
 | WKT: Timestamp ↔ `datetime`      | ✅           |
 | WKT: Duration, Empty, wrappers   | ✅           |
 | WKT: Struct, Value, ListValue    | ✅           |
@@ -123,8 +125,17 @@ If you're vendoring someone else's `.proto` into your project (etcd,
 prometheus, opentelemetry, pprof, …), `protoc-gen-tarantool` plus a
 small preprocessor is the typical path.
 
-Upstream protos commonly import annotation extensions that only the
-original generator consumes — `versionpb`, `google.api`, `gogoproto`,
+**`google/api/annotations.proto` is supported.** The repository ships
+`google/api/annotations.proto` and `google/api/http.proto` (vendored
+from googleapis, Apache-2.0) under `options/`, so with `-I options` an
+`import "google/api/annotations.proto";` resolves, and every
+`option (google.api.http) = {...}` is carried into the generated
+service descriptor as a normalised `http` array on the method (see
+[docs/reference/generated-api.md](docs/reference/generated-api.md#mservice_service)).
+Keep these annotations: they are what HTTP/JSON transcoding routes on.
+
+Upstream protos also import annotation extensions that only the
+original generator consumes — `versionpb`, `gogoproto`,
 `grpc.gateway.protoc_gen_openapiv2`. Mainline `protoc` won't parse a
 file with an unresolved import, so the choice is between vendoring the
 extension `.proto` files (lots of additional surface, no wire effect)
@@ -133,7 +144,7 @@ Stripping is the lower-cost path — these annotations affect nothing on
 the wire.
 
 A drop-in preprocessor (one `python3` script, no dependencies, ~60
-lines) should drop `import "versionpb/...";` / `google/api/...` /
+lines) should drop `import "versionpb/...";` /
 `gogo.proto` / `protoc-gen-openapiv2/...` lines, drop single-line and
 brace-balanced `option (foo.bar) = ...;` blocks at file/message/field
 scope, and drop inline field options `[(foo.bar) = "..."]`.
@@ -226,6 +237,11 @@ M.Annotated_method.options                              -- {deprecated=true, ...
 M.Annotated_method.options["google.api.http"].post     -- "/v1/demo"
 M.Annotated_method.options["google.api.http"].additional_bindings[1].post
 ```
+
+For `google.api.http` specifically, the method also carries a
+normalised `http` array (primary rule plus flattened
+`additional_bindings`, `{method, pattern, body?, response_body?}` each)
+— see [docs/reference/generated-api.md](docs/reference/generated-api.md#mservice_service).
 
 Per-descriptor key:
 - `M.<Type>_descriptor.options`         — `MessageOptions` (+ extensions)

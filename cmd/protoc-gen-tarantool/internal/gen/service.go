@@ -2,6 +2,7 @@ package gen
 
 import (
 	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 // streamKind classifies an RPC method for codegen branching.
@@ -56,6 +57,22 @@ func emitService(w *writer, file *protogen.File, svc *protogen.Service, imports 
 		}
 		if m.Desc.IsStreamingServer() {
 			w.line("            server_streaming = true,")
+		}
+		// Normalised google.api.http routing rules. The raw extension
+		// also stays in `options` below: `options` mirrors the
+		// descriptor for every extension alike, `http` is the flattened
+		// shape a transcoder routes on.
+		mopts, _ := m.Desc.Options().(*descriptorpb.MethodOptions)
+		rules, err := methodHTTPRules(mopts)
+		if err != nil {
+			panic("tarantool-protobuf: " + fullName + "." + mname + ": google.api.http: " + err.Error())
+		}
+		if len(rules) > 0 {
+			w.line("            http = {")
+			for _, r := range rules {
+				w.line("                %s,", luaHTTPBinding(r))
+			}
+			w.line("            },")
 		}
 		if opts := w.renderOpts(m.Desc.Options()); opts != "" {
 			w.line("            options = %s,", opts)

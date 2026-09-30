@@ -129,6 +129,15 @@ Parse a binary `FileDescriptorSet` (the output of
 - `lookup(fqn) -> descriptor` — find any message or enum by its fully-
   qualified name (e.g. `'hello.Person'`).
 
+Each module also carries `M.<Service>_service` for every service in the
+file, in the generated shape (`name`, `full_name`, `methods[<Method>]`
+with `input`, `output`, the streaming flags and, for methods annotated
+with `google.api.http`, the same normalised `http` array codegen emits
+— see [generated-api.md](generated-api.md#mservice_service)). `input` /
+`output` are `nil` when the type is declared in another file of the
+set. `pb.parse` builds the same service tables, without `http` (the
+text parser skips method options).
+
 ```lua
 local set = pb.from_pb(io.open('build/all.pb', 'rb'):read('*a'))
 local desc = set.lookup('hello.Person')

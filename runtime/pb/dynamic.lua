@@ -75,6 +75,16 @@ local function resolve_type(typename, index)
     error("dynamic: cannot resolve type " .. typename, 0)
 end
 
+-- Resolve an rpc input/output type to its message descriptor, or nil
+-- when it is not declared in this file (nor a well-known type).
+local function resolve_service_type(typename, index)
+    if typename == nil then return nil end
+    typename = typename:gsub('^%.', '')
+    local ok, kind, ref = pcall(resolve_type, typename, index)
+    if ok and kind == 'message' then return ref end
+    return nil
+end
+
 -- Coerce a parser-captured default literal into the runtime form the codec
 -- expects (cdata for 64-bit ints, numbers for floats, etc). String/bytes
 -- pass through as Lua strings; enums stay as symbolic names.
@@ -307,6 +317,34 @@ function M.build(parsed)
                 out[flat .. '_clear_' .. f.name] = function(t) t[f.name] = nil end
             end
         end
+    end
+
+    -- 5) Service descriptors, in the shape of the generated
+    -- M.<Service>_service. `input` / `output` are nil when the type lives
+    -- in another file (this builder sees one file at a time). `http`
+    -- carries the flattened google.api.http rules when the producer
+    -- supplied them (pb.from_pb does; the .proto text parser skips
+    -- method options).
+    for _, svc in ipairs(parsed.services or {}) do
+        local full = pkg ~= '' and (pkg .. '.' .. svc.name) or svc.name
+        local methods = {}
+        for _, m in ipairs(svc.methods) do
+            local entry = {
+                name      = m.name,
+                full_name = '/' .. full .. '/' .. m.name,
+                input     = resolve_service_type(m.input, index),
+                output    = resolve_service_type(m.output, index),
+                http      = m.http,
+            }
+            if m.client_streaming then entry.client_streaming = true end
+            if m.server_streaming then entry.server_streaming = true end
+            methods[m.name] = entry
+        end
+        out[svc.name .. '_service'] = {
+            name      = full,
+            full_name = '/' .. full,
+            methods   = methods,
+        }
     end
 
     return out

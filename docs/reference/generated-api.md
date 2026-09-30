@@ -122,11 +122,38 @@ M.Greeter_server(impl)          -- factory: returns {service, methods}
             output            = M.<Output>_descriptor,
             client_streaming  = <bool, only if true>,
             server_streaming  = <bool, only if true>,
+            http              = <google.api.http rules, only if annotated>,
+            options           = <MethodOptions, only if any are set>,
         },
         ...
     },
 }
 ```
+
+`http` is present when the method carries a `google.api.http`
+annotation (`import "google/api/annotations.proto";`). It is the rule
+flattened into an array — the primary binding first, then each of its
+`additional_bindings` in declaration order:
+
+```lua
+http = {
+    {method = 'GET',  pattern = '/v1/{name=shelves/*/books/*}'},
+    {method = 'POST', pattern = '/v1/books:lookup', body = '*', response_body = 'book'},
+},
+```
+
+- `method` is `GET`, `PUT`, `POST`, `DELETE` or `PATCH`, or the `kind`
+  of a `custom {kind, path}` pattern verbatim (e.g. `HEAD`);
+- `pattern` is the path template as written (`{field}`,
+  `{field=segments}`, `*`, `**`, nested `{a.b}`, a trailing `:verb`);
+- `body` / `response_body` appear only when set in the rule.
+
+The same annotation also stays in the method's `options` table under
+`["google.api.http"]`, in raw `HttpRule` shape (see
+[README → Descriptor options](../../README.md#descriptor-options)).
+That is deliberate: `options` mirrors every extension of the
+descriptor alike, `http` is the normalised form a transcoder routes on.
+`pb.from_pb` produces the same `http` field from a `FileDescriptorSet`.
 
 The four streaming flavors fall out of those two booleans:
 
