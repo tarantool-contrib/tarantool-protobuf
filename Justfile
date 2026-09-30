@@ -232,11 +232,20 @@ test-c: build-c gen
 # or codec changes.
 test-all: test test-c
 
-# Generate the examples with `buf generate` (both modes) and check them
-# against the protoc outputs of `gen`: identical code, embedded
-# descriptors equal once decoded. Offline; skips without buf on PATH.
+# Generate the examples with `buf generate` and `easyp generate` (both
+# modes) and check them against the protoc outputs of `gen`: identical
+# code, embedded descriptors equal once decoded. Offline; each tool is
+# skipped when missing (EasyP: $EASYP or `easyp` on PATH).
+test-toolchains: gen
+    test/toolchains/check.sh buf easyp
+
+# `test-toolchains` for buf only.
 test-buf: gen
-    test/buf/check.sh
+    test/toolchains/check.sh buf
+
+# `test-toolchains` for EasyP only.
+test-easyp: gen
+    test/toolchains/check.sh easyp
 
 # Check pb.reflection against an independent consumer: grpc-go's reflection
 # types decode the responses and protodesc links every returned file

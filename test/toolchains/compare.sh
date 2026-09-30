@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compares two trees of generated Lua modules for semantic parity.
 #
-# Usage: test/buf/compare.sh <expected_dir> <actual_dir>
+# Usage: test/toolchains/compare.sh <expected_dir> <actual_dir>
 # Run from the repository root (protoc resolves options/ from there).
 #
 # Both trees must hold the same set of files. For each pair of modules:
@@ -13,8 +13,8 @@
 #     fields serialized in a different order compare equal.
 #
 # Different compilers serialize option messages in different field
-# orders (buf writes the google.api.http HttpRule fields in another
-# order than protoc does), and the plugin embeds the bytes it was given,
+# orders (protoc, buf and EasyP each write the google.api.http HttpRule
+# fields in their own order), and the plugin embeds the bytes it was given,
 # so byte equality is too strict for descriptors.
 set -euo pipefail
 
@@ -50,8 +50,8 @@ while IFS= read -r f; do
     files=$((files + 1))
     a="$work/a/$files"
     b="$work/b/$files"
-    na=$(tarantool test/buf/split.lua "$expected/$f" "$a")
-    nb=$(tarantool test/buf/split.lua "$actual/$f" "$b")
+    na=$(tarantool test/toolchains/split.lua "$expected/$f" "$a")
+    nb=$(tarantool test/toolchains/split.lua "$actual/$f" "$b")
     if [ "$na" != "$nb" ]; then
         echo "FAIL $f: $na embedded descriptors vs $nb" >&2
         failed=$((failed + 1))

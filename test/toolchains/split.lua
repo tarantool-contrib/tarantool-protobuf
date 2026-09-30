@@ -1,6 +1,6 @@
 -- Splits a generated *_pb.lua into its code and its embedded descriptors.
 --
--- Usage: tarantool test/buf/split.lua <module.lua> <outdir>
+-- Usage: tarantool test/toolchains/split.lua <module.lua> <outdir>
 --
 -- Every `table.concat({` ... `})` block in a generated module is a
 -- serialized FileDescriptorProto: M._file_descriptor and the snapshots
@@ -9,7 +9,7 @@
 -- <outdir>/desc.<n>.bin; the module's text, with each block replaced by
 -- `table.concat(<descriptor n>)`, goes to <outdir>/code.lua. Two
 -- modules then compare as: identical code.lua, and each pair of
--- desc.<n>.bin equal once decoded (see test/buf/check.sh).
+-- desc.<n>.bin equal once decoded (see test/toolchains/compare.sh).
 --
 -- Prints the number of descriptors found.
 local fio = require('fio')

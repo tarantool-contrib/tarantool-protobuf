@@ -1,4 +1,4 @@
-# The buf workspace test/buf/check.sh generates the examples from. It is
+# The buf workspace test/toolchains/check.sh generates the examples from. It is
 # passed with `--config` from the repository root, so the module paths
 # are relative to the root, not to this file. No BSR dependencies: the
 # vendored options/ directory provides google/api/annotations.proto, so

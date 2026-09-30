@@ -1,0 +1,28 @@
+# The EasyP configuration test/toolchains/check.sh generates the
+# examples with. check.sh copies examples/proto to proto/ and options/
+# to options/ in a scratch workspace next to this file and the plugin.
+#
+# `path` is relative to `root`, and `root` is the import root, so file
+# names match `protoc -I examples/proto -I options`. options/ has to be
+# an input to be on the import path without a git dependency, which
+# makes EasyP generate its files too; check.sh drops those modules.
+# Plugin options mirror `just gen-full` and `just gen-runtime`.
+generate:
+  inputs:
+    - directory:
+        path: .
+        root: proto
+    - directory:
+        path: .
+        root: options
+  plugins:
+    - path: ./protoc-gen-tarantool
+      out: out
+      opts:
+        mode: full
+        prefix: full
+    - path: ./protoc-gen-tarantool
+      out: out
+      opts:
+        mode: runtime
+        prefix: runtime
