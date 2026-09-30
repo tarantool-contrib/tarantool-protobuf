@@ -87,6 +87,14 @@ local function timestamp_decode(buf)
     -- (e.g. negative nanos, year > 9999) are kept as raw {seconds, nanos}
     -- so JSON serialization can reject them with serialize_error rather
     -- than crashing here with parse_error.
+    --
+    -- The seconds bounds are datetime's own (the C runtime checks the
+    -- same ones): some Tarantool releases, 3.1 and 3.4 among them, do not
+    -- check them in datetime.new and wrap an out-of-range timestamp into
+    -- a wrong date instead of raising.
+    if seconds < -185604722870400LL or seconds > 185480451417600LL then
+        return {seconds = seconds, nanos = nanos}
+    end
     local ok, dt = pcall(datetime.new,
         {timestamp = tonumber(seconds), nsec = nanos})
     if not ok then return {seconds = seconds, nanos = nanos} end
