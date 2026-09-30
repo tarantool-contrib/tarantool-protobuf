@@ -68,9 +68,11 @@ tostring(st)                          -- 'ABORTED: retry'
 | `grpc.encode_status(st)` | `google.rpc.Status` wire bytes (the `grpc-status-details-bin` payload) |
 | `grpc.decode_status(bytes)` | the inverse; returns a status object |
 
-- `code` is a number or a code name (`'NOT_FOUND'`). Numbers outside
-  the canonical 17 are accepted (they print as `CODE_<n>`); an unknown
-  name is an error.
+- `code` is a number or a code name (`'NOT_FOUND'`). Any integer in
+  `0 .. 2^31-1` is accepted (`google.rpc.Status.code` is an `int32`);
+  codes outside the canonical 17 print as `CODE_<n>`. Anything else — a
+  negative, fractional or larger number, NaN, an unknown name — is an
+  error.
 - `message` defaults to `''`.
 - `details`, when present, is an array of `google.protobuf.Any` tables,
   `{type_url = ..., value = <encoded bytes>}`, which is what `pb.any.pack`

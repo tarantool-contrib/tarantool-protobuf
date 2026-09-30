@@ -86,6 +86,11 @@ u.test_status_rejects_bad_codes = function()
     t.assert_error_msg_contains('code must be', grpc.status, -1)
     t.assert_error_msg_contains('code must be', grpc.status, 1.5)
     t.assert_error_msg_contains('code must be', grpc.status, nil)
+    t.assert_error_msg_contains('code must be', grpc.status, 0 / 0)
+    t.assert_error_msg_contains('code must be', grpc.status, math.huge)
+    t.assert_error_msg_contains('code must be', grpc.status, 2147483648)
+    t.assert_error_msg_contains('code must be', grpc.status, 4294967296)
+    t.assert_error_msg_contains('code must be', grpc.error, 2147483648)
     t.assert_error_msg_contains('details must be', grpc.status, 3, 'x', 'bad')
 end
 
@@ -123,6 +128,15 @@ u.test_status_round_trip_with_details = function()
     t.assert_equals(back.details[1].value, any.value)
     local unpacked = pb.any.unpack(back.details[1], REPLY_DESC)
     t.assert_equals(unpacked.greeting, 'why')
+end
+
+-- google.rpc.Status.code is int32: the largest accepted code survives
+-- the wire both ways.
+u.test_code_upper_bound_round_trips = function()
+    for _, code in ipairs({0, 16, 17, 2147483647}) do
+        local back = grpc.decode_status(grpc.encode_status(grpc.status(code, 'b')))
+        t.assert_equals(back.code, code)
+    end
 end
 
 u.test_decode_status_without_details = function()

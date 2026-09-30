@@ -111,6 +111,8 @@ status_mt.__tostring = function(st)
     return name .. ': ' .. st.message
 end
 
+local MAX_CODE = 2147483647
+
 local function resolve_code(code, fname)
     if type(code) == 'string' then
         local n = M.code[code]
@@ -119,9 +121,12 @@ local function resolve_code(code, fname)
         end
         return n
     end
-    if type(code) ~= 'number' or code < 0 or code % 1 ~= 0 then
-        error(('pb.grpc.%s: code must be a non-negative integer or a code name, got %s')
-            :format(fname, tostring(code)), 3)
+    -- google.rpc.Status.code is an int32, and a negative code means
+    -- nothing: accept exactly the integers 0 .. 2^31-1.
+    if type(code) ~= 'number' or code ~= code or code < 0
+            or code > MAX_CODE or code % 1 ~= 0 then
+        error(('pb.grpc.%s: code must be an integer in 0..%d or a code name, got %s')
+            :format(fname, MAX_CODE, tostring(code)), 3)
     end
     return code
 end
