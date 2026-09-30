@@ -311,11 +311,21 @@ end
 -- Identical bytes registered by the file's own module promote a
 -- snapshot, so a later different snapshot cannot replace it.
 g.test_register_identical_promotes_snapshot = function()
+    -- A differing snapshot keeps the first entry either way; only the
+    -- warning tells a promoted (authoritative) entry from a snapshot.
+    local orig = pb.descriptors._warn
+    local warnings = {}
+    pb.descriptors._warn = function(msg) warnings[#warnings + 1] = msg end
     local b = tiny_fdp('reg/pr.proto', 'same')
-    pb.descriptors.register(b, SNAP)
-    pb.descriptors.register(b)
-    pb.descriptors.register(tiny_fdp('reg/pr.proto', 'other'), SNAP)
+    local ok, err = pcall(function()
+        pb.descriptors.register(b, SNAP)
+        pb.descriptors.register(b)
+        pb.descriptors.register(tiny_fdp('reg/pr.proto', 'other'), SNAP)
+    end)
+    pb.descriptors._warn = orig
+    t.assert(ok, err)
     t.assert_equals(pb.descriptors.file('reg/pr.proto'), b)
+    t.assert_equals(warnings, {})
 end
 
 g.test_register_rejects_bad_input = function()
