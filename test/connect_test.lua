@@ -359,7 +359,9 @@ for _, mode in ipairs({'full', 'runtime'}) do
         r = post('/hello.Greeter/SayHello', 'application/json', '{"name": "Al"}',
                  {['connect-timeout-ms'] = '5000'})
         t.assert_equals(r.status, 200)
-        local left = seen.ctx.deadline - fiber.clock()
+        -- ctx.deadline counts on the monotonic clock (fiber.clock() lags
+        -- it by up to one event-loop iteration).
+        local left = seen.ctx.deadline - require('clock').monotonic()
         t.assert(left > 4 and left <= 5, left)
     end
 
@@ -574,4 +576,73 @@ for _, mode in ipairs({'full', 'runtime'}) do
         t.assert_equals(tail.error.code, 'deadline_exceeded')
         t.helpers.retrying({timeout = 2}, function() t.assert_equals(seen.late_send, false) end)
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Deadlines against work that does not yield
+-- ---------------------------------------------------------------------------
+
+local d = t.group('connect.deadline')
+
+-- A server table around one unary function, the hello messages as its
+-- input and output.
+local function raw_server(fn)
+    local hello = require('full.hello.hello_pb')
+    return {
+        service = {name = 't.S', methods = {M = {
+            name = 'M', full_name = '/t.S/M',
+            input = hello.HelloRequest_descriptor, output = hello.HelloReply_descriptor,
+        }}},
+        methods = {['/t.S/M'] = fn},
+    }
+end
+
+-- Burns CPU without yielding until the monotonic clock reaches `until_`.
+local function spin(until_)
+    local clock = require('clock')
+    while clock.monotonic() < until_ do end
+end
+
+local function call(h, ms, body)
+    return h:handle({method = 'POST', path = '/t.S/M',
+                     headers = {['content-type'] = 'application/json',
+                                ['connect-timeout-ms'] = tostring(ms)},
+                     body = body or '{}'})
+end
+
+-- The handler finishes before the deadline, but encoding its 20 MiB
+-- JSON response (hundreds of milliseconds, no yield) runs past it: the
+-- deadline decides the call, and ctx:is_cancelled() agrees.
+d.test_encoding_past_the_deadline = function()
+    local hello = require('full.hello.hello_pb')
+    local big = hello.HelloReply_encode({greeting = ('x'):rep(20 * 1024 * 1024)})
+    local seen = {}
+    local h = connect.new({raw_server(function(_, ctx)
+        seen.ctx = ctx
+        spin(ctx.deadline - 0.03)
+        return big
+    end)})
+    local r = call(h, 100)
+    t.assert_equals(r.status, 504)
+    t.assert_equals(json.decode(r.body).code, 'deadline_exceeded')
+    t.assert_equals(seen.ctx:is_cancelled(), true)
+end
+
+-- A server stream whose sends run past the deadline without yielding
+-- ends with deadline_exceeded.
+d.test_stream_past_the_deadline = function()
+    local hello = require('full.hello.hello_pb')
+    local h = connect.new({hello.Greeter_server({
+        StreamHellos = function(_, stream, ctx)
+            stream:send({greeting = 'first'})
+            spin(ctx.deadline + 0.02)
+        end,
+    })})
+    local r = h:handle({method = 'POST', path = '/hello.Greeter/StreamHellos',
+                        headers = {['content-type'] = 'application/connect+proto',
+                                   ['connect-timeout-ms'] = '20'},
+                        body = E(0, hello.HelloRequest_encode({name = 'x'}))})
+    local msgs, tail = end_stream(r.body)
+    t.assert_equals(#msgs, 1)
+    t.assert_equals(tail.error.code, 'deadline_exceeded')
 end

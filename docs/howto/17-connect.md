@@ -70,7 +70,11 @@ buf curl --schema examples/proto/hello.proto \
 - **Timeouts.** `Connect-Timeout-Ms` becomes `ctx.deadline`. When it
   passes, the call answers `deadline_exceeded` at once and
   `ctx:is_cancelled()` turns true; the handler fiber runs on (it may be
-  inside a transaction) and its result is dropped.
+  inside a transaction) and its result is dropped. The deadline is read
+  from a fresh monotonic clock (`clock.monotonic()`, the origin
+  `fiber.clock()` also counts from, without its per-iteration caching),
+  so CPU-bound work does not hide it: a result finished after the
+  deadline, or whose encoding took the call past it, is dropped too.
 - **Compression.** Only `identity`: a request with another
   `Content-Encoding` is `unimplemented` naming the supported encoding.
 - **Size.** A message over `limits.max_recv_message_size` (4 MiB by
@@ -186,7 +190,7 @@ The `ctx` is the one gRPC handlers get, plus two fields:
 ```lua
 ctx = {
     method = '/hello.Greeter/SayHello',
-    metadata = {...}, deadline = <fiber.clock() value> | nil, peer = 'ip:port',
+    metadata = {...}, deadline = <clock.monotonic() value> | nil, peer = 'ip:port',
     response_metadata = {}, trailing_metadata = {},
     protocol = 'connect',         -- 'grpc' over gRPC, 'http' when transcoded
     connect = {

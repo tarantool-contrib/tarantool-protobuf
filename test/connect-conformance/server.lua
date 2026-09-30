@@ -102,7 +102,8 @@ local function request_info(ctx, reqs)
         requests = reqs,
     }
     if ctx.deadline ~= nil then
-        info.timeout_ms = math.max(0, math.floor((ctx.deadline - fiber.clock()) * 1000 + 0.5))
+        local left = ctx.deadline - require('clock').monotonic()
+        info.timeout_ms = math.max(0, math.floor(left * 1000))
     end
     if ctx.connect ~= nil and ctx.connect.get then
         info.connect_get_info = {query_params = headers_list(ctx.connect.query)}

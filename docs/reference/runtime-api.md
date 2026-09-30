@@ -609,7 +609,10 @@ EndStreamResponse `metadata` (streams); `-bin` values as unpadded
 base64. `Connect-Timeout-Ms` (at most 10 digits, else
 `invalid_argument`) is the deadline: when it passes the call answers
 `deadline_exceeded` and the handler, still running in its own fiber,
-sees `ctx:is_cancelled()`.
+sees `ctx:is_cancelled()`. `ctx.deadline` and every deadline decision
+use `clock.monotonic()` (the origin of `fiber.clock()`, not cached per
+event-loop iteration); a handler result that comes after the deadline,
+or a unary response whose encoding runs past it, is dropped as well.
 
 Errors: a raised status object keeps its code and message; its details
 are sent as `{"type", "value"}` (unpadded base64); code `OK` and plain

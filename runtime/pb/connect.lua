@@ -31,6 +31,7 @@
 -- its request) cannot work. The envelope I/O is kept behind a small
 -- object (`buffered_io`) so a streaming transport can replace it
 -- without touching the protocol logic.
+local clock  = require('clock')
 local fiber  = require('fiber')
 local log    = require('log')
 local json   = require('json')
@@ -620,6 +621,28 @@ end
 -- (method, metadata, deadline, peer, response_metadata,
 -- trailing_metadata, is_cancelled) plus `protocol = 'connect'` and
 -- `connect = {get, codec, query}`.
+-- Deadline decisions read a fresh monotonic clock: fiber.clock() is
+-- cached per event-loop iteration, so a handler or an encode that burns
+-- CPU without yielding would still see the time it started at. Both
+-- count from the same origin (CLOCK_MONOTONIC), so ctx.deadline
+-- compares with either.
+local function now() return clock.monotonic() end
+
+-- expired(state) -> true once the call is cancelled or its deadline has
+-- passed; marks it cancelled then.
+local function expired(state)
+    if state.cancelled then return true end
+    if state.deadline ~= nil and now() >= state.deadline then
+        state.cancelled = true
+        return true
+    end
+    return false
+end
+
+local function deadline_status()
+    return grpc.status(CODE.DEADLINE_EXCEEDED, 'deadline exceeded')
+end
+
 local function new_ctx(req, proc, state, metadata, deadline, extra)
     return {
         method = proc.path,
@@ -630,10 +653,7 @@ local function new_ctx(req, proc, state, metadata, deadline, extra)
         trailing_metadata = {},
         protocol = 'connect',
         connect = extra,
-        is_cancelled = function()
-            return state.cancelled
-                or (state.deadline ~= nil and fiber.clock() >= state.deadline)
-        end,
+        is_cancelled = function() return expired(state) end,
     }
 end
 
@@ -646,10 +666,10 @@ local function invoke(state, fn, ...)
     if state.deadline == nil then
         return xpcall(fn, capture, ...)
     end
-    local left = state.deadline - fiber.clock()
+    local left = state.deadline - now()
     if left <= 0 then
         state.cancelled = true
-        return false, grpc.status(CODE.DEADLINE_EXCEEDED, 'deadline exceeded')
+        return false, deadline_status()
     end
     local ch = fiber.channel(1)
     local args = {n = select('#', ...), ...}
@@ -662,10 +682,13 @@ local function invoke(state, fn, ...)
     local r = ch:get(left)
     -- A result that arrives once the deadline has passed is dropped as
     -- well: a handler polling ctx:is_cancelled() returns right when the
-    -- deadline passes, and may wake before this wait does.
-    if r == nil or fiber.clock() >= state.deadline then
+    -- deadline passes and may wake before this wait does, and a handler
+    -- that never yields is done before the wait could time out. (For a
+    -- successful unary result the check after encoding would also catch
+    -- it; a raised status is decided here alone.)
+    if r == nil or expired(state) then
         state.cancelled = true
-        return false, grpc.status(CODE.DEADLINE_EXCEEDED, 'deadline exceeded')
+        return false, deadline_status()
     end
     return unpack(r, 1, r.n)
 end
@@ -687,7 +710,7 @@ function Handler:_begin(call, req, headers, encoding, version_ok)
         return nil, grpc.status(CODE.INVALID_ARGUMENT,
             ('invalid connect-timeout-ms %q'):format(tostring(headers['connect-timeout-ms'])))
     end
-    if ms ~= nil then state.deadline = fiber.clock() + ms / 1000 end
+    if ms ~= nil then state.deadline = now() + ms / 1000 end
     local md, err = M.request_metadata(headers)
     if md == nil then return nil, err end
     local extra = {
@@ -767,6 +790,9 @@ function Handler:_serve_unary(call, req)
     local body
     ok, body = pcall(codec.encode, self, proc.output, resp or '')
     if not ok then return self:_unary_error(as_status(ctx, body), ctx) end
+    -- Encoding a large response can take long enough to pass the
+    -- deadline; the call is decided by the deadline then.
+    if expired(state) then return self:_unary_error(deadline_status(), ctx) end
     local out = {}
     add_headers(out, ctx.response_metadata)
     add_headers(out, ctx.trailing_metadata, 'trailer-')
@@ -857,9 +883,7 @@ function Handler:_serve_stream(call, req, io)
     -- and ends the stream whatever the handler does next.
     function view:recv()
         if recv_err ~= nil then return nil, recv_err end
-        if ctx:is_cancelled() then
-            return nil, grpc.status(CODE.DEADLINE_EXCEEDED, 'deadline exceeded')
-        end
+        if ctx:is_cancelled() then return nil, deadline_status() end
         local flags, payload = io:read()
         local st
         if flags == nil then
@@ -916,6 +940,9 @@ function Handler:_serve_stream(call, req, io)
         st = as_status(ctx, err)
     elseif recv_err ~= nil then
         st = recv_err
+    elseif expired(state) then
+        -- The handler's sends (and their encoding) ran past the deadline.
+        st = deadline_status()
     end
     return finish(st)
 end
