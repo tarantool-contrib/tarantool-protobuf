@@ -22,7 +22,9 @@ features:
   supports_h2c: true
   supports_tls: false
   supports_trailers: true
-  supports_half_duplex_bidi_over_http1: false
+  # Connect streams are chunked HTTP/1.1 exchanges: a client that sends
+  # its whole request before reading gets its replies after.
+  supports_half_duplex_bidi_over_http1: true
   supports_connect_get: true
   # pb.server enforces limits.max_recv_message_size for gRPC and Connect.
   supports_message_receive_limit: true

@@ -295,9 +295,10 @@ connect_conformance_version := "v1.0.5"
 # pb.server: its reference clients (connect-go for Connect and gRPC, and
 # grpc-go) drive test/connect-conformance/server.lua over HTTP/1.1 and
 # h2c, Connect and gRPC, proto and JSON. The runner is `go install`ed
-# into a temporary GOBIN. test/connect-conformance/known-failing.txt and
-# known-flaky.txt list the cases expected to fail and why. Needs the http2 rock: see
-# TARANTOOL_HTTP2_RUNTIME above.
+# into a temporary GOBIN. Every case must pass: there is no list of
+# known failures (add one with --known-failing @file, a reason per
+# entry, if that ever changes). Needs the http2 rock, with its streaming
+# HTTP handlers: see TARANTOOL_HTTP2_RUNTIME above.
 connect-conformance: gen-connect-conformance
     #!/usr/bin/env bash
     set -euo pipefail
@@ -307,8 +308,6 @@ connect-conformance: gen-connect-conformance
     TARANTOOL_HTTP2_RUNTIME="{{http2_runtime}}" "$gobin/connectconformance" \
         --mode server \
         --conf test/connect-conformance/config.yaml \
-        --known-failing @test/connect-conformance/known-failing.txt \
-        --known-flaky @test/connect-conformance/known-flaky.txt \
         -- tarantool test/connect-conformance/server.lua
 
 # ---------------------------------------------------------------------------

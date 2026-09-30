@@ -242,14 +242,7 @@ local impl = {
     -- UNIMPLEMENTED for it.
 }
 
--- tarantool-http2 gives every HTTP/2 connection its own set of LuaJIT
--- FFI callbacks, and LuaJIT has a few hundred callback slots per
--- process: past about 60 open HTTP/2 connections, new ones fail with
--- "too many callbacks". The grpc-go client of the suite opens a
--- connection per test case and leaves it open, so idle connections are
--- closed after a second (GOAWAY; grpc-go reconnects) instead of the
--- default 300 s. The limit itself is a tarantool-http2 defect.
-local limits = {idle_timeout = 1}
+local limits = {}
 if (compat_req.message_receive_limit or 0) > 0 then
     limits.max_recv_message_size = compat_req.message_receive_limit
 end
