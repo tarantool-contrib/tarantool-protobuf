@@ -61,11 +61,18 @@ func emitService(w *writer, file *protogen.File, svc *protogen.Service, imports 
 		if m.Desc.IsStreamingServer() {
 			w.line("            server_streaming = true,")
 		}
+		mopts, _ := m.Desc.Options().(*descriptorpb.MethodOptions)
+		// The method's idempotency level by enum name, omitted when
+		// unknown (the default). Like `http`, a normalised copy of what
+		// `options` also mirrors: the Connect protocol serves GET only
+		// for NO_SIDE_EFFECTS methods.
+		if lvl := mopts.GetIdempotencyLevel(); lvl != descriptorpb.MethodOptions_IDEMPOTENCY_UNKNOWN {
+			w.line("            idempotency_level = %q,", lvl.String())
+		}
 		// Normalised google.api.http routing rules. The raw extension
 		// also stays in `options` below: `options` mirrors the
 		// descriptor for every extension alike, `http` is the flattened
 		// shape a transcoder routes on.
-		mopts, _ := m.Desc.Options().(*descriptorpb.MethodOptions)
 		rules, err := methodHTTPRules(mopts)
 		if err != nil {
 			panic("tarantool-protobuf: " + fullName + "." + mname + ": google.api.http: " + err.Error())

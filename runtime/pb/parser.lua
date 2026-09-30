@@ -340,8 +340,25 @@ local function parse(tokens)
                 local server_streaming = match('ident', 'stream') ~= nil
                 local output = consume('ident').value
                 consume('punct', ')')
+                local idempotency_level
                 if match('punct', '{') then
-                    while not match('punct', '}') do consume() end
+                    -- Method options. Only `option idempotency_level =
+                    -- NAME;` is read; everything else (aggregate
+                    -- options with nested braces included) is skipped.
+                    local depth = 1
+                    while depth > 0 do
+                        local tok = consume()
+                        if tok.type == 'punct' and tok.value == '{' then
+                            depth = depth + 1
+                        elseif tok.type == 'punct' and tok.value == '}' then
+                            depth = depth - 1
+                        elseif depth == 1 and tok.type == 'ident' and tok.value == 'option'
+                                and match('ident', 'idempotency_level') then
+                            consume('punct', '=')
+                            local lvl = consume('ident').value
+                            if lvl ~= 'IDEMPOTENCY_UNKNOWN' then idempotency_level = lvl end
+                        end
+                    end
                 else
                     consume('punct', ';')
                 end
@@ -351,6 +368,7 @@ local function parse(tokens)
                     output = output,
                     client_streaming = client_streaming,
                     server_streaming = server_streaming,
+                    idempotency_level = idempotency_level,
                 }
             else
                 consume()

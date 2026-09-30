@@ -238,6 +238,15 @@ local function method_http(options)
     return out
 end
 
+-- MethodOptions.IdempotencyLevel by value; IDEMPOTENCY_UNKNOWN (0), the
+-- default, maps to nil.
+local IDEMPOTENCY_LEVELS = {[1] = 'NO_SIDE_EFFECTS', [2] = 'IDEMPOTENT'}
+
+local function method_idempotency(options)
+    local lvl = options and options.idempotency_level
+    return lvl and IDEMPOTENCY_LEVELS[lvl]
+end
+
 -- Translate a FileDescriptorProto into the AST shape pb.dynamic.build expects.
 local function translate_file(file_proto)
     local ast = {
@@ -274,6 +283,7 @@ local function translate_file(file_proto)
                 client_streaming  = m.client_streaming or false,
                 server_streaming  = m.server_streaming or false,
                 http              = method_http(m.options),
+                idempotency_level = method_idempotency(m.options),
             })
         end
         table.insert(ast.services, {name = svc.name, methods = methods})

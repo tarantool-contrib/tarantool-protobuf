@@ -324,7 +324,9 @@ function M.build(parsed)
     -- in another file (this builder sees one file at a time). `http`
     -- carries the flattened google.api.http rules when the producer
     -- supplied them (pb.from_pb does; the .proto text parser skips
-    -- method options).
+    -- that option). `idempotency_level` is the enum name of the
+    -- method's idempotency_level option, nil when unknown (both
+    -- producers supply it).
     for _, svc in ipairs(parsed.services or {}) do
         local full = pkg ~= '' and (pkg .. '.' .. svc.name) or svc.name
         local methods, order = {}, {}
@@ -336,6 +338,7 @@ function M.build(parsed)
                 input     = resolve_service_type(m.input, index),
                 output    = resolve_service_type(m.output, index),
                 http      = m.http,
+                idempotency_level = m.idempotency_level,
             }
             if m.client_streaming then entry.client_streaming = true end
             if m.server_streaming then entry.server_streaming = true end

@@ -97,6 +97,8 @@ service Library {
     option (google.api.http) = {
       get: "/v1/{name=shelves/*/books/*}"
     };
+    // A read: Connect clients may call it with GET.
+    option idempotency_level = NO_SIDE_EFFECTS;
   }
 
   rpc ListBooks(ListBooksRequest) returns (ListBooksResponse) {

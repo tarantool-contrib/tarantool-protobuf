@@ -129,11 +129,13 @@ M.HttpRule.fields = {
     {name = 'response_body',       id = 12, kind = 'scalar',  proto_type = 'string'},
 }
 
--- MethodOptions: subset — only the google.api.http extension
+-- MethodOptions: subset — idempotency_level (an enum, read as its wire
+-- integer) and the google.api.http extension
 -- (google/api/annotations.proto), decoded as if it were a plain field.
 M.MethodOptions = {
     name = 'google.protobuf.MethodOptions',
     fields = {
+        {name = 'idempotency_level', id = 34, kind = 'scalar', proto_type = 'int32'},
         {name = 'http', id = 72295728, kind = 'message', message = M.HttpRule},
     },
 }

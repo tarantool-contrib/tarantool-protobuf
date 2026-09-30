@@ -237,6 +237,7 @@ and `pb.from_pb` build it too:
             name = 'Method', full_name = '/pkg.Service/Method',
             input = <descriptor>, output = <descriptor>,  -- nil when not resolvable
             client_streaming = true?, server_streaming = true?,
+            idempotency_level = 'NO_SIDE_EFFECTS' | 'IDEMPOTENT' | nil,
             http = {{method=, pattern=, body=?, response_body=?}, ...}?,  -- google.api.http
             options = {...}?,                              -- codegen only
         },
@@ -249,6 +250,13 @@ and `pb.from_pb` build it too:
 `method_order` lists every method name in `.proto` source order. Anything
 that needs the declaration order (the HTTP transcoder breaks route ties
 with it) reads it rather than iterating `methods`.
+
+`idempotency_level` is the method's `option idempotency_level` by enum
+name; it is absent for `IDEMPOTENCY_UNKNOWN`, the default. All three
+producers set it (the codegen, `pb.parse`, `pb.from_pb`). `pb.server`
+reads it to serve Connect GET requests, which the protocol allows only
+for `NO_SIDE_EFFECTS` methods. Like `http`, it is a normalised copy of
+something `options` (codegen only) also carries.
 
 ## Inline (full) mode — what it looks like
 
