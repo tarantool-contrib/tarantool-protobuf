@@ -262,6 +262,34 @@ g.test_conflicting_file_is_left_out_whole = function()
         t.assert_equals(r.file_containing_symbol('collision.Shared.Older'), 'z-original.proto')
         t.assert_equals(r.file_containing_symbol('collision.Shared.New'), nil)
         t.assert_equals(#warnings, 1)
+
+        -- The left-out file is not served by name either, and a file
+        -- importing both gets only the accepted one, like a missing
+        -- import. pb.descriptors itself keeps both.
+        resp = s:ask({file_by_filename = 'a-new.proto'})
+        t.assert_equals(resp.error_response.error_code, NOT_FOUND)
+        t.assert_type(pb.descriptors.file('a-new.proto'), 'string')
+        pb.descriptors.register(codec.encode(descpb.FileDescriptorProto, {
+            name = 'uses-both.proto', package = 'user',
+            dependency = {'z-original.proto', 'a-new.proto'},
+            message_type = {{name = 'X'}},
+        }))
+        local fresh = session(pb.grpc.multiplex(pb.reflection.servers()))
+        t.assert_equals(names_of(fresh:ask({file_by_filename = 'uses-both.proto'})),
+                        {'uses-both.proto', 'z-original.proto'})
+
+        -- Hot reload that removes the conflict brings the file back.
+        pb.descriptors.register(codec.encode(descpb.FileDescriptorProto, {
+            name = 'a-new.proto', package = 'collision',
+            message_type = {{name = 'Fresh'}},
+        }))
+        t.assert_equals(r.file_containing_symbol('collision.Fresh'), 'a-new.proto')
+        fresh = session(pb.grpc.multiplex(pb.reflection.servers()))
+        t.assert_equals(names_of(fresh:ask({file_by_filename = 'uses-both.proto'})),
+                        {'uses-both.proto', 'z-original.proto', 'a-new.proto'})
+        t.assert_equals(names_of(fresh:ask({file_by_filename = 'a-new.proto'})),
+                        {'a-new.proto'})
+        t.assert_equals(#warnings, 1)
     end)
     pb.reflection._warn = orig_warn
     if not ok then error(err, 0) end

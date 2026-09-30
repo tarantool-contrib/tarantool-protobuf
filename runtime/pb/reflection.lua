@@ -161,7 +161,7 @@ end
 -- registry refuses it ("name conflict"): mixing two files' symbols would
 -- hand a client two files that define the same type and cannot link.
 local function build_index()
-    local symbols, extensions = {}, {}
+    local symbols, extensions, accepted = {}, {}, {}
     for _, name in ipairs(descriptors.registration_order()) do
         local ok, fdp = pcall(codec.decode, File, descriptors.file(name))
         if ok then
@@ -177,9 +177,10 @@ local function build_index()
                 if not warned[name] then
                     warned[name] = true
                     M._warn(('pb.reflection: %q declares %q, already declared by %q; '
-                        .. 'its symbols are not served'):format(name, conflict, symbols[conflict]))
+                        .. 'it is not served'):format(name, conflict, symbols[conflict]))
                 end
             else
+                accepted[name] = true
                 for _, full in ipairs(names) do symbols[full] = name end
                 for _, x in ipairs(exts) do
                     local by_number = extensions[x[1]]
@@ -192,17 +193,18 @@ local function build_index()
             end
         end
     end
-    return symbols, extensions
+    return symbols, extensions, accepted
 end
 
 local function current_index()
     if index.generation ~= descriptors.generation() then
-        local symbols, extensions = build_index()
+        local symbols, extensions, accepted = build_index()
         -- build_index may load the built-in descriptors, which bumps the
         -- generation: read it afterwards.
         index.generation = descriptors.generation()
         index.symbols = symbols
         index.extensions = extensions
+        index.accepted = accepted
     end
     return index
 end
@@ -238,7 +240,8 @@ function M.extension_numbers(extendee)
 end
 
 -- file_with_dependencies(name, sent) -> array of FileDescriptorProto
--- bytes, or nil when the file is not registered.
+-- bytes, or nil when the file is not registered or was left out of the
+-- index for a name conflict.
 --
 -- Breadth-first over the imports. `sent` (file name -> true) is the
 -- per-stream memory of files already delivered: they are skipped, except
@@ -247,15 +250,19 @@ end
 ---@param sent table<string, boolean>
 ---@return string[]?
 function M.file_with_dependencies(name, sent)
-    if descriptors.file(name) == nil then return nil end
+    -- Only files the index accepted are served: a file left out for a
+    -- name conflict is treated as unregistered, as a root (nil, so
+    -- NOT_FOUND) and as an import (skipped like a missing one).
+    local accepted = current_index().accepted
+    if not accepted[name] then return nil end
     local out = {}
     local queue, head = {name}, 1
     local visited = {[name] = true}
     while head <= #queue do
         local cur = queue[head]
         head = head + 1
-        local bytes = descriptors.file(cur)
-        if bytes ~= nil then
+        local bytes = accepted[cur] and descriptors.file(cur)
+        if bytes then
             if #out == 0 or not sent[cur] then
                 sent[cur] = true
                 out[#out + 1] = bytes

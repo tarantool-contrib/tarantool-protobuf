@@ -488,11 +488,14 @@ Behaviour, following grpc-go's reflection service:
   The index is built from the descriptor bytes on first use and rebuilt
   when `pb.descriptors` changes.
 - Files are indexed in registration order. A file that declares a name
-  an earlier file already declares is left out of the symbol index as a
-  whole, and a warning is logged once, as protobuf-go's registry refuses
-  it with "name conflict": serving symbols from both would hand a client
-  two files defining one type, which do not link. Replacing a file under
-  its own name is not a conflict.
+  an earlier file already declares is left out as a whole, and a warning
+  is logged once, as protobuf-go's registry refuses it with "name
+  conflict": serving both would hand a client two files defining one
+  type, which do not link. A left-out file is served as if unregistered:
+  asked for by name it is `NOT_FOUND`, as an import it is skipped like a
+  missing one. `pb.descriptors` keeps it, so a reload that removes the
+  conflict brings it back. Replacing a file under its own name is not a
+  conflict.
 - Extensions are indexed from the registered descriptors:
   `all_extension_numbers_of_type` answers the sorted numbers (an empty
   list for a known type without extensions).
