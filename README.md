@@ -83,16 +83,30 @@ wire format. Only editions are out of scope for now.
 Requires Tarantool 3.1 or later; the optional C runtime needs 3.5 or
 later. CI tests 3.1 and 3.8.
 
-There is no published rock yet, so install from a local checkout:
+The runtime is two rocks for tt 3, published at the
+[rocks-repo](https://github.com/tarantool-contrib/rocks-repo) of
+tarantool-contrib from the tags `vX.Y.Z`; `app.manifest.toml` declares
+both:
 
-```bash
-git clone https://github.com/tarantool-contrib/tarantool-protobuf.git && cd tarantool-protobuf
-tt rocks make tarantool-protobuf-scm-1.rockspec
+- `tarantool-protobuf`, the `pb.*` runtime in pure Lua: one rock for
+  every platform;
+- `tarantool-protobuf-c`, the optional C runtime, `pb.c_runtime`
+  alone: a binary rock per platform, Tarantool 3.5 or later. It is
+  installed beside `tarantool-protobuf` of the same version, and used
+  under `PB_ENABLE_C=1` only (see [docs/c-accel.md](docs/c-accel.md)).
+
+```toml
+[dependencies]
+tarantool-protobuf = { version = "0.1.0", registry = "https://raw.githubusercontent.com/tarantool-contrib/rocks-repo/index/" }
+# The C runtime, of the same version.
+tarantool-protobuf-c = { version = "0.1.0", registry = "https://raw.githubusercontent.com/tarantool-contrib/rocks-repo/index/" }
 ```
 
-That puts the `pb.*` runtime modules under `.rocks/share/tarantool/`.
-The Go plugin still has to be built separately — see "Quick start"
-below.
+From a checkout, `tt rocks make tarantool-protobuf-scm-1.rockspec` puts
+the `pb.*` runtime modules under `.rocks/share/tarantool/`, and
+`tt package pack --format rock` packs the rock of the runtime
+(`--product c`: of the C runtime). The Go plugin is in neither rock and
+is built separately — see "Quick start" below.
 
 ## Quick start
 

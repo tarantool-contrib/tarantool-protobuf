@@ -27,3 +27,6 @@
 /runtime/pb/c_runtime.dylib
 /runtime/pb/c/*.o
 .builds/go*.tar.gz
+
+# tt package build and pack.
+/_build/

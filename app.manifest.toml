@@ -1,0 +1,67 @@
+# The package for tt v3: tt package build and tt package pack read it, and
+# the rockspecs of the rocks are generated from it.
+# tarantool-protobuf-scm-1.rockspec stays for tt rocks (LuaRocks) from a
+# checkout.
+#
+# Two rocks, one per product:
+#
+#   - tarantool-protobuf, the runtime, pb and pb.*, in pure Lua: one .all
+#     rock for every platform;
+#   - tarantool-protobuf-c, the optional C runtime, pb.c_runtime alone: a
+#     binary rock per platform. It is installed beside tarantool-protobuf of
+#     the same version, and pb uses it under PB_ENABLE_C=1 only
+#     (docs/c-accel.md).
+#
+# The protoc plugin, protoc-gen-tarantool, is in neither: it is built with go
+# (Justfile).
+manifest_version = "0.1"
+
+[package]
+name = "tarantool-protobuf"
+description = "Protocol Buffers and gRPC for Tarantool: pure-Lua runtime and optional C runtime"
+license = "BSD-2-Clause"
+license_files = ["LICENSE"]
+repository = "https://github.com/tarantool-contrib/tarantool-protobuf"
+
+[platform]
+# The oldest series CI runs the suite on (README.md, Install). The C runtime
+# needs 3.5.0: see its component.
+tarantool = ">=3.1.0"
+tt = ">=3.0.0"
+
+[dependencies]
+
+# The runtime, pb and pb.*: every Lua file under runtime/pb/, but the EmmyLua
+# type definitions. Only *.lua is laid out, so no c_runtime.so that
+# just build-c left in the tree gets into the rock.
+[components.pb]
+path = "runtime/pb"
+namespace = "pb"
+include = ["*.lua"]
+exclude = ["_types.lua"]
+
+# The C runtime, pb.c_runtime (.rocks/lib/tarantool/pb/c_runtime.so), as
+# runtime/pb/c/Makefile builds it. box_tuple_data, which pb.tuple reads
+# tuples with, is in the module API since 3.5.0.
+[components.c-runtime]
+path = "runtime/pb/c"
+namespace = "pb"
+include = []
+
+[components.c-runtime.dependencies]
+tarantool = ">=3.5.0"
+
+[components.c-runtime.build]
+backend = "lua-c"
+module = "c_runtime"
+sources = ["c_runtime.c", "tuple.c", "msgpuck/msgpuck.c", "msgpuck/hints.c"]
+include_dirs = ["msgpuck"]
+cflags = ["-std=c99", "-Wall", "-Wextra", "-fvisibility=hidden"]
+
+[products.default]
+default = true
+components = ["pb"]
+
+[products.c]
+components = ["c-runtime"]
+rock = "tarantool-protobuf-c"
